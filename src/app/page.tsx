@@ -36,6 +36,7 @@ export default function FinancialDashboard() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isAIOpen, setIsAIOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  
   const [isRolloverModalOpen, setIsRolloverModalOpen] = useState(false);
   const [pastDueItems, setPastDueItems] = useState<any[]>([]);
 
@@ -61,7 +62,6 @@ export default function FinancialDashboard() {
   const [aiResponse, setAiResponse] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // --- AUTH & LOAD ---
   useEffect(() => {
     const checkUser = async () => {
         const { data: { session } } = await supabase.auth.getSession();
@@ -118,6 +118,7 @@ export default function FinancialDashboard() {
           installments.forEach(inst => { const pastInstNum = inst.current_installment + i; if (pastInstNum >= 1 && pastInstNum <= inst.installments_count) { if (!inst.paid_months?.includes(pastMonthName) && inst.status !== 'delayed') overdueItems.push({ ...inst, origin: 'installments', month: pastMonthName, amount: inst.value_per_month }); } });
           recurring.forEach(rec => { 
               const startMonthIndex = rec.start_date ? parseInt(rec.start_date.split('/')[1]) - 1 : 0;
+              // AQUI ESTAVA O PROBLEMA: Usamos 'i' para verificar se naquele mês passado a conta já existia
               if (i >= startMonthIndex && rec.type === 'expense' && !rec.paid_months?.includes(pastMonthName) && !rec.skipped_months?.includes(pastMonthName) && rec.status !== 'delayed') {
                   overdueItems.push({ ...rec, origin: 'recurring', month: pastMonthName, amount: rec.value });
               }
@@ -177,16 +178,17 @@ export default function FinancialDashboard() {
     const monthMap: Record<string, string> = { 'Jan': '/01', 'Fev': '/02', 'Mar': '/03', 'Abr': '/04', 'Mai': '/05', 'Jun': '/06', 'Jul': '/07', 'Ago': '/08', 'Set': '/09', 'Out': '/10', 'Nov': '/11', 'Dez': '/12' };
     const dateFilter = monthMap[monthName];
 
-    const isRecurringActive = (rec: any) => {
+    // FUNÇÃO AUXILIAR CORRIGIDA: Verifica se estava ativo em UM MÊS ESPECÍFICO (checkIndex)
+    const isActiveInMonth = (rec: any, checkIndex: number) => {
         if (!rec.start_date) return true;
         const startMonthIndex = parseInt(rec.start_date.split('/')[1]) - 1;
-        return monthIndex >= startMonthIndex;
+        return checkIndex >= startMonthIndex;
     };
 
-    const incomeFixed = recurring.filter(r => r.type === 'income' && isRecurringActive(r) && !r.skipped_months?.includes(monthName)).reduce((acc, curr) => acc + curr.value, 0);
+    const incomeFixed = recurring.filter(r => r.type === 'income' && isActiveInMonth(r, monthIndex) && !r.skipped_months?.includes(monthName)).reduce((acc, curr) => acc + curr.value, 0);
     const incomeVariable = transactions.filter(t => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed').reduce((acc, curr) => acc + curr.amount, 0);
     const expenseVariable = transactions.filter(t => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed').reduce((acc, curr) => acc + curr.amount, 0);
-    const expenseFixed = recurring.filter(r => r.type === 'expense' && isRecurringActive(r) && !r.skipped_months?.includes(monthName) && r.status !== 'delayed').reduce((acc, curr) => acc + curr.value, 0);
+    const expenseFixed = recurring.filter(r => r.type === 'expense' && isActiveInMonth(r, monthIndex) && !r.skipped_months?.includes(monthName) && r.status !== 'delayed').reduce((acc, curr) => acc + curr.value, 0);
     
     const installTotal = installments.reduce((acc, curr) => {
         if (curr.status === 'delayed') return acc;
@@ -202,7 +204,8 @@ export default function FinancialDashboard() {
     for (let i = 0; i < monthIndex; i++) {
         const pastMonth = MONTHS[i];
         installments.forEach(inst => { const pastInst = inst.current_installment + i; if (inst.status !== 'delayed' && pastInst >= 1 && pastInst <= inst.installments_count) { if (!inst.paid_months?.includes(pastMonth)) accumulatedDebt += inst.value_per_month; } });
-        recurring.filter(r => r.type === 'expense').forEach(rec => { if (rec.status !== 'delayed' && isRecurringActive(rec) && !rec.paid_months?.includes(pastMonth) && !rec.skipped_months?.includes(pastMonth)) { accumulatedDebt += rec.value; } });
+        // CORREÇÃO AQUI: Passamos 'i' (mês passado) para verificar se a conta existia LÁ TRÁS.
+        recurring.filter(r => r.type === 'expense').forEach(rec => { if (rec.status !== 'delayed' && isActiveInMonth(rec, i) && !rec.paid_months?.includes(pastMonth) && !rec.skipped_months?.includes(pastMonth)) { accumulatedDebt += rec.value; } });
         const pastDateFilter = Object.values(monthMap)[i];
         transactions.forEach(t => { if (t.type === 'expense' && t.status !== 'delayed' && t.date?.includes(pastDateFilter) && !t.is_paid) { accumulatedDebt += t.amount; } })
     }
@@ -223,7 +226,7 @@ export default function FinancialDashboard() {
     setIsLoading(true); setAiResponse('');
     try {
         const genAI = new GoogleGenerativeAI(API_KEY);
-        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest"});
+        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
         const contextData = { mes_atual: activeTab, renda: currentMonthData.income, gastos: currentMonthData.expenseTotal, atrasado: currentMonthData.accumulatedDebt, saldo: currentMonthData.balance };
         const systemInstruction = `
             Você é o Fluxo AI, um assistente financeiro pessoal.
@@ -304,9 +307,13 @@ export default function FinancialDashboard() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-gray-100 p-4 md:p-8 font-sans selection:bg-purple-500 selection:text-white relative">
-      <header className="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
-        <div><h1 className="text-4xl font-extrabold bg-gradient-to-r from-purple-400 via-pink-500 to-red-500 bg-clip-text text-transparent">Fluxo AI.</h1><div className="flex items-center gap-2 mt-1"><div className={`w-2 h-2 rounded-full ${user ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'}`}></div><p className="text-gray-500 text-sm">{user ? 'Online' : 'Local'}</p></div></div>
-        <div className="flex gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
+      {/* HEADER RESPONSIVO */}
+      <header className="flex flex-col gap-6 md:flex-row md:justify-between md:items-center mb-8">
+        <div className="text-center md:text-left">
+          <h1 className="text-4xl font-extrabold bg-gradient-to-r from-purple-400 via-pink-500 to-red-500 bg-clip-text text-transparent">Fluxo AI.</h1>
+          <div className="flex items-center gap-2 mt-1 justify-center md:justify-start"><div className={`w-2 h-2 rounded-full ${user ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'}`}></div><p className="text-gray-500 text-sm">{user ? 'Online' : 'Local'}</p></div>
+        </div>
+        <div className="flex flex-wrap justify-center md:justify-end gap-3 w-full md:w-auto">
             {user ? (<button onClick={handleLogout} className="flex-1 md:flex-none bg-gray-800 text-white px-5 py-3 rounded-full hover:bg-gray-700 flex items-center justify-center gap-2 whitespace-nowrap"><LogOut size={18}/> Sair</button>) : (<button onClick={() => setIsAuthModalOpen(true)} className="flex-1 md:flex-none bg-purple-600 text-white px-5 py-3 rounded-full hover:bg-purple-700 flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(120,50,255,0.3)] whitespace-nowrap"><LogIn size={18}/> Entrar</button>)}
             <button onClick={() => setIsAIOpen(true)} className="flex-1 md:flex-none bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-5 py-3 rounded-full font-bold hover:scale-105 transition border border-purple-400/30 flex items-center justify-center gap-2 whitespace-nowrap"><Sparkles size={18} className="text-yellow-300"/> Consultor</button>
             <button onClick={openNewTransactionModal} className="flex-1 md:flex-none bg-white text-black px-6 py-3 rounded-full font-bold hover:bg-gray-200 transition flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.2)] whitespace-nowrap"><Plus size={18}/> Novo</button>
@@ -388,7 +395,7 @@ export default function FinancialDashboard() {
                         {recurring.filter(r => r.type === 'expense').map((rec) => {
                              if (rec.status === 'delayed' || rec.skipped_months?.includes(activeTab)) return null;
                              const startMonthIndex = rec.start_date ? parseInt(rec.start_date.split('/')[1]) - 1 : 0;
-                             if (MONTHS.indexOf(activeTab) < startMonthIndex) return null;
+                             if (MONTHS.indexOf(activeTab) < startMonthIndex) return null; // Filtro Desktop
 
                              const isPaid = rec.paid_months?.includes(activeTab);
                              return (
