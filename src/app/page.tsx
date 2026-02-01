@@ -11,18 +11,18 @@ const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', '
 
 // --- CARD COMPONENT ---
 const Card = ({ title, value, icon: Icon, type, extraLabel, subValueLabel }: any) => (
-  <div className={`backdrop-blur-md border p-6 rounded-2xl transition duration-300 group relative overflow-hidden h-full ${type === 'negative' ? 'bg-red-900/10 border-red-800' : 'bg-gray-900/60 border-gray-800 hover:border-purple-500/30'}`}>
+  <div className={`backdrop-blur-md border p-5 md:p-6 rounded-2xl transition duration-300 group relative overflow-hidden h-full shadow-lg ${type === 'negative' ? 'bg-red-900/10 border-red-800' : 'bg-gray-900/60 border-gray-800 hover:border-purple-500/30'}`}>
     <div className="flex justify-between items-start z-10 relative">
       <div>
-        <p className="text-gray-400 text-sm font-medium mb-1 group-hover:text-purple-400 transition">{title}</p>
-        <h3 className={`text-3xl font-bold tracking-tight ${type === 'negative' ? 'text-red-500' : 'text-white'}`}>
+        <p className="text-gray-400 text-xs md:text-sm font-medium mb-1 group-hover:text-purple-400 transition uppercase tracking-wide">{title}</p>
+        <h3 className={`text-2xl md:text-3xl font-bold tracking-tight ${type === 'negative' ? 'text-red-500' : 'text-white'}`}>
             R$ {value}
         </h3>
-        {extraLabel && <p className="text-xs text-green-400 mt-2 font-mono bg-green-900/30 inline-block px-2 py-1 rounded">{extraLabel}</p>}
+        {extraLabel && <p className="text-[10px] md:text-xs text-green-400 mt-2 font-mono bg-green-900/30 inline-block px-2 py-1 rounded">{extraLabel}</p>}
         {subValueLabel && <div className="mt-2 text-xs border-t border-gray-700 pt-2">{subValueLabel}</div>}
       </div>
-      <div className={`p-3 rounded-xl ${type === 'expense' || type === 'negative' ? 'bg-red-500/10 text-red-400' : 'bg-green-500/10 text-green-400'}`}>
-        <Icon size={24} />
+      <div className={`p-2 md:p-3 rounded-xl ${type === 'expense' || type === 'negative' ? 'bg-red-500/10 text-red-400' : 'bg-green-500/10 text-green-400'}`}>
+        <Icon size={20} className="md:w-6 md:h-6" />
       </div>
     </div>
   </div>
@@ -77,9 +77,7 @@ export default function FinancialDashboard() {
   }, []);
 
   useEffect(() => {
-      if (transactions.length > 0 || installments.length > 0) {
-          checkForPastDueItems();
-      }
+      if (transactions.length > 0 || installments.length > 0) checkForPastDueItems();
   }, [transactions, installments, recurring]);
 
   const loadData = async (currentUser: any) => {
@@ -101,9 +99,7 @@ export default function FinancialDashboard() {
   };
 
   const saveDataLocal = (newTrans: any[], newInst: any[], newRecur: any[]) => {
-      setTransactions(newTrans);
-      setInstallments(newInst);
-      setRecurring(newRecur);
+      setTransactions(newTrans); setInstallments(newInst); setRecurring(newRecur);
       localStorage.setItem('guest_transactions', JSON.stringify(newTrans));
       localStorage.setItem('guest_installments', JSON.stringify(newInst));
       localStorage.setItem('guest_recurring', JSON.stringify(newRecur));
@@ -130,6 +126,7 @@ export default function FinancialDashboard() {
       if (overdueItems.length > 0) { setPastDueItems(overdueItems); setTimeout(() => setIsRolloverModalOpen(true), 1000); }
   };
 
+  // --- ACTIONS ---
   const handleLoginPassword = async () => { setLoadingAuth(true); const { error } = await supabase.auth.signInWithPassword({ email, password }); if (error) setAuthMessage("Erro: " + error.message); else { setAuthMessage("Login realizado!"); setIsAuthModalOpen(false); window.location.reload(); } setLoadingAuth(false); };
   const handleSignUp = async () => { setLoadingAuth(true); const { error } = await supabase.auth.signUp({ email, password }); if (error) setAuthMessage("Erro: " + error.message); else setAuthMessage("Conta criada! Confirme no e-mail."); setLoadingAuth(false); };
   const handleLoginMagicLink = async () => { setLoadingAuth(true); const { error } = await supabase.auth.signInWithOtp({ email }); if (error) setAuthMessage("Erro: " + error.message); else setAuthMessage("Link enviado!"); setLoadingAuth(false); };
@@ -159,6 +156,7 @@ export default function FinancialDashboard() {
                 : { table: 'transactions', data: { ...commonData, title: formData.title, amount: amountVal, type: 'income', date: dateString, category: 'Receita', target_month: formData.targetMonth, status: 'active' } };
         }
         if (formMode === 'expense') return { table: 'transactions', data: { ...commonData, title: formData.title, amount: amountVal, type: 'expense', date: dateString, category: formData.category, target_month: formData.targetMonth, status: 'active' } };
+        
         if (formMode === 'installment') {
             const qtd = parseInt(formData.installments.toString()) || 1;
             const realValuePerMonth = fixedInstallmentVal ? fixedInstallmentVal : (amountVal / qtd);
@@ -166,7 +164,6 @@ export default function FinancialDashboard() {
             const startOffset = 1 - targetMonthIndex;
             return { table: 'installments', data: { ...commonData, title: formData.title, total_value: amountVal, installments_count: qtd, current_installment: startOffset, value_per_month: realValuePerMonth, fixed_monthly_value: fixedInstallmentVal, due_day: parseInt(formData.dueDay.toString()) || 10, status: 'active' } };
         }
-        // AQUI: Salva start_date para fixos
         return { table: 'recurring', data: { ...commonData, title: formData.title, value: amountVal, due_day: parseInt(formData.dueDay.toString()) || 10, category: 'Fixa', type: 'expense', status: 'active', start_date: dateString } };
     };
 
@@ -220,108 +217,45 @@ export default function FinancialDashboard() {
   if (currentIndex > 0) { const prevData = getMonthData(MONTHS[currentIndex - 1]); if (prevData.balance > 0) previousSurplus = prevData.balance; }
   const displayBalance = currentMonthData.balance + previousSurplus;
 
-// --- IA AGENTE (CONSULTORA + EXECUTORA) ---
   const askGemini = async () => {
     if (!aiPrompt) return;
     if (!API_KEY) { setAiResponse("⚠️ Configure a API Key"); return; }
-    
-    setIsLoading(true); 
-    setAiResponse('');
-    
+    setIsLoading(true); setAiResponse('');
     try {
         const genAI = new GoogleGenerativeAI(API_KEY);
-        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest"});
-
-        // 1. DADOS ATUAIS PARA CONTEXTO
-        const contextData = {
-            mes_atual: activeTab,
-            renda: currentMonthData.income,
-            gastos: currentMonthData.expenseTotal,
-            atrasado: currentMonthData.accumulatedDebt,
-            saldo: currentMonthData.balance
-        };
-
-        // 2. O SEGREDO: INSTRUÇÃO DE SISTEMA (SYSTEM PROMPT)
-        // Ensinamos a IA a falar "JSON" quando precisar agir.
+        const model = genAI.getGenerativeModel({ model: "gemini-pro"});
+        const contextData = { mes_atual: activeTab, renda: currentMonthData.income, gastos: currentMonthData.expenseTotal, atrasado: currentMonthData.accumulatedDebt, saldo: currentMonthData.balance };
         const systemInstruction = `
             Você é o Fluxo AI, um assistente financeiro pessoal.
-            Dados atuais do usuário: ${JSON.stringify(contextData)}.
-            
-            REGRAS CRITICAS:
-            1. Se o usuário quiser ADICIONAR um gasto, entrada ou conta, VOCÊ DEVE RETORNAR APENAS UM JSON (sem texto antes ou depois) no seguinte formato:
-               { 
-                 "action": "add",
-                 "table": "transactions" (para gastos/entradas únicos) ou "recurring" (para fixos) ou "installments" (para parcelados),
-                 "data": {
-                    "title": "Nome do item",
-                    "amount": 0.00 (numero),
-                    "type": "expense" ou "income",
-                    "date": "DD/MM/AAAA" (use o mês ${activeTab} de 2026 como base),
-                    "category": "Categoria sugerida",
-                    "status": "active"
-                 }
-               }
-            
-            2. Se for parcelado, adicione campos extras no "data": "installments_count", "current_installment": 1, "total_value".
-            
-            3. Se o usuário pedir um RELATÓRIO ou CONSELHO, responda em texto normal, curto e direto (máx 3 frases), usando formatação Markdown.
-            
-            Pergunta do usuário: "${aiPrompt}"
+            Dados atuais: ${JSON.stringify(contextData)}.
+            REGRAS:
+            1. Se o usuário pedir para ADICIONAR algo, retorne APENAS um JSON: { "action": "add", "table": "transactions" | "recurring" | "installments", "data": { "title": "...", "amount": 0.00, "type": "expense" | "income", "date": "DD/MM/AAAA" (use mês ${activeTab} 2026), "category": "...", "status": "active" } }
+            2. Se parcelado: adicione "installments_count", "current_installment": 1, "total_value".
+            3. Caso contrário, responda texto normal curto (Markdown).
+            Pergunta: "${aiPrompt}"
         `;
-
         const result = await model.generateContent(systemInstruction);
         const text = await result.response.text();
-
-        // 3. TENTAR LER SE É UMA AÇÃO (JSON) OU CONVERSA (TEXTO)
         try {
-            // Limpa o texto caso a IA coloque crases ```json ... ```
             const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-            
             if (cleanText.startsWith('{')) {
                 const command = JSON.parse(cleanText);
-                
                 if (command.action === 'add') {
-                    // --- MODO EXECUTOR: SALVA NO BANCO ---
                     const payload = { ...command.data, user_id: user?.id };
-                    
-                    // Pequeno ajuste para garantir que transações tenham target_month se a IA esquecer
-                    if (command.table === 'transactions' && !payload.target_month) {
-                        payload.target_month = activeTab;
-                    }
-
-                    if (user) {
-                        await supabase.from(command.table).insert([payload]);
-                        loadData(user); // Recarrega a tela
-                        setAiResponse(`✅ Feito! Adicionei "${payload.title}" de R$ ${payload.amount} para você.`);
-                    } else {
-                        // Modo Local (Visitante) - Simulação rápida
+                    if (command.table === 'transactions' && !payload.target_month) payload.target_month = activeTab;
+                    if (user) { await supabase.from(command.table).insert([payload]); loadData(user); setAiResponse(`✅ Feito! Adicionei "${payload.title}" de R$ ${payload.amount}.`); } 
+                    else {
                         const newItem = { ...payload, id: Date.now(), is_paid: false };
-                        if (command.table === 'transactions') saveDataLocal([newItem, ...transactions], installments, recurring);
-                        else if (command.table === 'recurring') saveDataLocal(transactions, installments, [newItem, ...recurring]);
-                        else saveDataLocal(transactions, [newItem, ...installments], recurring);
-                        
-                        // Atualiza estados visuais
-                        if (command.table === 'transactions') setTransactions(prev => [newItem, ...prev]);
-                        else if (command.table === 'recurring') setRecurring(prev => [newItem, ...prev]);
-                        else setInstallments(prev => [newItem, ...prev]);
-
-                        setAiResponse(`✅ Adicionado "${payload.title}" (Modo Local).`);
+                        if (command.table === 'transactions') { saveDataLocal([newItem, ...transactions], installments, recurring); setTransactions(prev => [newItem, ...prev]); }
+                        else if (command.table === 'recurring') { saveDataLocal(transactions, installments, [newItem, ...recurring]); setRecurring(prev => [newItem, ...prev]); }
+                        else { saveDataLocal(transactions, [newItem, ...installments], recurring); setInstallments(prev => [newItem, ...prev]); }
+                        setAiResponse(`✅ Adicionado "${payload.title}" (Local).`);
                     }
                 }
-            } else {
-                // --- MODO CONSULTOR: APENAS TEXTO ---
-                setAiResponse(text);
-            }
-        } catch (jsonError) {
-            // Se falhar o JSON, mostra como texto mesmo
-            setAiResponse(text);
-        }
-
-    } catch (e) { 
-        setAiResponse("Erro na conexão com a IA. Tente novamente."); 
-        console.error(e);
-    } 
-    finally { setIsLoading(false); setAiPrompt(''); } // Limpa o campo
+            } else { setAiResponse(text); }
+        } catch (jsonError) { setAiResponse(text); }
+    } catch (e) { setAiResponse("Erro na IA."); console.error(e); } 
+    finally { setIsLoading(false); setAiPrompt(''); } 
   };
 
   const renderTransactions = () => {
@@ -329,11 +263,10 @@ export default function FinancialDashboard() {
      const filter = monthMap[activeTab];
      const normalItems = transactions.filter(t => t.date?.includes(filter) && t.status !== 'delayed');
      
-     // CORREÇÃO: Filtrar fixos pelo start_date
      const fixedItems = recurring.map(r => {
          const startMonthIndex = r.start_date ? parseInt(r.start_date.split('/')[1]) - 1 : 0;
          const currentMonthIndex = MONTHS.indexOf(activeTab);
-         if (currentMonthIndex < startMonthIndex) return null; // Filtro que faltava!
+         if (currentMonthIndex < startMonthIndex) return null;
          return { ...r, isFixed: true, isSkipped: r.skipped_months?.includes(activeTab), date: 'Fixo Mensal', amount: r.value };
      }).filter(Boolean);
 
@@ -364,23 +297,23 @@ export default function FinancialDashboard() {
      });
   };
 
-  const renderDelayed = () => {
-      const delayedItems = [...transactions.filter(t => t.status === 'delayed'), ...installments.filter(i => i.status === 'delayed'), ...recurring.filter(r => r.status === 'delayed')];
-      if (delayedItems.length === 0) return null;
-      return (<div className="mt-8 border border-red-900/50 bg-red-950/10 rounded-2xl p-6"><h3 className="text-red-400 font-bold flex items-center gap-2 mb-4"><AlertTriangle size={18}/> Contas em Stand-by</h3><div className="space-y-2">{delayedItems.map((item: any) => (<div key={`del-${item.id}`} className="flex justify-between items-center p-3 bg-red-900/20 rounded-lg border border-red-900/30"><span className="text-red-200 text-sm">{item.title}</span><div className="flex items-center gap-3"><span className="font-mono text-red-400 font-bold">R$ {item.amount || item.value || item.value_per_month}</span><button onClick={() => toggleDelay(item.date ? 'transactions' : item.installments_count ? 'installments' : 'recurring', item)} className="text-xs bg-red-500 text-white px-2 py-1 rounded hover:bg-red-400">Restaurar</button></div></div>))}</div><p className="text-xs text-red-500/60 mt-3 text-center">Valores ignorados no saldo atual.</p></div>)
-  };
+  const renderDelayed = () => { /* Mesma lógica anterior */ const delayedItems = [...transactions.filter(t => t.status === 'delayed'), ...installments.filter(i => i.status === 'delayed'), ...recurring.filter(r => r.status === 'delayed')]; if (delayedItems.length === 0) return null; return (<div className="mt-8 border border-red-900/50 bg-red-950/10 rounded-2xl p-6"><h3 className="text-red-400 font-bold flex items-center gap-2 mb-4"><AlertTriangle size={18}/> Contas em Stand-by</h3><div className="space-y-2">{delayedItems.map((item: any) => (<div key={`del-${item.id}`} className="flex justify-between items-center p-3 bg-red-900/20 rounded-lg border border-red-900/30"><span className="text-red-200 text-sm">{item.title}</span><div className="flex items-center gap-3"><span className="font-mono text-red-400 font-bold">R$ {item.amount || item.value || item.value_per_month}</span><button onClick={() => toggleDelay(item.date ? 'transactions' : item.installments_count ? 'installments' : 'recurring', item)} className="text-xs bg-red-500 text-white px-2 py-1 rounded hover:bg-red-400">Restaurar</button></div></div>))}</div><p className="text-xs text-red-500/60 mt-3 text-center">Valores ignorados no saldo atual.</p></div>) };
 
   const hasDelayed = currentMonthData.delayedTotal > 0;
   const gridClass = hasDelayed ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-4" : "grid-cols-1 md:grid-cols-3";
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-gray-100 p-4 md:p-8 font-sans selection:bg-purple-500 selection:text-white relative">
-      <header className="flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
-        <div><h1 className="text-4xl font-extrabold bg-gradient-to-r from-purple-400 via-pink-500 to-red-500 bg-clip-text text-transparent">Fluxo AI.</h1><div className="flex items-center gap-2 mt-1"><div className={`w-2 h-2 rounded-full ${user ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'}`}></div><p className="text-gray-500 text-sm">{user ? 'Online' : 'Local'}</p></div></div>
-        <div className="flex gap-3">
-            {user ? (<button onClick={handleLogout} className="bg-gray-800 text-white px-5 py-3 rounded-full hover:bg-gray-700 flex items-center gap-2"><LogOut size={18}/> Sair</button>) : (<button onClick={() => setIsAuthModalOpen(true)} className="bg-purple-600 text-white px-5 py-3 rounded-full hover:bg-purple-700 flex items-center gap-2 shadow-[0_0_20px_rgba(120,50,255,0.3)]"><LogIn size={18}/> Entrar</button>)}
-            <button onClick={() => setIsAIOpen(true)} className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-5 py-3 rounded-full font-bold hover:scale-105 transition border border-purple-400/30 flex items-center gap-2"><Sparkles size={18} className="text-yellow-300"/> Consultor</button>
-            <button onClick={openNewTransactionModal} className="bg-white text-black px-6 py-3 rounded-full font-bold hover:bg-gray-200 transition flex items-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.2)]"><Plus size={18}/> Novo</button>
+      {/* HEADER RESPONSIVO */}
+      <header className="flex flex-col gap-6 md:flex-row md:justify-between md:items-center mb-8">
+        <div className="text-center md:text-left">
+          <h1 className="text-4xl font-extrabold bg-gradient-to-r from-purple-400 via-pink-500 to-red-500 bg-clip-text text-transparent">Fluxo AI.</h1>
+          <div className="flex items-center gap-2 mt-1 justify-center md:justify-start"><div className={`w-2 h-2 rounded-full ${user ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'}`}></div><p className="text-gray-500 text-sm">{user ? 'Online' : 'Local'}</p></div>
+        </div>
+        <div className="flex flex-wrap justify-center md:justify-end gap-3 w-full md:w-auto">
+            {user ? (<button onClick={handleLogout} className="flex-1 md:flex-none bg-gray-800 text-white px-5 py-3 rounded-full hover:bg-gray-700 flex items-center justify-center gap-2"><LogOut size={18}/> Sair</button>) : (<button onClick={() => setIsAuthModalOpen(true)} className="flex-1 md:flex-none bg-purple-600 text-white px-5 py-3 rounded-full hover:bg-purple-700 flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(120,50,255,0.3)]"><LogIn size={18}/> Entrar</button>)}
+            <button onClick={() => setIsAIOpen(true)} className="flex-1 md:flex-none bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-5 py-3 rounded-full font-bold hover:scale-105 transition border border-purple-400/30 flex items-center justify-center gap-2"><Sparkles size={18} className="text-yellow-300"/> Consultor</button>
+            <button onClick={openNewTransactionModal} className="flex-1 md:flex-none bg-white text-black px-6 py-3 rounded-full font-bold hover:bg-gray-200 transition flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.2)]"><Plus size={18}/> Novo</button>
         </div>
       </header>
 
@@ -393,9 +326,38 @@ export default function FinancialDashboard() {
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         <div className="xl:col-span-1 space-y-6"><h2 className="text-xl font-bold flex items-center gap-2 text-gray-200"><List size={20} className="text-purple-500"/> Gastos do Mês</h2><div className="space-y-3">{renderTransactions()}</div>{renderDelayed()}</div>
+        
+        {/* LISTA RESPONSIVA */}
         <div className="xl:col-span-2 bg-gray-900/30 border border-gray-800 rounded-3xl p-6 md:p-8">
-            <div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold flex items-center gap-2"><LayoutGrid size={20} className="text-purple-500"/> Financiamentos & Contas</h2><div className="flex bg-black p-1 rounded-xl border border-gray-800 overflow-x-auto max-w-[200px] md:max-w-none">{MONTHS.map((month) => (<button key={month} onClick={() => setActiveTab(month)} className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeTab === month ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>{month}</button>))}</div></div>
-            <div className="overflow-x-auto">
+            <div className="flex justify-between items-center mb-6"><h2 className="text-xl font-bold flex items-center gap-2"><LayoutGrid size={20} className="text-purple-500"/> Financiamentos & Contas</h2><div className="flex bg-black p-1 rounded-xl border border-gray-800 overflow-x-auto w-full md:w-auto scrollbar-hide">{MONTHS.map((month) => (<button key={month} onClick={() => setActiveTab(month)} className={`px-6 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${activeTab === month ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>{month}</button>))}</div></div>
+            
+            {/* MOBILE VIEW */}
+            <div className="block md:hidden space-y-3">
+                {[...installments, ...recurring.filter(r => r.type === 'expense')].map(item => {
+                    const isInstallment = item.installments_count !== undefined;
+                    const currentInst = isInstallment ? item.current_installment + MONTHS.indexOf(activeTab) : null;
+                    if (isInstallment && (currentInst < 1 || currentInst > item.installments_count)) return null;
+                    if (!isInstallment && (item.status === 'delayed' || item.skipped_months?.includes(activeTab))) return null;
+                    if (!isInstallment) {
+                        const startMonthIndex = item.start_date ? parseInt(item.start_date.split('/')[1]) - 1 : 0;
+                        if (MONTHS.indexOf(activeTab) < startMonthIndex) return null;
+                    }
+                    const isPaid = item.paid_months?.includes(activeTab);
+                    return (
+                        <div key={item.id} className={`p-4 rounded-xl border ${isPaid ? 'bg-green-900/10 border-green-900/30' : 'bg-gray-800 border-gray-700'}`}>
+                            <div className="flex justify-between mb-2"><span className="font-bold text-white">{item.title}</span><span className="font-mono text-gray-300">R$ {(item.value || item.value_per_month).toFixed(2)}</span></div>
+                            <div className="flex justify-between items-center text-xs text-gray-500 mb-3"><span>{isInstallment ? `Parcela ${currentInst}/${item.installments_count}` : 'Mensal'}</span><span className={`px-2 py-0.5 rounded ${isInstallment ? 'bg-pink-500/20 text-pink-400' : 'bg-blue-500/20 text-blue-400'}`}>{isInstallment ? 'Cartão' : 'Fixo'}</span></div>
+                            <div className="flex justify-between items-center border-t border-gray-700 pt-3">
+                                <button onClick={() => togglePaidMonth(isInstallment ? 'installments' : 'recurring', item)} className={`flex items-center gap-2 text-sm ${isPaid ? 'text-green-400' : 'text-gray-400'}`}>{isPaid ? <CheckSquare size={18}/> : <Square size={18}/>} {isPaid ? 'Pago' : 'Pagar'}</button>
+                                <div className="flex gap-3"><button onClick={() => handleEdit(item, isInstallment ? 'installment' : 'fixed_expense')} className="text-blue-400"><Pencil size={16}/></button><button onClick={() => handleDelete(isInstallment ? 'installments' : 'recurring', item.id)} className="text-red-400"><Trash2 size={16}/></button></div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+
+            {/* DESKTOP VIEW */}
+            <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                     <thead><tr className="text-gray-500 text-xs uppercase tracking-wider border-b border-gray-800"><th className="pb-3 pl-2 font-medium">Descrição</th><th className="pb-3 font-medium">Tipo</th><th className="pb-3 font-medium">Situação</th><th className="pb-3 pr-2 text-right font-medium">Valor Real</th><th className="pb-3 w-24 text-right">Pago?</th><th className="pb-3 w-16"></th></tr></thead>
                     <tbody className="text-sm">
@@ -417,11 +379,8 @@ export default function FinancialDashboard() {
                         })}
                         {recurring.filter(r => r.type === 'expense').map((rec) => {
                              if (rec.status === 'delayed' || rec.skipped_months?.includes(activeTab)) return null;
-                             // CORREÇÃO: Filtro de Start Date na Tabela também
                              const startMonthIndex = rec.start_date ? parseInt(rec.start_date.split('/')[1]) - 1 : 0;
-                             const currentMonthIndex = MONTHS.indexOf(activeTab);
-                             if (currentMonthIndex < startMonthIndex) return null; // Filtro que faltava aqui também!
-
+                             if (MONTHS.indexOf(activeTab) < startMonthIndex) return null; // Filtro Desktop
                              const isPaid = rec.paid_months?.includes(activeTab);
                              return (
                                 <tr key={`rec-${rec.id}`} className={`border-b border-gray-800/50 group transition ${isPaid ? 'bg-green-900/10' : 'hover:bg-gray-800/20'}`}>
@@ -440,8 +399,7 @@ export default function FinancialDashboard() {
         </div>
       </div>
 
-      {/* FORM MODAL, AUTH, IA... (Mantidos) */}
-      {isFormOpen && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"><div className="bg-[#111] border border-gray-700 p-8 rounded-3xl w-full max-w-md shadow-2xl relative max-h-[90vh] overflow-y-auto"><button onClick={() => setIsFormOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white"><X size={24} /></button><h2 className="text-2xl font-bold mb-6 text-white">{editingId ? 'Editar' : 'Novo Lançamento'}</h2>
+      {isFormOpen && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"><div className="bg-[#111] border border-gray-700 p-8 rounded-3xl w-full md:w-full max-w-md shadow-2xl relative max-h-[90vh] overflow-y-auto"><button onClick={() => setIsFormOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white"><X size={24} /></button><h2 className="text-2xl font-bold mb-6 text-white">{editingId ? 'Editar' : 'Novo Lançamento'}</h2>
             <div className="bg-gray-900 p-4 rounded-xl border border-gray-800 mb-6 flex items-center justify-between"><label className="text-gray-400 text-sm">Mês de Referência:</label><select value={formData.targetMonth} onChange={(e) => setFormData({...formData, targetMonth: e.target.value})} className="bg-black text-white p-2 rounded-lg border border-gray-700 outline-none">{MONTHS.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
             <div className="grid grid-cols-2 gap-2 mb-6"><button onClick={() => setFormMode('income')} className={`py-3 rounded-xl border text-sm font-bold transition flex flex-col items-center justify-center gap-1 ${formMode === 'income' ? 'bg-green-500/20 border-green-500 text-green-500' : 'bg-gray-900 border-gray-800 text-gray-500'}`}><DollarSign size={20}/> Entrada</button><button onClick={() => setFormMode('expense')} className={`py-3 rounded-xl border text-sm font-bold transition flex flex-col items-center justify-center gap-1 ${formMode === 'expense' ? 'bg-red-500/20 border-red-500 text-red-500' : 'bg-gray-900 border-gray-800 text-gray-500'}`}><TrendingDown size={20}/> Gasto</button><button onClick={() => setFormMode('installment')} className={`py-3 rounded-xl border text-sm font-bold transition flex flex-col items-center justify-center gap-1 ${formMode === 'installment' ? 'bg-pink-500/20 border-pink-500 text-pink-500' : 'bg-gray-900 border-gray-800 text-gray-500'}`}><CreditCard size={20}/> Parcelado</button><button onClick={() => setFormMode('fixed_expense')} className={`py-3 rounded-xl border text-sm font-bold transition flex flex-col items-center justify-center gap-1 ${formMode === 'fixed_expense' ? 'bg-blue-500/20 border-blue-500 text-blue-500' : 'bg-gray-900 border-gray-800 text-gray-500'}`}><CheckCircle2 size={20}/> Fixo</button></div><div className="space-y-4">{formMode === 'income' && (<div className="flex items-center gap-3 bg-gray-900 p-3 rounded-lg"><input type="checkbox" id="fixo" checked={formData.isFixedIncome} onChange={(e) => setFormData({...formData, isFixedIncome: e.target.checked})} className="w-5 h-5 rounded accent-purple-500"/><label htmlFor="fixo" className="text-gray-300 text-sm cursor-pointer select-none">Fixo mensal?</label></div>)}{formMode === 'installment' && (<div className="bg-pink-900/10 p-4 rounded-xl border border-pink-900/30 space-y-3 mb-4"><p className="text-pink-400 text-xs font-bold uppercase mb-2">Financiamento / Valor Personalizado</p><label className="text-gray-400 text-xs block">Valor Real da Parcela (com Juros):</label><input type="number" value={formData.fixedMonthlyValue} onChange={(e) => setFormData({...formData, fixedMonthlyValue: e.target.value})} className="w-full bg-black border border-gray-700 rounded-lg p-2 text-white focus:border-pink-500 outline-none" placeholder="Ex: 850.00"/></div>)}<input type="text" value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white focus:border-purple-500 outline-none" placeholder="Descrição"/><input type="number" value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white focus:border-purple-500 outline-none" placeholder={formMode === 'installment' ? "Valor TOTAL da Dívida" : "Valor (R$)"}/>{formMode === 'installment' && (<div className="flex gap-4"><input type="number" placeholder="Parcelas" value={formData.installments} onChange={(e) => setFormData({...formData, installments: e.target.value})} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white outline-none"/><input type="number" placeholder="Dia Venc." value={formData.dueDay} onChange={(e) => setFormData({...formData, dueDay: e.target.value})} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white outline-none"/></div>)}<button onClick={handleSubmit} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-4 rounded-xl transition mt-4 shadow-lg shadow-purple-900/20">{editingId ? 'Salvar Alterações' : 'Adicionar'}</button></div></div></div>)}
       {isAuthModalOpen && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"><div className="bg-[#111] border border-gray-700 p-8 rounded-3xl w-full max-w-sm shadow-2xl relative text-center"><button onClick={() => setIsAuthModalOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white"><X size={24} /></button><h2 className="text-2xl font-bold mb-2 text-white">Acesse sua conta</h2><div className="space-y-4 text-left"><div><label className="text-xs text-gray-500 ml-1">E-mail</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seu@email.com" className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-purple-500 outline-none"/></div><div><label className="text-xs text-gray-500 ml-1">Senha</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="********" className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-purple-500 outline-none"/></div></div><div className="flex flex-col gap-3 mt-6"><button onClick={handleLoginPassword} disabled={loadingAuth} className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition">{loadingAuth ? 'Carregando...' : 'Entrar'}</button><button onClick={handleSignUp} disabled={loadingAuth} className="w-full bg-transparent border border-gray-600 hover:border-white text-gray-300 hover:text-white font-bold py-3 rounded-xl transition">Criar conta nova</button></div></div></div>)}
