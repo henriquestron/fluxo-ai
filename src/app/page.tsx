@@ -220,7 +220,109 @@ export default function FinancialDashboard() {
   if (currentIndex > 0) { const prevData = getMonthData(MONTHS[currentIndex - 1]); if (prevData.balance > 0) previousSurplus = prevData.balance; }
   const displayBalance = currentMonthData.balance + previousSurplus;
 
-  const askGemini = async () => { if (!aiPrompt) return; if (!API_KEY) { setAiResponse("⚠️ Configure a API Key"); return; } setIsLoading(true); setAiResponse(''); try { const genAI = new GoogleGenerativeAI(API_KEY); const model = genAI.getGenerativeModel({ model: "gemini-flash-latest"}); const context = `Usuário Vitor. Mês: ${activeTab}. Renda: ${currentMonthData.income}. Gastos: ${currentMonthData.expenseTotal}. Standby: ${currentMonthData.delayedTotal}. Pergunta: ${aiPrompt}`; const result = await model.generateContent(context); const response = await result.response; setAiResponse(response.text()); } catch (e) { setAiResponse("Erro na IA."); } finally { setIsLoading(false); } };
+// --- IA AGENTE (CONSULTORA + EXECUTORA) ---
+  const askGemini = async () => {
+    if (!aiPrompt) return;
+    if (!API_KEY) { setAiResponse("⚠️ Configure a API Key"); return; }
+    
+    setIsLoading(true); 
+    setAiResponse('');
+    
+    try {
+        const genAI = new GoogleGenerativeAI(API_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest"});
+
+        // 1. DADOS ATUAIS PARA CONTEXTO
+        const contextData = {
+            mes_atual: activeTab,
+            renda: currentMonthData.income,
+            gastos: currentMonthData.expenseTotal,
+            atrasado: currentMonthData.accumulatedDebt,
+            saldo: currentMonthData.balance
+        };
+
+        // 2. O SEGREDO: INSTRUÇÃO DE SISTEMA (SYSTEM PROMPT)
+        // Ensinamos a IA a falar "JSON" quando precisar agir.
+        const systemInstruction = `
+            Você é o Fluxo AI, um assistente financeiro pessoal.
+            Dados atuais do usuário: ${JSON.stringify(contextData)}.
+            
+            REGRAS CRITICAS:
+            1. Se o usuário quiser ADICIONAR um gasto, entrada ou conta, VOCÊ DEVE RETORNAR APENAS UM JSON (sem texto antes ou depois) no seguinte formato:
+               { 
+                 "action": "add",
+                 "table": "transactions" (para gastos/entradas únicos) ou "recurring" (para fixos) ou "installments" (para parcelados),
+                 "data": {
+                    "title": "Nome do item",
+                    "amount": 0.00 (numero),
+                    "type": "expense" ou "income",
+                    "date": "DD/MM/AAAA" (use o mês ${activeTab} de 2026 como base),
+                    "category": "Categoria sugerida",
+                    "status": "active"
+                 }
+               }
+            
+            2. Se for parcelado, adicione campos extras no "data": "installments_count", "current_installment": 1, "total_value".
+            
+            3. Se o usuário pedir um RELATÓRIO ou CONSELHO, responda em texto normal, curto e direto (máx 3 frases), usando formatação Markdown.
+            
+            Pergunta do usuário: "${aiPrompt}"
+        `;
+
+        const result = await model.generateContent(systemInstruction);
+        const text = await result.response.text();
+
+        // 3. TENTAR LER SE É UMA AÇÃO (JSON) OU CONVERSA (TEXTO)
+        try {
+            // Limpa o texto caso a IA coloque crases ```json ... ```
+            const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+            
+            if (cleanText.startsWith('{')) {
+                const command = JSON.parse(cleanText);
+                
+                if (command.action === 'add') {
+                    // --- MODO EXECUTOR: SALVA NO BANCO ---
+                    const payload = { ...command.data, user_id: user?.id };
+                    
+                    // Pequeno ajuste para garantir que transações tenham target_month se a IA esquecer
+                    if (command.table === 'transactions' && !payload.target_month) {
+                        payload.target_month = activeTab;
+                    }
+
+                    if (user) {
+                        await supabase.from(command.table).insert([payload]);
+                        loadData(user); // Recarrega a tela
+                        setAiResponse(`✅ Feito! Adicionei "${payload.title}" de R$ ${payload.amount} para você.`);
+                    } else {
+                        // Modo Local (Visitante) - Simulação rápida
+                        const newItem = { ...payload, id: Date.now(), is_paid: false };
+                        if (command.table === 'transactions') saveDataLocal([newItem, ...transactions], installments, recurring);
+                        else if (command.table === 'recurring') saveDataLocal(transactions, installments, [newItem, ...recurring]);
+                        else saveDataLocal(transactions, [newItem, ...installments], recurring);
+                        
+                        // Atualiza estados visuais
+                        if (command.table === 'transactions') setTransactions(prev => [newItem, ...prev]);
+                        else if (command.table === 'recurring') setRecurring(prev => [newItem, ...prev]);
+                        else setInstallments(prev => [newItem, ...prev]);
+
+                        setAiResponse(`✅ Adicionado "${payload.title}" (Modo Local).`);
+                    }
+                }
+            } else {
+                // --- MODO CONSULTOR: APENAS TEXTO ---
+                setAiResponse(text);
+            }
+        } catch (jsonError) {
+            // Se falhar o JSON, mostra como texto mesmo
+            setAiResponse(text);
+        }
+
+    } catch (e) { 
+        setAiResponse("Erro na conexão com a IA. Tente novamente."); 
+        console.error(e);
+    } 
+    finally { setIsLoading(false); setAiPrompt(''); } // Limpa o campo
+  };
 
   const renderTransactions = () => {
      const monthMap: Record<string, string> = { 'Jan': '/01', 'Fev': '/02', 'Mar': '/03', 'Abr': '/04', 'Mai': '/05', 'Jun': '/06', 'Jul': '/07', 'Ago': '/08', 'Set': '/09', 'Out': '/10', 'Nov': '/11', 'Dez': '/12' };
