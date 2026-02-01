@@ -223,7 +223,7 @@ export default function FinancialDashboard() {
     setIsLoading(true); setAiResponse('');
     try {
         const genAI = new GoogleGenerativeAI(API_KEY);
-        const model = genAI.getGenerativeModel({ model: "gemini-pro"});
+        const model = genAI.getGenerativeModel({ model: "geminiflash-latest"});
         const contextData = { mes_atual: activeTab, renda: currentMonthData.income, gastos: currentMonthData.expenseTotal, atrasado: currentMonthData.accumulatedDebt, saldo: currentMonthData.balance };
         const systemInstruction = `
             Você é o Fluxo AI, um assistente financeiro pessoal.
