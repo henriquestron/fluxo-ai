@@ -49,14 +49,13 @@ export default function FinancialDashboard() {
   const [formMode, setFormMode] = useState<'income' | 'expense' | 'installment' | 'fixed_expense'>('income');
   const [editingId, setEditingId] = useState<number | null>(null);
   
-  // Estado inicial do formulário
   const initialFormState = { 
       title: '', 
       amount: '', 
       installments: '', 
       dueDay: '', 
       category: 'Outros', 
-      targetMonth: 'Fev', // Será atualizado dinamicamente
+      targetMonth: 'Fev', 
       isFixedIncome: false, 
       fixedMonthlyValue: '' 
   };
@@ -206,14 +205,9 @@ export default function FinancialDashboard() {
       setIsFormOpen(true);
   };
 
-  // --- OPEN MODAL (CORREÇÃO DO BUG DO MÊS) ---
   const openNewTransactionModal = () => {
       setEditingId(null);
-      // Aqui forçamos o targetMonth a ser o activeTab atual, limpando o resto
-      setFormData({ 
-          ...initialFormState, 
-          targetMonth: activeTab 
-      });
+      setFormData({ ...initialFormState, targetMonth: activeTab });
       setIsFormOpen(true);
   };
 
@@ -234,10 +228,21 @@ export default function FinancialDashboard() {
                 : { table: 'transactions', data: { ...commonData, title: formData.title, amount: amountVal, type: 'income', date: dateString, category: 'Receita', target_month: formData.targetMonth, status: 'active' } };
         }
         if (formMode === 'expense') return { table: 'transactions', data: { ...commonData, title: formData.title, amount: amountVal, type: 'expense', date: dateString, category: formData.category, target_month: formData.targetMonth, status: 'active' } };
+        
         if (formMode === 'installment') {
             const qtd = parseInt(formData.installments.toString()) || 1;
             const realValuePerMonth = fixedInstallmentVal ? fixedInstallmentVal : (amountVal / qtd);
-            return { table: 'installments', data: { ...commonData, title: formData.title, total_value: amountVal, installments_count: qtd, current_installment: 1, value_per_month: realValuePerMonth, fixed_monthly_value: fixedInstallmentVal, due_day: parseInt(formData.dueDay.toString()) || 10 } };
+            
+            // CORREÇÃO DA LÓGICA DE START (OFFSET)
+            // Se eu estou em FEV (index 1), e quero que seja a parcela 1.
+            // A fórmula de exibição é: current_installment + monthIndex
+            // Então: X + 1 = 1  => X = 0.
+            // Fórmula: 1 - targetMonthIndex.
+            
+            const targetMonthIndex = MONTHS.indexOf(formData.targetMonth);
+            const startOffset = 1 - targetMonthIndex;
+
+            return { table: 'installments', data: { ...commonData, title: formData.title, total_value: amountVal, installments_count: qtd, current_installment: startOffset, value_per_month: realValuePerMonth, fixed_monthly_value: fixedInstallmentVal, due_day: parseInt(formData.dueDay.toString()) || 10 } };
         }
         return { table: 'recurring', data: { ...commonData, title: formData.title, value: amountVal, due_day: parseInt(formData.dueDay.toString()) || 10, category: 'Fixa', type: 'expense' } };
     };
@@ -262,7 +267,7 @@ export default function FinancialDashboard() {
         }
     }
 
-    setFormData({ ...initialFormState, targetMonth: activeTab }); // Reset após salvar
+    setFormData({ ...initialFormState, targetMonth: activeTab }); 
     setEditingId(null); setIsFormOpen(false);
   };
 
@@ -278,10 +283,15 @@ export default function FinancialDashboard() {
     const expenseVariable = transactions.filter(t => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed').reduce((acc, curr) => acc + curr.amount, 0);
     const expenseFixed = recurring.filter(r => r.type === 'expense' && !r.skipped_months?.includes(monthName)).reduce((acc, curr) => acc + curr.value, 0);
     
+    // CORREÇÃO DO CÁLCULO DE PARCELAS
     const installTotal = installments.reduce((acc, curr) => {
         const offset = monthIndex; 
         const actualInstallment = curr.current_installment + offset; 
-        if (actualInstallment <= curr.installments_count) return acc + curr.value_per_month;
+        
+        // Se a parcela for < 1 (antes da compra) ou > total (acabou), não soma
+        if (actualInstallment >= 1 && actualInstallment <= curr.installments_count) {
+            return acc + curr.value_per_month;
+        }
         return acc;
     }, 0);
 
@@ -373,7 +383,6 @@ export default function FinancialDashboard() {
   };
 
   // --- GRID INTELIGENTE ---
-  // Define quantas colunas o grid terá baseado se tem standby ou não
   const hasDelayed = currentMonthData.delayedTotal > 0;
   const gridClass = hasDelayed ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-4" : "grid-cols-1 md:grid-cols-3";
 
@@ -394,18 +403,15 @@ export default function FinancialDashboard() {
                 <button onClick={() => setIsAuthModalOpen(true)} className="bg-purple-600 text-white px-5 py-3 rounded-full hover:bg-purple-700 flex items-center gap-2 shadow-[0_0_20px_rgba(120,50,255,0.3)]"><LogIn size={18}/> Entrar</button>
             )}
             <button onClick={() => setIsAIOpen(true)} className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-5 py-3 rounded-full font-bold hover:scale-105 transition border border-purple-400/30 flex items-center gap-2"><Sparkles size={18} className="text-yellow-300"/> Consultor</button>
-            {/* CORREÇÃO DO BOTÃO NOVO: Usa openNewTransactionModal para limpar estado e setar mês correto */}
             <button onClick={openNewTransactionModal} className="bg-white text-black px-6 py-3 rounded-full font-bold hover:bg-gray-200 transition flex items-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.2)]"><Plus size={18}/> Novo</button>
         </div>
       </header>
 
-      {/* CARDS (AGORA COM LAYOUT DINÂMICO) */}
       <div className={`grid gap-6 mb-12 ${gridClass}`}>
         <Card title={`Saldo Disponível (${activeTab})`} value={displayBalance.toFixed(2)} icon={DollarSign} type={displayBalance >= 0 ? 'income' : 'negative'} extraLabel={previousSurplus > 0 ? `+ R$ ${previousSurplus.toFixed(2)} (Sobra)` : null} />
         <Card title="A Pagar (Mês)" value={currentMonthData.expenseTotal.toFixed(2)} icon={TrendingDown} type="expense" />
         <Card title="Entradas" value={currentMonthData.income.toFixed(2)} icon={CreditCard} type="income" />
         
-        {/* Card extra que só aparece se tiver Standby, sem remover os outros */}
         {hasDelayed && (
              <div className="bg-red-900/20 backdrop-blur-md border border-red-500/50 p-6 rounded-2xl flex flex-col justify-between relative h-full">
                  <div>
@@ -435,7 +441,8 @@ export default function FinancialDashboard() {
                     <tbody className="text-sm">
                         {installments.map((inst) => {
                             const currentInst = inst.current_installment + MONTHS.indexOf(activeTab);
-                            if (currentInst > inst.installments_count) return null;
+                            // CORREÇÃO NA VISUALIZAÇÃO: Se for menor que 1, não mostra (ainda não comprou)
+                            if (currentInst < 1 || currentInst > inst.installments_count) return null;
                             return (
                                 <tr key={inst.id} className="border-b border-gray-800/50 hover:bg-gray-800/20 group transition">
                                     <td className="py-4 pl-2 font-medium text-white">{inst.title}</td>
@@ -447,12 +454,7 @@ export default function FinancialDashboard() {
                             );
                         })}
                         {recurring.filter(r => r.type === 'expense').map((rec) => {
-                             // Lógica: se estiver pulado, não aparece na tabela da direita? Ou aparece riscado?
-                             // O usuário pediu pra "tirar" o salário, mas aqui são despesas.
-                             // Vou manter o padrão: se pulado, não soma, e visualmente fica oculto ou riscado.
-                             // Na tabela, vou ocultar se estiver pulado para limpar a visão.
                              if (rec.skipped_months?.includes(activeTab)) return null;
-                             
                              return (
                                 <tr key={`rec-${rec.id}`} className="border-b border-gray-800/50 hover:bg-gray-800/20 group transition">
                                     <td className="py-4 pl-2 font-medium text-white">{rec.title}</td>
