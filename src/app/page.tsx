@@ -6,8 +6,8 @@ import { supabase } from '@/supabase';
 
 // --- CONFIGURAÇÃO DE PREÇOS (Coloque os IDs reais do Stripe aqui) ---
 const STRIPE_PRICES = {
-    PREMIUM: 'price_1QjXXXXXXX', // ID do plano de 29,90
-    AGENT: 'price_1QkYYYYYYY'    // ID do plano de Consultor
+    PREMIUM: 'price_1SwQtoBVKV78UpHa2QmMCB6v', // ID do plano de 29,90
+    AGENT: 'price_1SwQumBVKV78UpHaxUSMAGhW'    // ID do plano de Consultor
 };
 
 const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
