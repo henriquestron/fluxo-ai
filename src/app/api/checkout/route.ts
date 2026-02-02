@@ -3,38 +3,55 @@ import Stripe from 'stripe';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
+// SEUS IDS REAIS
+const PREMIUM_PRICE_ID = 'price_1SwQtoBVKV78UpHa2QmMCB6v';
+const AGENT_PRICE_ID = 'price_1SwQumBVKV78UpHaxUSMAGhW';
+
 export async function POST(req: Request) {
   try {
-    // Agora recebemos também o priceId do frontend
     const { userId, email, priceId } = await req.json();
 
     if (!userId || !email || !priceId) {
       return NextResponse.json({ error: 'Dados incompletos' }, { status: 400 });
     }
 
+    // --- LÓGICA INTELIGENTE DE MODO (CORRIGIDA) ---
+    // Padrão: 'payment' (Pagamento Único para o plano Premium)
+    let mode: 'payment' | 'subscription' = 'payment'; 
+
+    if (priceId === AGENT_PRICE_ID) {
+        // ✅ CORREÇÃO AQUI: Como seu plano no Stripe é recorrente,
+        // mudamos o modo para 'subscription'.
+        mode = 'subscription'; 
+    }
+
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card', 'boleto', 'pix'],
+      // Apenas Cartão (Pix não funciona bem para assinaturas recorrentes sem setup complexo)
+      payment_method_types: ['card'], 
+      
       line_items: [
         {
-          price: priceId, // Usa o ID que o frontend mandou (Premium ou Agente)
+          price: priceId,
           quantity: 1,
         },
       ],
-      mode: 'payment', // Ou 'subscription' se o plano Agente for mensal
+      // O modo agora obedece a lógica acima (payment ou subscription)
+      mode: mode, 
+      
       success_url: `${req.headers.get('origin')}/?success=true`,
       cancel_url: `${req.headers.get('origin')}/?canceled=true`,
       customer_email: email,
       client_reference_id: userId,
-      // Metadados para saber qual plano liberar no webhook depois
+      
       metadata: {
-          planType: priceId === 'price_AGENT_ID' ? 'agent' : 'premium' 
+          planType: priceId === AGENT_PRICE_ID ? 'agent' : 'premium' 
       }
     });
 
     return NextResponse.json({ url: session.url });
 
   } catch (err: any) {
-    console.error("Erro Checkout:", err);
+    console.error("🔥 ERRO FATAL STRIPE:", err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

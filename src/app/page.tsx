@@ -381,10 +381,10 @@ export default function FinancialDashboard() {
 
   return (
     <div className="min-h-screen bg-[#050505] text-gray-100 p-4 md:p-8 font-sans selection:bg-cyan-500 selection:text-black relative">
-      <header className="flex flex-col gap-6 md:flex-row md:justify-between md:items-center mb-10">
+     <header className="flex flex-col gap-6 md:flex-row md:justify-between md:items-center mb-10">
         <div className="text-center md:text-left"><h1 className="text-4xl font-extrabold text-white flex items-center justify-center md:justify-start gap-2 tracking-tighter"><ShieldCheck className="text-cyan-500" size={32} /> Meu<span className="text-cyan-500">Aliado.</span></h1>
         
-        {/* DROPDOWN DE CLIENTES - SÓ APARECE PARA AGENTES */}
+        {/* DROPDOWN DE CLIENTES - CORRIGIDO (Ponte Invisível) */}
         <div className="flex items-center gap-2 mt-2 justify-center md:justify-start">
              {user && userPlan === 'agent' && (
                  <div className="relative group">
@@ -396,17 +396,22 @@ export default function FinancialDashboard() {
                          )}
                          <ChevronDown size={12} className="text-gray-500"/>
                      </button>
-                     <div className="absolute top-full left-0 mt-2 w-56 bg-[#111] border border-gray-800 rounded-xl shadow-2xl overflow-hidden hidden group-hover:block z-50">
-                         <div className="p-2 space-y-1">
-                             <button onClick={() => switchView(null)} className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${!viewingAs ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-900'}`}><User size={14}/> Minha Conta Pessoal</button>
-                             <div className="h-px bg-gray-800 my-1"></div>
-                             <p className="text-[10px] text-gray-500 px-3 uppercase font-bold tracking-wider mb-1">Meus Clientes</p>
-                             {clients.map(client => (
-                                 <button key={client.id} onClick={() => switchView(client)} className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${viewingAs?.id === client.id ? 'bg-purple-900/20 text-purple-300' : 'text-gray-400 hover:bg-gray-900'}`}>
-                                     <div className={`w-1.5 h-1.5 rounded-full ${client.client_id ? 'bg-emerald-500' : 'bg-orange-500'}`}></div>{client.client_email}
-                                 </button>
-                             ))}
-                             <button onClick={() => setIsClientModalOpen(true)} className="w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 text-cyan-400 hover:bg-cyan-950/20 border border-dashed border-gray-800 mt-2"><UserPlus size={14}/> Adicionar Novo Cliente</button>
+                     
+                     {/* AQUI ESTÁ A CORREÇÃO: pt-2 cria uma área clicável invisível */}
+                     <div className="absolute top-full left-0 pt-2 w-64 hidden group-hover:block z-50">
+                         {/* O Menu visual fica dentro dessa área invisível */}
+                         <div className="bg-[#111] border border-gray-800 rounded-xl shadow-2xl overflow-hidden">
+                             <div className="p-2 space-y-1">
+                                 <button onClick={() => switchView(null)} className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${!viewingAs ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-900'}`}><User size={14}/> Minha Conta Pessoal</button>
+                                 <div className="h-px bg-gray-800 my-1"></div>
+                                 <p className="text-[10px] text-gray-500 px-3 uppercase font-bold tracking-wider mb-1">Meus Clientes</p>
+                                 {clients.map(client => (
+                                     <button key={client.id} onClick={() => switchView(client)} className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${viewingAs?.id === client.id ? 'bg-purple-900/20 text-purple-300' : 'text-gray-400 hover:bg-gray-900'}`}>
+                                         <div className={`w-1.5 h-1.5 rounded-full ${client.client_id ? 'bg-emerald-500' : 'bg-orange-500'}`}></div>{client.client_email}
+                                     </button>
+                                 ))}
+                                 <button onClick={() => setIsClientModalOpen(true)} className="w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 text-cyan-400 hover:bg-cyan-950/20 border border-dashed border-gray-800 mt-2"><UserPlus size={14}/> Adicionar Novo Cliente</button>
+                             </div>
                          </div>
                      </div>
                  </div>
@@ -418,16 +423,18 @@ export default function FinancialDashboard() {
             {user ? (
                 <div className="relative group">
                     <button className="flex-1 md:flex-none bg-gray-900 border border-gray-800 text-gray-400 px-5 py-3 rounded-xl hover:bg-gray-800 hover:text-white flex items-center justify-center gap-2 whitespace-nowrap transition"><User size={18}/> Menu</button>
-                    {/* MENU DE USUÁRIO */}
-                    <div className="absolute top-full right-0 mt-2 w-48 bg-[#111] border border-gray-800 rounded-xl shadow-2xl overflow-hidden hidden group-hover:block z-50">
-                        <div className="p-2 space-y-1">
-                            <button onClick={handleLogout} className="w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 text-red-400 hover:bg-red-950/20"><LogOut size={14}/> Sair da Conta</button>
-                            {/* BOTÃO PARA VIRAR AGENTE (SÓ APARECE SE NÃO FOR AGENTE) */}
-                            {userPlan !== 'agent' && (
-                                <button id="agent-btn" onClick={() => handleCheckout('AGENT')} className="w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 text-purple-400 hover:bg-purple-950/20 border-t border-gray-800 mt-1">
-                                    <Briefcase size={14}/> Sou Consultor Financeiro
-                                </button>
-                            )}
+                    
+                    {/* MENU DE USUÁRIO - CORRIGIDO (Ponte Invisível) */}
+                    <div className="absolute top-full right-0 pt-2 w-48 hidden group-hover:block z-50">
+                        <div className="bg-[#111] border border-gray-800 rounded-xl shadow-2xl overflow-hidden">
+                            <div className="p-2 space-y-1">
+                                <button onClick={handleLogout} className="w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 text-red-400 hover:bg-red-950/20"><LogOut size={14}/> Sair da Conta</button>
+                                {userPlan !== 'agent' && (
+                                    <button id="agent-btn" onClick={() => handleCheckout('AGENT')} className="w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 text-purple-400 hover:bg-purple-950/20 border-t border-gray-800 mt-1">
+                                        <Briefcase size={14}/> Sou Consultor Financeiro
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
