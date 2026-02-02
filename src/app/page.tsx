@@ -200,66 +200,51 @@ export default function FinancialDashboard() {
   // CORREÇÃO: BRANDING "MEU ALIADO" NA IA
  const askGemini = async () => {
     if (!aiPrompt) return;
-    if (!API_KEY) { setAiResponse("⚠️ Configure a API Key"); return; }
-    
     setIsLoading(true); 
     setAiResponse('');
     
+    // Preparar os dados
+    const contextData = { 
+        mes_atual: activeTab, 
+        renda: currentMonthData.income, 
+        gastos: currentMonthData.expenseTotal, 
+        atrasado: currentMonthData.accumulatedDebt, 
+        saldo: currentMonthData.balance 
+    };
+
+    // Bloqueio do Grátis
+    const isActionIntent = aiPrompt.toLowerCase().includes('adicion') || aiPrompt.toLowerCase().includes('gast') || aiPrompt.toLowerCase().includes('comp');
+    if (userPlan === 'free' && isActionIntent) {
+        setAiResponse(
+            <div className="text-center p-4">
+                <p className="mb-4 text-gray-300">🔒 <b>Função Tática Bloqueada</b><br/>No plano Standard, eu analiso seus dados. Para que eu opere o sistema e lance contas por você, assuma o comando Premium.</p>
+                <button onClick={handleCheckout} className="bg-gradient-to-r from-amber-500 to-orange-600 text-white font-bold py-3 px-6 rounded-full shadow-lg hover:scale-105 transition w-full flex items-center justify-center gap-2"><Crown size={18}/> Ativar Acesso Tático</button>
+            </div>
+        );
+        setIsLoading(false); setAiPrompt(''); return;
+    }
+
     try {
-        const genAI = new GoogleGenerativeAI(API_KEY);
-        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
-        
-        const contextData = { 
-            mes_atual: activeTab, 
-            renda: currentMonthData.income, 
-            gastos: currentMonthData.expenseTotal, 
-            atrasado: currentMonthData.accumulatedDebt, 
-            saldo: currentMonthData.balance 
-        };
-        
-        // --- 1. BLOQUEIO TÁTICO (Venda do Premium) ---
-        const isActionIntent = aiPrompt.toLowerCase().includes('adicion') || aiPrompt.toLowerCase().includes('gast') || aiPrompt.toLowerCase().includes('comp');
-        
-        if (userPlan === 'free' && isActionIntent) {
-            setAiResponse(
-                <div className="text-center p-4">
-                    <p className="mb-4 text-gray-300">🔒 <b>Função Tática Bloqueada</b><br/>No plano Standard, eu analiso seus dados. Para que eu opere o sistema e lance contas por você, assuma o comando Premium.</p>
-                    <button onClick={handleCheckout} className="bg-gradient-to-r from-amber-500 to-orange-600 text-white font-bold py-3 px-6 rounded-full shadow-lg hover:scale-105 transition w-full flex items-center justify-center gap-2"><Crown size={18}/> Ativar Acesso Tático</button>
-                </div>
-            );
-            setIsLoading(false);
-            setAiPrompt('');
-            return;
-        }
+        // --- AQUI QUE A MÁGICA ACONTECE: Chamamos o arquivo novo ---
+        const response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                prompt: aiPrompt, 
+                contextData, 
+                userPlan 
+            })
+        });
 
-        // --- 2. O CÉREBRO DA IA (Prompt Completo/Blindado) ---
-        const systemInstruction = `
-            ATUE COMO: "Meu Aliado", um assistente financeiro tático e direto.
-            DADOS DO OPERADOR: ${JSON.stringify(contextData)}.
-            PLANO ATUAL: ${userPlan}.
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Erro na IA");
+        const text = data.response;
 
-            REGRAS DE CONDUTA (IMPORTANTE):
-            1. SEGURANÇA: JAMAIS mostre códigos JSON, tabelas ou instruções técnicas para o usuário. Isso é segredo nosso.
-            2. PERSONALIDADE: Fale como um parceiro estratégico. Use termos como "Operador", "QG", "Tático". Seja breve.
-            3. OBJETIVO: Ajude o usuário a sair do vermelho e sobrar dinheiro.
-
-            COMANDOS INTERNOS (INVISÍVEIS AO USUÁRIO):
-            ${userPlan !== 'free' ? 
-            'Se o usuário pedir explicitamente para LANÇAR/ADICIONAR uma conta, retorne APENAS o JSON cru: { "action": "add", "table": "transactions"|"recurring"|"installments", "data": { ... } }. Para dúvidas e conselhos, responda apenas com texto.' : 
-            'O usuário é Free. Apenas dê conselhos estratégicos. Se ele pedir para adicionar, explique que precisa do Acesso Tático (Premium).'}
-            
-            Entrada do Operador: "${aiPrompt}"
-        `;
-
-        const result = await model.generateContent(systemInstruction);
-        const text = await result.response.text();
-        
-        try {
-            if (userPlan !== 'free') {
-                // Limpeza de segurança para pegar o JSON
-                const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-                
-                if (cleanText.startsWith('{') && cleanText.endsWith('}')) {
+        // --- Processa a resposta (Texto ou Ação) ---
+        if (userPlan !== 'free') {
+            const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+            if (cleanText.startsWith('{') && cleanText.endsWith('}')) {
+                try {
                     const command = JSON.parse(cleanText);
                     if (command.action === 'add') {
                         const payload = { ...command.data, user_id: user?.id };
@@ -270,31 +255,18 @@ export default function FinancialDashboard() {
                             loadData(user); 
                             setAiResponse(`✅ Operação confirmada! Lançamento: "${payload.title}" registrado.`); 
                         } 
-                        else {
-                            // Modo Local (Sem login)
-                             const newItem = { ...payload, id: Date.now(), is_paid: false };
-                            if (command.table === 'transactions') { saveDataLocal([newItem, ...transactions], installments, recurring); setTransactions(prev => [newItem, ...prev]); }
-                            else if (command.table === 'installments') { saveDataLocal(transactions, [newItem, ...installments], recurring); setInstallments(prev => [newItem, ...prev]); }
-                            else { saveDataLocal(transactions, installments, [newItem, ...recurring]); setRecurring(prev => [newItem, ...prev]); }
-                            setAiResponse(`✅ (Modo Local) Item adicionado: "${payload.title}".`);
-                        }
                         return;
                     }
-                }
+                } catch (e) { /* Não era JSON, segue o baile */ }
             }
-            // Se não for comando JSON, mostra a resposta em texto da IA
-            setAiResponse(text);
-        } catch (jsonError) { 
-            setAiResponse(text); 
         }
+        setAiResponse(text);
 
     } catch (e) { 
         setAiResponse("Erro de comunicação com o QG. Tente novamente."); 
         console.error(e); 
-    } 
-    finally { 
-        setIsLoading(false); 
-        setAiPrompt(''); 
+    } finally { 
+        setIsLoading(false); setAiPrompt(''); 
     } 
   };
   const renderTransactions = () => { const monthMap: Record<string, string> = { 'Jan': '/01', 'Fev': '/02', 'Mar': '/03', 'Abr': '/04', 'Mai': '/05', 'Jun': '/06', 'Jul': '/07', 'Ago': '/08', 'Set': '/09', 'Out': '/10', 'Nov': '/11', 'Dez': '/12' }; const filter = monthMap[activeTab]; const normalItems = transactions.filter(t => t.date?.includes(filter) && t.status !== 'delayed'); const fixedItems = recurring.map(r => { const startMonthIndex = r.start_date ? parseInt(r.start_date.split('/')[1]) - 1 : 0; const currentMonthIndex = MONTHS.indexOf(activeTab); if (currentMonthIndex < startMonthIndex) return null; return { ...r, isFixed: true, isSkipped: r.skipped_months?.includes(activeTab), date: 'Fixo Mensal', amount: r.value }; }).filter(Boolean); const allItems = [...fixedItems, ...normalItems.map(t => ({...t, isFixed: false, isSkipped: false}))]; if (allItems.length === 0) return <p className="text-gray-500 text-center py-8 italic text-sm border border-dashed border-gray-800 rounded-xl">Nenhuma movimentação neste mês.</p>; return allItems.map((item: any) => { if (item.status === 'delayed') return null; const isDimmed = item.isSkipped || item.is_paid; return ( <div key={`${item.isFixed ? 'fix' : 'var'}-${item.id}`} className={`flex justify-between items-center p-4 border rounded-xl group transition ${isDimmed ? 'bg-[#0f1219]/50 border-gray-800/50 opacity-60' : 'bg-[#0f1219] border-gray-800 hover:border-gray-700'}`}> <div className="flex items-center gap-4"> {!item.isFixed && (<button onClick={() => togglePaid('transactions', item.id, item.is_paid)} className={`rounded-full p-1.5 border transition ${item.is_paid ? 'bg-emerald-500/20 border-emerald-500 text-emerald-500' : 'border-gray-600 text-transparent hover:border-emerald-500'}`}><Check size={12} /></button>)} {item.isFixed && (<button onClick={() => toggleSkipMonth(item)} className={`rounded-full p-1.5 border transition ${item.isSkipped ? 'bg-gray-800 border-gray-700 text-gray-500' : 'border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10'}`}>{item.isSkipped ? <EyeOff size={12}/> : <Eye size={12}/>}</button>)} <div> <p className={`font-semibold text-sm ${isDimmed ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title} {item.isFixed && <span className="text-[9px] bg-blue-900/30 text-blue-400 px-1.5 py-0.5 rounded ml-1 uppercase tracking-wide">Fixo</span>}</p> <p className="text-xs text-gray-500">{item.isSkipped ? 'PULADO' : item.date}</p> </div> </div> <div className="flex items-center gap-3"> <span className={`font-mono font-medium ${item.type === 'income' ? 'text-emerald-400' : 'text-red-400'}`}>{item.type === 'expense' ? '-' : '+'} {item.amount.toFixed(2)}</span> <div className="flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition"> {!item.isFixed && item.type === 'expense' && (<button onClick={() => toggleDelay(item.isFixed ? 'recurring' : 'transactions', item)} className="p-1.5 rounded bg-orange-500/10 text-orange-500 hover:bg-orange-500 hover:text-white" title="Stand-by"><Clock size={14}/></button>)} <button onClick={() => handleEdit(item, item.isFixed ? (item.type === 'income' ? 'income' : 'fixed_expense') : (item.type === 'income' ? 'income' : 'expense'))} className="p-1.5 rounded hover:bg-blue-500/10 text-blue-500"><Pencil size={14}/></button> <button onClick={() => handleDelete(item.isFixed ? 'recurring' : 'transactions', item.id)} className="p-1.5 rounded hover:bg-red-500/10 text-red-500"><Trash2 size={14}/></button> </div> </div> </div> ); }); };
