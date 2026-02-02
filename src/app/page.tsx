@@ -1,13 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-// IMPORTANTE: Trouxe de volta o ShieldCheck (Escudo) para o Aliado
 import { CreditCard, TrendingDown, DollarSign, Plus, X, List, LayoutGrid, Sparkles, Send, Trash2, AlertCircle, CheckCircle2, Pencil, Clock, AlertTriangle, Check, LogIn, LogOut, User, Eye, EyeOff, CheckSquare, Square, ArrowRight, Crown, ShieldCheck, Mail, Loader2, Lock } from 'lucide-react';
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { supabase } from '@/supabase';
 
-// --- CONFIGURAÇÃO ---
-const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY || ""; 
 const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
 // --- CARD COMPONENT ---
@@ -150,9 +146,28 @@ export default function FinancialDashboard() {
           const { error } = await supabase.auth.signUp({ email, password });
           if (error) setAuthMessage("❌ " + error.message);
           else {
-              // SUCESSO NO CADASTRO: MOSTRA TELA DE E-MAIL
               setShowEmailCheck(true);
           }
+      }
+      setLoadingAuth(false);
+  };
+
+  const handleResetPassword = async () => {
+      if (!email) {
+          setAuthMessage("⚠️ Digite seu e-mail no campo acima.");
+          return;
+      }
+      setLoadingAuth(true);
+      setAuthMessage('');
+      
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}`,
+      });
+
+      if (error) {
+          setAuthMessage("❌ Erro: " + error.message);
+      } else {
+          setAuthMessage("✅ Link enviado! Verifique seu e-mail.");
       }
       setLoadingAuth(false);
   };
@@ -197,80 +212,139 @@ export default function FinancialDashboard() {
   const getMonthData = (monthName: string) => { const monthIndex = MONTHS.indexOf(monthName); const monthMap: Record<string, string> = { 'Jan': '/01', 'Fev': '/02', 'Mar': '/03', 'Abr': '/04', 'Mai': '/05', 'Jun': '/06', 'Jul': '/07', 'Ago': '/08', 'Set': '/09', 'Out': '/10', 'Nov': '/11', 'Dez': '/12' }; const dateFilter = monthMap[monthName]; const isRecurringActive = (rec: any, checkIndex: number) => { if (!rec.start_date) return true; const startMonthIndex = parseInt(rec.start_date.split('/')[1]) - 1; return checkIndex >= startMonthIndex; }; const incomeFixed = recurring.filter(r => r.type === 'income' && isRecurringActive(r, monthIndex) && !r.skipped_months?.includes(monthName)).reduce((acc, curr) => acc + curr.value, 0); const incomeVariable = transactions.filter(t => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed').reduce((acc, curr) => acc + curr.amount, 0); const expenseVariable = transactions.filter(t => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed').reduce((acc, curr) => acc + curr.amount, 0); const expenseFixed = recurring.filter(r => r.type === 'expense' && isRecurringActive(r, monthIndex) && !r.skipped_months?.includes(monthName) && r.status !== 'delayed').reduce((acc, curr) => acc + curr.value, 0); const installTotal = installments.reduce((acc, curr) => { if (curr.status === 'delayed') return acc; const offset = monthIndex; const actualInstallment = curr.current_installment + offset; if (actualInstallment >= 1 && actualInstallment <= curr.installments_count) return acc + curr.value_per_month; return acc; }, 0); const delayedTotal = transactions.filter(t => t.status === 'delayed').reduce((acc, curr) => acc + curr.amount, 0) + installments.filter(i => i.status === 'delayed').reduce((acc, curr) => acc + curr.value, 0) + recurring.filter(r => r.status === 'delayed' && r.type === 'expense').reduce((acc, curr) => acc + curr.value, 0); let accumulatedDebt = 0; for (let i = 0; i < monthIndex; i++) { const pastMonth = MONTHS[i]; installments.forEach(inst => { const pastInst = inst.current_installment + i; if (inst.status !== 'delayed' && pastInst >= 1 && pastInst <= inst.installments_count) { if (!inst.paid_months?.includes(pastMonth)) accumulatedDebt += inst.value_per_month; } }); recurring.filter(r => r.type === 'expense').forEach(rec => { if (rec.status !== 'delayed' && isRecurringActive(rec, i) && !rec.paid_months?.includes(pastMonth) && !rec.skipped_months?.includes(pastMonth)) { accumulatedDebt += rec.value; } }); const pastDateFilter = Object.values(monthMap)[i]; transactions.forEach(t => { if (t.type === 'expense' && t.status !== 'delayed' && t.date?.includes(pastDateFilter) && !t.is_paid) { accumulatedDebt += t.amount; } }) } const totalObligations = expenseVariable + expenseFixed + installTotal + accumulatedDebt; return { income: incomeFixed + incomeVariable, expenseTotal: totalObligations, accumulatedDebt, balance: (incomeFixed + incomeVariable) - totalObligations, delayedTotal }; };
   const currentMonthData = getMonthData(activeTab); let previousSurplus = 0; const currentIndex = MONTHS.indexOf(activeTab); if (currentIndex > 0) { const prevData = getMonthData(MONTHS[currentIndex - 1]); if (prevData.balance > 0) previousSurplus = prevData.balance; } const displayBalance = currentMonthData.balance + previousSurplus;
   
-  // CORREÇÃO: BRANDING "MEU ALIADO" NA IA
+  // --- IA INTELIGENTE (COM CORREÇÃO DE PARCELAS) ---
  const askGemini = async () => {
     if (!aiPrompt) return;
     setIsLoading(true); 
     setAiResponse('');
     
-    // Preparar os dados
     const contextData = { 
         mes_atual: activeTab, 
-        renda: currentMonthData.income, 
-        gastos: currentMonthData.expenseTotal, 
-        atrasado: currentMonthData.accumulatedDebt, 
-        saldo: currentMonthData.balance 
+        saldo: currentMonthData.balance,
+        gastos: currentMonthData.expenseTotal
     };
 
-    // Bloqueio do Grátis
+    // Bloqueio Free
     const isActionIntent = aiPrompt.toLowerCase().includes('adicion') || aiPrompt.toLowerCase().includes('gast') || aiPrompt.toLowerCase().includes('comp');
     if (userPlan === 'free' && isActionIntent) {
         setAiResponse(
             <div className="text-center p-4">
-                <p className="mb-4 text-gray-300">🔒 <b>Função Tática Bloqueada</b><br/>No plano Standard, eu analiso seus dados. Para que eu opere o sistema e lance contas por você, assuma o comando Premium.</p>
-                <button onClick={handleCheckout} className="bg-gradient-to-r from-amber-500 to-orange-600 text-white font-bold py-3 px-6 rounded-full shadow-lg hover:scale-105 transition w-full flex items-center justify-center gap-2"><Crown size={18}/> Ativar Acesso Tático</button>
+                <p className="mb-4 text-gray-300">🔒 <b>Automação Exclusiva</b><br/>Para lançar contas automaticamente, ative o plano Premium.</p>
+                <button onClick={handleCheckout} className="bg-gradient-to-r from-amber-500 to-orange-600 text-white font-bold py-3 px-6 rounded-full shadow-lg w-full flex items-center justify-center gap-2"><Crown size={18}/> Ativar Agora</button>
             </div>
         );
         setIsLoading(false); setAiPrompt(''); return;
     }
 
     try {
-        // --- AQUI QUE A MÁGICA ACONTECE: Chamamos o arquivo novo ---
         const response = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                prompt: aiPrompt, 
-                contextData, 
-                userPlan 
-            })
+            body: JSON.stringify({ prompt: aiPrompt, contextData, userPlan })
         });
 
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Erro na IA");
-        const text = data.response;
+        const text = data.response || "";
 
-        // --- Processa a resposta (Texto ou Ação) ---
         if (userPlan !== 'free') {
+            // 1. Limpeza Básica (Remove markdown se a IA teimar em mandar)
             const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-            if (cleanText.startsWith('{') && cleanText.endsWith('}')) {
+            
+            // 2. Busca o Array JSON [ ... ]
+            const firstBracket = cleanText.indexOf('[');
+            const lastBracket = cleanText.lastIndexOf(']');
+
+            if (firstBracket !== -1 && lastBracket !== -1) {
+                const potentialJson = cleanText.substring(firstBracket, lastBracket + 1);
+                
                 try {
-                    const command = JSON.parse(cleanText);
-                    if (command.action === 'add') {
-                        const payload = { ...command.data, user_id: user?.id };
-                        if (command.table === 'transactions' && !payload.target_month) payload.target_month = activeTab;
-                        
-                        if (user) { 
-                            await supabase.from(command.table).insert([payload]); 
-                            loadData(user); 
-                            setAiResponse(`✅ Operação confirmada! Lançamento: "${payload.title}" registrado.`); 
-                        } 
-                        return;
+                    const parsed = JSON.parse(potentialJson);
+                    const commands = Array.isArray(parsed) ? parsed : [parsed];
+                    
+                    let itemsAdded = 0;
+
+                    for (const command of commands) {
+                        if (command.action === 'add' && user) {
+                            let payload: any = { user_id: user.id };
+                            const rawData = command.data;
+
+                            if (command.table === 'installments') {
+                                // Lógica de Parcelas
+                                const totalVal = rawData.total_value || rawData.amount || rawData.value || 0;
+                                const qtd = rawData.installments_count || 1;
+                                const currentMonthIndex = MONTHS.indexOf(activeTab);
+                                const installmentOffset = 1 - currentMonthIndex; // Ajuste temporal
+
+                                payload = {
+                                    ...payload,
+                                    title: rawData.title,
+                                    total_value: totalVal,
+                                    installments_count: qtd,
+                                    value_per_month: rawData.value_per_month || (totalVal / qtd),
+                                    current_installment: installmentOffset, 
+                                    fixed_monthly_value: null,
+                                    due_day: rawData.due_day || 10,
+                                    status: 'active',
+                                    paid_months: []
+                                };
+                            } 
+                            else if (command.table === 'transactions') {
+                                // Lógica de Transações
+                                payload = {
+                                    ...payload,
+                                    title: rawData.title,
+                                    amount: rawData.amount || rawData.value || 0,
+                                    type: rawData.type || 'expense',
+                                    category: rawData.category || 'Outros',
+                                    date: rawData.date || new Date().toLocaleDateString('pt-BR'),
+                                    target_month: rawData.target_month || activeTab,
+                                    status: 'active',
+                                    is_paid: true 
+                                };
+                            }
+                            else if (command.table === 'recurring') {
+                                // Lógica de Recorrentes
+                                payload = {
+                                    ...payload,
+                                    title: rawData.title,
+                                    value: rawData.value || rawData.amount || 0,
+                                    type: rawData.type || 'expense',
+                                    category: rawData.category || 'Fixa',
+                                    start_date: rawData.start_date || `01/${activeTab === 'Jan' ? '01' : '01'}/2026`,
+                                    status: 'active',
+                                    due_day: rawData.due_day || 10
+                                };
+                            }
+
+                            const { error } = await supabase.from(command.table).insert([payload]); 
+                            if (!error) itemsAdded++;
+                            else console.error("Erro BD:", error);
+                        }
                     }
-                } catch (e) { /* Não era JSON, segue o baile */ }
+
+                    if (itemsAdded > 0) {
+                        await loadData(user);
+                        setAiResponse(`✅ Processado! ${itemsAdded} item(ns) registrado(s).`);
+                        return; // Sucesso: esconde o JSON
+                    }
+
+                } catch (e) { 
+                    console.log("Erro JSON Real:", e);
+                    // Se falhar o parse, mostra o texto da IA (pode ser que ela só estivesse conversando)
+                }
             }
         }
         setAiResponse(text);
 
     } catch (e) { 
-        setAiResponse("Erro de comunicação com o QG. Tente novamente."); 
-        console.error(e); 
+        setAiResponse("Erro de conexão. Tente novamente."); 
     } finally { 
         setIsLoading(false); setAiPrompt(''); 
     } 
   };
+
   const renderTransactions = () => { const monthMap: Record<string, string> = { 'Jan': '/01', 'Fev': '/02', 'Mar': '/03', 'Abr': '/04', 'Mai': '/05', 'Jun': '/06', 'Jul': '/07', 'Ago': '/08', 'Set': '/09', 'Out': '/10', 'Nov': '/11', 'Dez': '/12' }; const filter = monthMap[activeTab]; const normalItems = transactions.filter(t => t.date?.includes(filter) && t.status !== 'delayed'); const fixedItems = recurring.map(r => { const startMonthIndex = r.start_date ? parseInt(r.start_date.split('/')[1]) - 1 : 0; const currentMonthIndex = MONTHS.indexOf(activeTab); if (currentMonthIndex < startMonthIndex) return null; return { ...r, isFixed: true, isSkipped: r.skipped_months?.includes(activeTab), date: 'Fixo Mensal', amount: r.value }; }).filter(Boolean); const allItems = [...fixedItems, ...normalItems.map(t => ({...t, isFixed: false, isSkipped: false}))]; if (allItems.length === 0) return <p className="text-gray-500 text-center py-8 italic text-sm border border-dashed border-gray-800 rounded-xl">Nenhuma movimentação neste mês.</p>; return allItems.map((item: any) => { if (item.status === 'delayed') return null; const isDimmed = item.isSkipped || item.is_paid; return ( <div key={`${item.isFixed ? 'fix' : 'var'}-${item.id}`} className={`flex justify-between items-center p-4 border rounded-xl group transition ${isDimmed ? 'bg-[#0f1219]/50 border-gray-800/50 opacity-60' : 'bg-[#0f1219] border-gray-800 hover:border-gray-700'}`}> <div className="flex items-center gap-4"> {!item.isFixed && (<button onClick={() => togglePaid('transactions', item.id, item.is_paid)} className={`rounded-full p-1.5 border transition ${item.is_paid ? 'bg-emerald-500/20 border-emerald-500 text-emerald-500' : 'border-gray-600 text-transparent hover:border-emerald-500'}`}><Check size={12} /></button>)} {item.isFixed && (<button onClick={() => toggleSkipMonth(item)} className={`rounded-full p-1.5 border transition ${item.isSkipped ? 'bg-gray-800 border-gray-700 text-gray-500' : 'border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10'}`}>{item.isSkipped ? <EyeOff size={12}/> : <Eye size={12}/>}</button>)} <div> <p className={`font-semibold text-sm ${isDimmed ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title} {item.isFixed && <span className="text-[9px] bg-blue-900/30 text-blue-400 px-1.5 py-0.5 rounded ml-1 uppercase tracking-wide">Fixo</span>}</p> <p className="text-xs text-gray-500">{item.isSkipped ? 'PULADO' : item.date}</p> </div> </div> <div className="flex items-center gap-3"> <span className={`font-mono font-medium ${item.type === 'income' ? 'text-emerald-400' : 'text-red-400'}`}>{item.type === 'expense' ? '-' : '+'} {item.amount.toFixed(2)}</span> <div className="flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition"> {!item.isFixed && item.type === 'expense' && (<button onClick={() => toggleDelay(item.isFixed ? 'recurring' : 'transactions', item)} className="p-1.5 rounded bg-orange-500/10 text-orange-500 hover:bg-orange-500 hover:text-white" title="Stand-by"><Clock size={14}/></button>)} <button onClick={() => handleEdit(item, item.isFixed ? (item.type === 'income' ? 'income' : 'fixed_expense') : (item.type === 'income' ? 'income' : 'expense'))} className="p-1.5 rounded hover:bg-blue-500/10 text-blue-500"><Pencil size={14}/></button> <button onClick={() => handleDelete(item.isFixed ? 'recurring' : 'transactions', item.id)} className="p-1.5 rounded hover:bg-red-500/10 text-red-500"><Trash2 size={14}/></button> </div> </div> </div> ); }); };
-  const renderDelayed = () => { const delayedItems = [...transactions.filter(t => t.status === 'delayed'), ...installments.filter(i => i.status === 'delayed'), ...recurring.filter(r => r.status === 'delayed')]; if (delayedItems.length === 0) return null; return (<div className="mt-8 border border-red-900/30 bg-red-950/10 rounded-2xl p-6"><h3 className="text-red-400 font-bold flex items-center gap-2 mb-4"><AlertTriangle size={18}/> Em Stand-by (Congelados)</h3><div className="space-y-2">{delayedItems.map((item: any) => (<div key={`del-${item.id}`} className="flex justify-between items-center p-3 bg-red-900/10 rounded-lg border border-red-900/20"><span className="text-red-200 text-sm">{item.title}</span><div className="flex items-center gap-3"><span className="font-mono text-red-400 font-bold">R$ {item.amount || item.value || item.value_per_month}</span><button onClick={() => toggleDelay(item.date ? 'transactions' : item.installments_count ? 'installments' : 'recurring', item)} className="text-xs bg-red-500 text-white px-2 py-1 rounded hover:bg-red-400">Restaurar</button></div></div>))}</div><p className="text-xs text-red-500/50 mt-3 text-center">Estes valores não afetam seu saldo atual.</p></div>) };
+  const renderDelayed = () => { const delayedTrans = transactions.filter(t => t.status === 'delayed').map(t => ({ ...t, _source: 'trans' })); const delayedInst = installments.filter(i => i.status === 'delayed').map(i => ({ ...i, _source: 'inst' })); const delayedRecur = recurring.filter(r => r.status === 'delayed').map(r => ({ ...r, _source: 'recur' })); const delayedItems = [...delayedTrans, ...delayedInst, ...delayedRecur]; if (delayedItems.length === 0) return null; return (<div className="mt-8 border border-red-900/30 bg-red-950/10 rounded-2xl p-6"><h3 className="text-red-400 font-bold flex items-center gap-2 mb-4"><AlertTriangle size={18}/> Em Stand-by (Congelados)</h3><div className="space-y-2">{delayedItems.map((item: any) => (<div key={`del-${item._source}-${item.id}`} className="flex justify-between items-center p-3 bg-red-900/10 rounded-lg border border-red-900/20"><span className="text-red-200 text-sm">{item.title}</span><div className="flex items-center gap-3"><span className="font-mono text-red-400 font-bold">R$ {(item.amount || item.value || item.value_per_month).toFixed(2)}</span><button onClick={() => toggleDelay(item._source === 'trans' ? 'transactions' : item._source === 'inst' ? 'installments' : 'recurring', item)} className="text-xs bg-red-500 text-white px-2 py-1 rounded hover:bg-red-400">Restaurar</button></div></div>))}</div><p className="text-xs text-red-500/50 mt-3 text-center">Estes valores não afetam seu saldo atual.</p></div>) };
 
   const hasDelayed = currentMonthData.delayedTotal > 0;
   const gridClass = hasDelayed ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-4" : "grid-cols-1 md:grid-cols-3";
@@ -432,7 +506,7 @@ export default function FinancialDashboard() {
                           </div>
 
                           {authMessage && (
-                              <div className={`mt-4 p-3 rounded-lg text-xs flex items-center gap-2 ${authMessage.includes('❌') ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-green-500/10 text-green-400 border border-green-500/20'}`}>
+                              <div className={`mt-4 p-3 rounded-lg text-xs flex items-center gap-2 ${authMessage.includes('❌') || authMessage.includes('⚠️') ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-green-500/10 text-green-400 border border-green-500/20'}`}>
                                   {authMessage}
                               </div>
                           )}
@@ -442,7 +516,15 @@ export default function FinancialDashboard() {
                           </button>
                           
                           {authMode === 'login' && (
-                              <p className="text-xs text-gray-600 mt-4 cursor-pointer hover:text-cyan-500 transition">Esqueceu a senha?</p>
+                              <div className="mt-4 pt-4 border-t border-gray-800">
+                                  <button 
+                                    onClick={handleResetPassword}
+                                    disabled={loadingAuth}
+                                    className="text-xs text-gray-500 hover:text-cyan-400 transition underline decoration-gray-700 hover:decoration-cyan-400 underline-offset-4"
+                                  >
+                                    Esqueci minha senha
+                                  </button>
+                              </div>
                           )}
                       </div>
                   )}
