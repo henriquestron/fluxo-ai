@@ -1,40 +1,40 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 
-// Inicializa o Stripe com a chave secreta (pegue no painel do Stripe)
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2026-01-28.clover', // ou a versão mais recente que ele sugerir
-});
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 export async function POST(req: Request) {
   try {
-    const { userId, email } = await req.json();
+    // Agora recebemos também o priceId do frontend
+    const { userId, email, priceId } = await req.json();
 
-    // Cria a sessão de checkout
+    if (!userId || !email || !priceId) {
+      return NextResponse.json({ error: 'Dados incompletos' }, { status: 400 });
+    }
+
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'], // Adicione 'boleto' ou 'pix' se configurar no Stripe BR
+      payment_method_types: ['card', 'boleto', 'pix'],
       line_items: [
         {
-          price_data: {
-            currency: 'brl',
-            product_data: {
-              name: 'Fluxo AI - Premium Vitalício',
-              description: 'Acesso total ao Agente IA e Backup na Nuvem.',
-            },
-            unit_amount: 2990, // R$ 29,90 (em centavos)
-          },
+          price: priceId, // Usa o ID que o frontend mandou (Premium ou Agente)
           quantity: 1,
         },
       ],
-      mode: 'payment', // Pagamento único (se fosse mensalidade seria 'subscription')
-      success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/?success=true`, // Onde volta se der certo
-      cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/?canceled=true`,
-      client_reference_id: userId, // O PULO DO GATO: Enviamos o ID do usuário pro Stripe
+      mode: 'payment', // Ou 'subscription' se o plano Agente for mensal
+      success_url: `${req.headers.get('origin')}/?success=true`,
+      cancel_url: `${req.headers.get('origin')}/?canceled=true`,
       customer_email: email,
+      client_reference_id: userId,
+      // Metadados para saber qual plano liberar no webhook depois
+      metadata: {
+          planType: priceId === 'price_AGENT_ID' ? 'agent' : 'premium' 
+      }
     });
 
     return NextResponse.json({ url: session.url });
+
   } catch (err: any) {
+    console.error("Erro Checkout:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
