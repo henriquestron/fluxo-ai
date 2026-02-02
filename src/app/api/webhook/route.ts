@@ -16,7 +16,7 @@ const supabase = (supabaseUrl && supabaseServiceKey)
 const stripeSecret = process.env.STRIPE_SECRET_KEY || "";
 // Mesma coisa para o Stripe: só inicializa se tiver a chave
 const stripe = stripeSecret 
-  ? new Stripe(stripeSecret, { apiVersion: '2025-01-27.acacia' }) // Ajuste a versão se o VS Code sugerir outra
+  ? new Stripe(stripeSecret, { apiVersion: '2026-01-28.clover' }) // Ajuste a versão se o VS Code sugerir outra
   : null;
 
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET || "";
