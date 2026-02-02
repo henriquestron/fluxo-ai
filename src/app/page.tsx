@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { CreditCard, TrendingDown, DollarSign, Plus, X, List, LayoutGrid, Sparkles, Send, Trash2, AlertCircle, CheckCircle2, Pencil, Clock, AlertTriangle, Check, LogIn, LogOut, User, Eye, EyeOff, CheckSquare, Square, ArrowRight, Crown, ShieldCheck, Mail, Loader2, Lock } from 'lucide-react';
+import { CreditCard, TrendingDown, DollarSign, Plus, X, List, LayoutGrid, Sparkles, Send, Trash2, AlertCircle, CheckCircle2, Pencil, Clock, AlertTriangle, Check, LogIn, LogOut, User, Eye, EyeOff, CheckSquare, Square, ArrowRight, Crown, ShieldCheck, Mail, Loader2, Lock, BarChart3, Search, Target } from 'lucide-react';
 import { supabase } from '@/supabase';
 
 const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -213,19 +213,40 @@ export default function FinancialDashboard() {
   const currentMonthData = getMonthData(activeTab); let previousSurplus = 0; const currentIndex = MONTHS.indexOf(activeTab); if (currentIndex > 0) { const prevData = getMonthData(MONTHS[currentIndex - 1]); if (prevData.balance > 0) previousSurplus = prevData.balance; } const displayBalance = currentMonthData.balance + previousSurplus;
   
   // --- IA INTELIGENTE (COM CORREÇÃO DE PARCELAS) ---
- const askGemini = async () => {
-    if (!aiPrompt) return;
+  const askGemini = async (overridePrompt?: string) => {
+    const promptToSend = overridePrompt || aiPrompt;
+    if (!promptToSend) return;
+    
     setIsLoading(true); 
     setAiResponse('');
     
+    // --- ENRIQUECIMENTO DE DADOS PARA ANÁLISE ---
+    // Pegamos os 15 maiores gastos do mês para a IA analisar vazamentos
+    const topExpenses = transactions
+        .filter(t => t.type === 'expense' && t.status !== 'delayed')
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 15);
+
+    const activeInstallments = installments
+        .filter(i => i.status !== 'delayed')
+        .map(i => ({ title: i.title, parcelas: i.installments_count, valor_mes: i.value_per_month }));
+
+    const fixedCosts = recurring
+        .filter(r => r.type === 'expense' && r.status !== 'delayed')
+        .map(r => ({ title: r.title, valor: r.value }));
+
     const contextData = { 
         mes_atual: activeTab, 
         saldo: currentMonthData.balance,
-        gastos: currentMonthData.expenseTotal
+        gastos_totais: currentMonthData.expenseTotal,
+        renda: currentMonthData.income,
+        maiores_gastos: topExpenses,
+        parcelamentos_ativos: activeInstallments,
+        contas_fixas: fixedCosts
     };
 
     // Bloqueio Free
-    const isActionIntent = aiPrompt.toLowerCase().includes('adicion') || aiPrompt.toLowerCase().includes('gast') || aiPrompt.toLowerCase().includes('comp');
+    const isActionIntent = promptToSend.toLowerCase().includes('adicion') || promptToSend.toLowerCase().includes('gast') || promptToSend.toLowerCase().includes('comp');
     if (userPlan === 'free' && isActionIntent) {
         setAiResponse(
             <div className="text-center p-4">
@@ -240,20 +261,19 @@ export default function FinancialDashboard() {
         const response = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: aiPrompt, contextData, userPlan })
+            body: JSON.stringify({ prompt: promptToSend, contextData, userPlan })
         });
 
         const data = await response.json();
         const text = data.response || "";
 
         if (userPlan !== 'free') {
-            // 1. Limpeza Básica (Remove markdown se a IA teimar em mandar)
             const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-            
-            // 2. Busca o Array JSON [ ... ]
-            const firstBracket = cleanText.indexOf('[');
-            const lastBracket = cleanText.lastIndexOf(']');
+            const firstBracket = cleanText.search(/\[|\{/);
+            const lastBracket = cleanText.search(/\]|\}(?!.*\]|\})/);
 
+            // Só tenta processar JSON se parecer muito com JSON (inicia com [ ou {)
+            // Se for análise (texto), pula isso aqui.
             if (firstBracket !== -1 && lastBracket !== -1) {
                 const potentialJson = cleanText.substring(firstBracket, lastBracket + 1);
                 
@@ -269,11 +289,10 @@ export default function FinancialDashboard() {
                             const rawData = command.data;
 
                             if (command.table === 'installments') {
-                                // Lógica de Parcelas
                                 const totalVal = rawData.total_value || rawData.amount || rawData.value || 0;
                                 const qtd = rawData.installments_count || 1;
                                 const currentMonthIndex = MONTHS.indexOf(activeTab);
-                                const installmentOffset = 1 - currentMonthIndex; // Ajuste temporal
+                                const installmentOffset = 1 - currentMonthIndex;
 
                                 payload = {
                                     ...payload,
@@ -289,7 +308,6 @@ export default function FinancialDashboard() {
                                 };
                             } 
                             else if (command.table === 'transactions') {
-                                // Lógica de Transações
                                 payload = {
                                     ...payload,
                                     title: rawData.title,
@@ -297,13 +315,12 @@ export default function FinancialDashboard() {
                                     type: rawData.type || 'expense',
                                     category: rawData.category || 'Outros',
                                     date: rawData.date || new Date().toLocaleDateString('pt-BR'),
-                                    target_month: rawData.target_month || activeTab,
+                                    target_month: rawData.target_month || activeTab, 
                                     status: 'active',
                                     is_paid: true 
                                 };
                             }
                             else if (command.table === 'recurring') {
-                                // Lógica de Recorrentes
                                 payload = {
                                     ...payload,
                                     title: rawData.title,
@@ -318,26 +335,24 @@ export default function FinancialDashboard() {
 
                             const { error } = await supabase.from(command.table).insert([payload]); 
                             if (!error) itemsAdded++;
-                            else console.error("Erro BD:", error);
                         }
                     }
 
                     if (itemsAdded > 0) {
                         await loadData(user);
-                        setAiResponse(`✅ Processado! ${itemsAdded} item(ns) registrado(s).`);
-                        return; // Sucesso: esconde o JSON
+                        setAiResponse(`✅ Feito! Registrei ${itemsAdded} lançamentos em ${activeTab}.`);
+                        return;
                     }
 
                 } catch (e) { 
-                    console.log("Erro JSON Real:", e);
-                    // Se falhar o parse, mostra o texto da IA (pode ser que ela só estivesse conversando)
+                    // Se falhar JSON, assume que é texto de análise
                 }
             }
         }
         setAiResponse(text);
 
     } catch (e) { 
-        setAiResponse("Erro de conexão. Tente novamente."); 
+        setAiResponse("Erro de conexão com a IA."); 
     } finally { 
         setIsLoading(false); setAiPrompt(''); 
     } 
@@ -506,7 +521,7 @@ export default function FinancialDashboard() {
                           </div>
 
                           {authMessage && (
-                              <div className={`mt-4 p-3 rounded-lg text-xs flex items-center gap-2 ${authMessage.includes('❌') || authMessage.includes('⚠️') ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-green-500/10 text-green-400 border border-green-500/20'}`}>
+                              <div className={`mt-4 p-3 rounded-lg text-xs flex items-center gap-2 ${authMessage.includes('❌') ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-green-500/10 text-green-400 border border-green-500/20'}`}>
                                   {authMessage}
                               </div>
                           )}
@@ -532,7 +547,14 @@ export default function FinancialDashboard() {
           </div>
       )}
 
-      {isAIOpen && (<div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-50 p-4"><div className="bg-[#0f0f13] border border-gray-700 w-full max-w-2xl h-[600px] rounded-3xl shadow-2xl flex flex-col relative overflow-hidden"><div className="p-6 border-b border-gray-800 bg-[#111] flex justify-between items-center z-10"><div className="flex items-center gap-3"><div className="bg-purple-600/20 p-2 rounded-lg"><Sparkles className="text-purple-400" size={24} /></div><h2 className="text-xl font-bold text-white">Consultor IA</h2></div><button onClick={() => setIsAIOpen(false)} className="text-gray-500 hover:text-white"><X /></button></div><div className="flex-1 p-6 overflow-y-auto space-y-4">{aiResponse ? (typeof aiResponse === 'string' ? <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700 text-gray-200 leading-relaxed whitespace-pre-line">{aiResponse}</div> : aiResponse) : <p className="text-center text-gray-600 mt-20 italic">"Estou endividado?"</p>}{isLoading && <div className="text-purple-400 animate-pulse text-center">Pensando...</div>}</div><div className="p-4 bg-[#111] border-t border-gray-800 flex gap-2"><input type="text" value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && askGemini()} placeholder="Pergunte..." className="flex-1 bg-gray-900 border border-gray-700 rounded-xl p-4 text-white outline-none"/><button onClick={askGemini} className="bg-purple-600 hover:bg-purple-700 text-white p-4 rounded-xl"><Send size={24}/></button></div></div></div>)}
+      {isAIOpen && (<div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-50 p-4"><div className="bg-[#0f0f13] border border-gray-700 w-full max-w-2xl h-[600px] rounded-3xl shadow-2xl flex flex-col relative overflow-hidden"><div className="p-6 border-b border-gray-800 bg-[#111] flex justify-between items-center z-10"><div className="flex items-center gap-3"><div className="bg-purple-600/20 p-2 rounded-lg"><Sparkles className="text-purple-400" size={24} /></div><h2 className="text-xl font-bold text-white">Consultor IA</h2></div><button onClick={() => setIsAIOpen(false)} className="text-gray-500 hover:text-white"><X /></button></div><div className="flex-1 p-6 overflow-y-auto space-y-4">{aiResponse ? (typeof aiResponse === 'string' ? <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700 text-gray-200 leading-relaxed whitespace-pre-line">{aiResponse}</div> : aiResponse) : <p className="text-center text-gray-600 mt-20 italic">"Como está minha saúde financeira?"</p>}{isLoading && <div className="text-purple-400 animate-pulse text-center">Pensando...</div>}</div>
+      {/* BARRA DE COMANDOS RÁPIDOS */}
+      <div className="px-6 py-2 flex gap-3 overflow-x-auto scrollbar-hide border-t border-gray-800 bg-[#111]">
+          <button onClick={() => askGemini("Faça um diagnóstico de risco completo do meu mês atual. Me dê status (Verde/Amarelo/Vermelho) e alertas.")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-full text-xs font-bold text-cyan-400 border border-cyan-900/30 flex items-center gap-2 transition"><BarChart3 size={14}/> Diagnóstico</button>
+          <button onClick={() => askGemini("Analise meus maiores gastos e contas fixas. Onde estou perdendo dinheiro? Tem algo supérfluo?")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-full text-xs font-bold text-purple-400 border border-purple-900/30 flex items-center gap-2 transition"><Search size={14}/> Detetive</button>
+          <button onClick={() => askGemini("Meu saldo está negativo ou apertado. Me dê um plano de 3 passos práticos para sair dessa situação agora.")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-full text-xs font-bold text-emerald-400 border border-emerald-900/30 flex items-center gap-2 transition"><Target size={14}/> Plano de Resgate</button>
+      </div>
+      <div className="p-4 bg-[#111] flex gap-2"><input type="text" value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && askGemini()} placeholder="Pergunte ou lance um gasto..." className="flex-1 bg-gray-900 border border-gray-700 rounded-xl p-4 text-white outline-none"/><button onClick={() => askGemini()} className="bg-purple-600 hover:bg-purple-700 text-white p-4 rounded-xl"><Send size={24}/></button></div></div></div>)}
       {isRolloverModalOpen && (<div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-50 p-6"><div className="bg-[#111] border border-gray-700 p-8 rounded-3xl w-full max-w-lg shadow-2xl relative"><h2 className="text-2xl font-bold mb-2 text-white flex items-center gap-2"><AlertCircle className="text-orange-500"/> Contas em Aberto</h2><p className="text-gray-400 text-sm mb-6">Existem contas de meses passados que você não marcou como pagas.</p><div className="max-h-[300px] overflow-y-auto space-y-2 mb-6 pr-2">{pastDueItems.map((item, idx) => (<div key={idx} className="flex justify-between items-center p-3 bg-gray-900 rounded-lg border border-gray-800"><div><p className="text-white font-medium text-sm">{item.title}</p><p className="text-xs text-gray-500">{item.month}</p></div><div className="flex items-center gap-3"><span className="text-red-400 font-mono">R$ {item.amount || item.value || item.value_per_month}</span><button onClick={() => toggleDelay(item.origin, item)} className="text-xs bg-orange-500/20 text-orange-400 px-2 py-1 rounded border border-orange-500/50 hover:bg-orange-500 hover:text-white transition">Mover p/ Stand-by</button></div></div>))}</div><div className="flex justify-end gap-3"><button onClick={() => setIsRolloverModalOpen(false)} className="bg-white text-black px-6 py-2 rounded-full font-bold hover:bg-gray-200 transition">OK</button></div></div></div>)}
     </div>
   );
