@@ -1,8 +1,16 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { CreditCard, TrendingDown, DollarSign, Plus, X, List, LayoutGrid, Sparkles, Send, Trash2, AlertCircle, CheckCircle2, Pencil, Clock, AlertTriangle, Check, LogIn, LogOut, User, Eye, EyeOff, CheckSquare, Square, ArrowRight, Crown, ShieldCheck, Mail, Loader2, Lock, BarChart3, Search, Target, Upload, FileText, ExternalLink, Users, ChevronDown, UserPlus, Briefcase, HelpCircle, Star, Zap, Shield, Palette, Layout, MousePointerClick, FolderPlus, Layers } from 'lucide-react';
-import { supabase } from '@/supabase';
+import { 
+    CreditCard, TrendingDown, DollarSign, Plus, X, List, LayoutGrid, Sparkles, Send, 
+    Trash2, AlertCircle, CheckCircle2, Pencil, Clock, AlertTriangle, Check, LogIn, 
+    LogOut, User, Eye, EyeOff, CheckSquare, Square, ArrowRight, Crown, ShieldCheck, 
+    Mail, Loader2, Lock, BarChart3, Search, Target, Upload, FileText, ExternalLink, 
+    Users, ChevronDown, UserPlus, Briefcase, HelpCircle, Star, Zap, Shield, Palette, 
+    Layout, MousePointerClick, FolderPlus, Layers,
+    // NOVOS ÍCONES PARA O SELETOR 👇
+    ShoppingCart, Home, Car, Utensils, GraduationCap, HeartPulse, Plane, Gamepad2, Smartphone
+} from 'lucide-react';import { supabase } from '@/supabase';
 import { driver } from "driver.js";
 import "driver.js/dist/driver.css";
 
@@ -15,6 +23,12 @@ import CalendarView from '@/components/dashboard/CalendarView';
 // Se tiver criado o Zen e Calendar, importe aqui:
 // import ZenView from '@/components/dashboard/ZenView';
 // import CalendarView from '@/components/dashboard/CalendarView';
+// MAPA DE ÍCONES (Para o Seletor do Formulário)
+const ICON_MAP: any = {
+    'shopping-cart': ShoppingCart, 'home': Home, 'car': Car, 'utensils': Utensils,
+    'zap': Zap, 'graduation-cap': GraduationCap, 'heart-pulse': HeartPulse,
+    'plane': Plane, 'gamepad-2': Gamepad2, 'smartphone': Smartphone, 'dollar-sign': DollarSign
+};
 
 const STRIPE_PRICES = {
     PREMIUM: 'price_1SwQtoBVKV78UpHa2QmMCB6v', 
@@ -32,6 +46,7 @@ export default function FinancialDashboard() {
   const [activeTab, setActiveTab] = useState(currentSystemMonthName); 
   const [currentLayout, setCurrentLayout] = useState<'standard' | 'trader' | 'zen' | 'calendar'>('standard'); 
   const [currentTheme, setCurrentTheme] = useState('default');
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   
   // --- WORKSPACES (PERFIS DE DADOS) ---
   const [workspaces, setWorkspaces] = useState<any[]>([]);
@@ -74,7 +89,7 @@ export default function FinancialDashboard() {
   const [formMode, setFormMode] = useState<'income' | 'expense' | 'installment' | 'fixed_expense'>('income');
   const [editingId, setEditingId] = useState<number | null>(null);
   const initialFormState = { 
-      title: '', amount: '', installments: '', dueDay: '', category: 'Outros', targetMonth: currentSystemMonthName, isFixedIncome: false, fixedMonthlyValue: '', receiptUrl: '' 
+      title: '', amount: '', installments: '', dueDay: '', category: 'Outros', targetMonth: currentSystemMonthName, isFixedIncome: false, fixedMonthlyValue: '', receiptUrl: '', icon: '' 
   };
   const [formData, setFormData] = useState(initialFormState);
   const [uploadingFile, setUploadingFile] = useState(false);
@@ -359,7 +374,7 @@ export default function FinancialDashboard() {
       if (user && activeId) { await supabase.from(table).update({ paid_months: newPaid }).eq('id', item.id); loadData(activeId, currentWorkspace?.id); } else { const updateList = (list: any[]) => list.map(i => i.id === item.id ? { ...i, paid_months: newPaid } : i); if (table === 'installments') saveDataLocal(transactions, updateList(installments), recurring); if (table === 'recurring') saveDataLocal(transactions, installments, updateList(recurring)); } 
   };
 
-  const handleEdit = (item: any, mode: any) => { setFormMode(mode); setEditingId(item.id); const currentReceipt = getReceiptForMonth(item, activeTab); setFormData({ title: item.title, amount: item.amount || item.value || item.total_value || '', installments: item.installments_count || '', dueDay: item.due_day || '', category: item.category || 'Outros', targetMonth: item.target_month || activeTab, isFixedIncome: mode === 'income' && item.category === 'Salário', fixedMonthlyValue: item.fixed_monthly_value || '', receiptUrl: currentReceipt || '' }); setIsFormOpen(true); };
+  const handleEdit = (item: any, mode: any) => { setFormMode(mode); setEditingId(item.id); const currentReceipt = getReceiptForMonth(item, activeTab); setFormData({ title: item.title, amount: item.amount || item.value || item.total_value || '', installments: item.installments_count || '', dueDay: item.due_day || '', category: item.category || 'Outros', targetMonth: item.target_month || activeTab, isFixedIncome: mode === 'income' && item.category === 'Salário', fixedMonthlyValue: item.fixed_monthly_value || '', receiptUrl: currentReceipt || '', icon: item.icon || '' }); setIsFormOpen(true); };
   const openNewTransactionModal = () => { setEditingId(null); setFormData({ ...initialFormState, targetMonth: activeTab }); setIsFormOpen(true); };
 
   const handleFileUpload = async (e: any) => {
@@ -371,7 +386,8 @@ export default function FinancialDashboard() {
 
   const handleRemoveReceipt = (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); if (confirm("Tem certeza?")) setFormData({ ...formData, receiptUrl: '' }); };
 
-  const handleSubmit = async () => {
+ const handleSubmit = async () => {
+    // 1. Verificação de Plano Free
     const totalItems = transactions.length + installments.length + recurring.length;
     const FREE_LIMIT = 50; 
     if (userPlan === 'free' && totalItems >= FREE_LIMIT && !editingId) {
@@ -380,39 +396,142 @@ export default function FinancialDashboard() {
         return;
     }
 
+    // 2. Validação Básica
     if (!formData.title || !formData.amount) return;
+
+    // 3. Preparação dos Dados
     const amountVal = parseFloat(formData.amount.toString());
     const fixedInstallmentVal = formData.fixedMonthlyValue ? parseFloat(formData.fixedMonthlyValue.toString()) : null;
     const monthMap: Record<string, string> = { 'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04', 'Mai': '05', 'Jun': '06', 'Jul': '07', 'Ago': '08', 'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12' };
     const dateString = `01/${monthMap[formData.targetMonth]}/2026`; 
-    
-    // USAMOS O ID DO WORKSPACE ATUAL
     const context = currentWorkspace?.id; 
 
+    // 4. Lógica do Comprovante (Mantida)
     let finalReceiptData: string | null = formData.receiptUrl;
-    if ((formMode === 'installment' || formMode === 'fixed_expense') && editingId) { const originalItem = [...installments, ...recurring].find(i => i.id === editingId); if (originalItem) { let receiptJson: any = {}; try { receiptJson = originalItem.receipt_url ? JSON.parse(originalItem.receipt_url) : {}; } catch { } receiptJson[formData.targetMonth] = formData.receiptUrl; finalReceiptData = JSON.stringify(receiptJson); } } else if ((formMode === 'installment' || formMode === 'fixed_expense') && !editingId) { finalReceiptData = formData.receiptUrl ? JSON.stringify({ [formData.targetMonth]: formData.receiptUrl }) : null; }
+    if ((formMode === 'installment' || formMode === 'fixed_expense') && editingId) { 
+        const originalItem = [...installments, ...recurring].find(i => i.id === editingId); 
+        if (originalItem) { 
+            let receiptJson: any = {}; 
+            try { receiptJson = originalItem.receipt_url ? JSON.parse(originalItem.receipt_url) : {}; } catch { } 
+            receiptJson[formData.targetMonth] = formData.receiptUrl; 
+            finalReceiptData = JSON.stringify(receiptJson); 
+        } 
+    } else if ((formMode === 'installment' || formMode === 'fixed_expense') && !editingId) { 
+        finalReceiptData = formData.receiptUrl ? JSON.stringify({ [formData.targetMonth]: formData.receiptUrl }) : null; 
+    }
 
     const activeId = getActiveUserId();
-    const commonData = { user_id: activeId, receipt_url: finalReceiptData, context: context }; 
     
-    const getPayload = () => { if (formMode === 'income') { return formData.isFixedIncome ? { table: 'recurring', data: { ...commonData, title: formData.title, value: amountVal, due_day: 1, category: 'Salário', type: 'income', status: 'active', start_date: dateString } } : { table: 'transactions', data: { ...commonData, title: formData.title, amount: amountVal, type: 'income', date: dateString, category: 'Receita', target_month: formData.targetMonth, status: 'active' } }; } if (formMode === 'expense') return { table: 'transactions', data: { ...commonData, title: formData.title, amount: amountVal, type: 'expense', date: dateString, category: formData.category, target_month: formData.targetMonth, status: 'active' } }; if (formMode === 'installment') { const qtd = parseInt(formData.installments.toString()) || 1; const realValuePerMonth = fixedInstallmentVal ? fixedInstallmentVal : (amountVal / qtd); const targetMonthIndex = MONTHS.indexOf(formData.targetMonth); const startOffset = 1 - targetMonthIndex; return { table: 'installments', data: { ...commonData, title: formData.title, total_value: amountVal, installments_count: qtd, current_installment: startOffset, value_per_month: realValuePerMonth, fixed_monthly_value: fixedInstallmentVal, due_day: parseInt(formData.dueDay.toString()) || 10, status: 'active' } }; } return { table: 'recurring', data: { ...commonData, title: formData.title, value: amountVal, due_day: parseInt(formData.dueDay.toString()) || 10, category: 'Fixa', type: 'expense', status: 'active', start_date: dateString } }; };
+    // --- O PULO DO GATO ESTÁ AQUI 👇 ---
+    // Criamos um objeto base que TEM O ÍCONE e usamos ele em todos os tipos
+    const baseData = { 
+        user_id: activeId, 
+        receipt_url: finalReceiptData, 
+        context: context,
+        icon: formData.icon // <--- AQUI! Garantindo que o ícone vai pra todo mundo
+    }; 
+    
+    const getPayload = () => { 
+        if (formMode === 'income') { 
+            return formData.isFixedIncome 
+                ? { table: 'recurring', data: { ...baseData, title: formData.title, value: amountVal, due_day: 1, category: 'Salário', type: 'income', status: 'active', start_date: dateString } } 
+                : { table: 'transactions', data: { ...baseData, title: formData.title, amount: amountVal, type: 'income', date: dateString, category: 'Receita', target_month: formData.targetMonth, status: 'active' } }; 
+        } 
+        if (formMode === 'expense') {
+            return { table: 'transactions', data: { ...baseData, title: formData.title, amount: amountVal, type: 'expense', date: dateString, category: formData.category, target_month: formData.targetMonth, status: 'active' } }; 
+        }
+        if (formMode === 'installment') { 
+            const qtd = parseInt(formData.installments.toString()) || 1; 
+            const realValuePerMonth = fixedInstallmentVal ? fixedInstallmentVal : (amountVal / qtd); 
+            const targetMonthIndex = MONTHS.indexOf(formData.targetMonth); 
+            const startOffset = 1 - targetMonthIndex; 
+            return { table: 'installments', data: { ...baseData, title: formData.title, total_value: amountVal, installments_count: qtd, current_installment: startOffset, value_per_month: realValuePerMonth, fixed_monthly_value: fixedInstallmentVal, due_day: parseInt(formData.dueDay.toString()) || 10, status: 'active' } }; 
+        } 
+        // Fixed Expense
+        return { table: 'recurring', data: { ...baseData, title: formData.title, value: amountVal, due_day: parseInt(formData.dueDay.toString()) || 10, category: 'Fixa', type: 'expense', status: 'active', start_date: dateString } }; 
+    };
     
     const { table, data } = getPayload(); 
+
+    // 5. Envio ao Supabase
     if (user && activeId) { 
         if (editingId) await supabase.from(table).update(data).eq('id', editingId); 
         else await supabase.from(table).insert([data]); 
         loadData(activeId, context); 
     } else { 
+        // Modo Local (Sem Login)
         const newItem = { ...data, id: editingId || Date.now(), is_paid: false }; 
         if (table === 'transactions') { const list = editingId ? transactions.map(t => t.id === editingId ? newItem : t) : [newItem, ...transactions]; saveDataLocal(list, installments, recurring); } 
         else if (table === 'installments') { const list = editingId ? installments.map(i => i.id === editingId ? newItem : i) : [...installments, newItem]; saveDataLocal(transactions, list, recurring); } 
         else { const list = editingId ? recurring.map(r => r.id === editingId ? newItem : r) : [...recurring, newItem]; saveDataLocal(transactions, installments, list); } 
     }
     
-    setFormData({ ...initialFormState, targetMonth: activeTab }); setEditingId(null); setIsFormOpen(false);
+    // Limpeza
+    setFormData({ ...initialFormState, targetMonth: activeTab }); 
+    setEditingId(null); 
+    setIsFormOpen(false);
   };
 
-  const getMonthData = (monthName: string) => { const monthIndex = MONTHS.indexOf(monthName); const monthMap: Record<string, string> = { 'Jan': '/01', 'Fev': '/02', 'Mar': '/03', 'Abr': '/04', 'Mai': '/05', 'Jun': '/06', 'Jul': '/07', 'Ago': '/08', 'Set': '/09', 'Out': '/10', 'Nov': '/11', 'Dez': '/12' }; const dateFilter = monthMap[monthName]; const isRecurringActive = (rec: any, checkIndex: number) => { if (!rec.start_date) return true; const startMonthIndex = parseInt(rec.start_date.split('/')[1]) - 1; return checkIndex >= startMonthIndex; }; const incomeFixed = recurring.filter(r => r.type === 'income' && isRecurringActive(r, monthIndex) && !r.skipped_months?.includes(monthName)).reduce((acc, curr) => acc + curr.value, 0); const incomeVariable = transactions.filter(t => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed').reduce((acc, curr) => acc + curr.amount, 0); const incomeTotal = incomeFixed + incomeVariable; const expenseVariable = transactions.filter(t => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed').reduce((acc, curr) => acc + curr.amount, 0); const expenseFixed = recurring.filter(r => r.type === 'expense' && isRecurringActive(r, monthIndex) && !r.skipped_months?.includes(monthName) && r.status !== 'delayed').reduce((acc, curr) => acc + curr.value, 0); const installTotal = installments.reduce((acc, curr) => { if (curr.status === 'delayed') return acc; const offset = monthIndex; const actualInstallment = curr.current_installment + offset; if (actualInstallment >= 1 && actualInstallment <= curr.installments_count) return acc + curr.value_per_month; return acc; }, 0); const delayedTotal = transactions.filter(t => t.status === 'delayed').reduce((acc, curr) => acc + curr.amount, 0) + installments.filter(i => i.status === 'delayed').reduce((acc, curr) => acc + curr.value, 0) + recurring.filter(r => r.status === 'delayed' && r.type === 'expense').reduce((acc, curr) => acc + curr.value, 0); let accumulatedDebt = 0; for (let i = 0; i < monthIndex; i++) { const pastMonth = MONTHS[i]; installments.forEach(inst => { const pastInst = inst.current_installment + i; if (inst.status !== 'delayed' && pastInst >= 1 && pastInst <= inst.installments_count) { if (!inst.paid_months?.includes(pastMonth)) accumulatedDebt += inst.value_per_month; } }); recurring.filter(r => r.type === 'expense').forEach(rec => { if (rec.status !== 'delayed' && isRecurringActive(rec, i) && !rec.paid_months?.includes(pastMonth) && !rec.skipped_months?.includes(pastMonth)) { accumulatedDebt += rec.value; } }); const pastDateFilter = Object.values(monthMap)[i]; transactions.forEach(t => { if (t.type === 'expense' && t.status !== 'delayed' && t.date?.includes(pastDateFilter) && !t.is_paid) { accumulatedDebt += t.amount; } }) } const totalObligations = expenseVariable + expenseFixed + installTotal + accumulatedDebt; return { income: incomeTotal, expenseTotal: totalObligations, accumulatedDebt, balance: incomeTotal - totalObligations, delayedTotal }; };
+  // --- CALCULA DADOS DO MÊS (CORRIGIDO E ORGANIZADO) ---
+  const getMonthData = (monthName: string) => { 
+      const monthIndex = MONTHS.indexOf(monthName); 
+      const monthMap: Record<string, string> = { 'Jan': '/01', 'Fev': '/02', 'Mar': '/03', 'Abr': '/04', 'Mai': '/05', 'Jun': '/06', 'Jul': '/07', 'Ago': '/08', 'Set': '/09', 'Out': '/10', 'Nov': '/11', 'Dez': '/12' }; 
+      const dateFilter = monthMap[monthName]; 
+      
+      const isRecurringActive = (rec: any, checkIndex: number) => { 
+          if (!rec.start_date) return true; 
+          const startMonthIndex = parseInt(rec.start_date.split('/')[1]) - 1; 
+          return checkIndex >= startMonthIndex; 
+      }; 
+      
+      const incomeFixed = recurring.filter(r => r.type === 'income' && isRecurringActive(r, monthIndex) && !r.skipped_months?.includes(monthName)).reduce((acc, curr) => acc + curr.value, 0); 
+      const incomeVariable = transactions.filter(t => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed').reduce((acc, curr) => acc + curr.amount, 0); 
+      const incomeTotal = incomeFixed + incomeVariable; 
+      
+      const expenseVariable = transactions.filter(t => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed').reduce((acc, curr) => acc + curr.amount, 0); 
+      const expenseFixed = recurring.filter(r => r.type === 'expense' && isRecurringActive(r, monthIndex) && !r.skipped_months?.includes(monthName) && r.status !== 'delayed').reduce((acc, curr) => acc + curr.value, 0); 
+      
+      const installTotal = installments.reduce((acc, curr) => { 
+          if (curr.status === 'delayed') return acc; 
+          const offset = monthIndex; 
+          const actualInstallment = curr.current_installment + offset; 
+          if (actualInstallment >= 1 && actualInstallment <= curr.installments_count) return acc + curr.value_per_month; 
+          return acc; 
+      }, 0); 
+      
+      // AQUI ESTAVA O PROBLEMA: Agora ele soma (value_per_month OU value)
+      const delayedTotal = 
+          transactions.filter(t => t.status === 'delayed').reduce((acc, curr) => acc + curr.amount, 0) + 
+          installments.filter(i => i.status === 'delayed').reduce((acc, curr) => acc + (curr.value_per_month || curr.value || 0), 0) + 
+          recurring.filter(r => r.status === 'delayed' && r.type === 'expense').reduce((acc, curr) => acc + curr.value, 0); 
+      
+      let accumulatedDebt = 0; 
+      for (let i = 0; i < monthIndex; i++) { 
+          const pastMonth = MONTHS[i]; 
+          installments.forEach(inst => { 
+              const pastInst = inst.current_installment + i; 
+              if (inst.status !== 'delayed' && pastInst >= 1 && pastInst <= inst.installments_count) { 
+                  if (!inst.paid_months?.includes(pastMonth)) accumulatedDebt += inst.value_per_month; 
+              } 
+          }); 
+          recurring.filter(r => r.type === 'expense').forEach(rec => { 
+              if (rec.status !== 'delayed' && isRecurringActive(rec, i) && !rec.paid_months?.includes(pastMonth) && !rec.skipped_months?.includes(pastMonth)) { 
+                  accumulatedDebt += rec.value; 
+              } 
+          }); 
+          const pastDateFilter = Object.values(monthMap)[i]; 
+          transactions.forEach(t => { 
+              if (t.type === 'expense' && t.status !== 'delayed' && t.date?.includes(pastDateFilter) && !t.is_paid) { 
+                  accumulatedDebt += t.amount; 
+              } 
+          }) 
+      } 
+      
+      const totalObligations = expenseVariable + expenseFixed + installTotal + accumulatedDebt; 
+      
+      return { income: incomeTotal, expenseTotal: totalObligations, accumulatedDebt, balance: incomeTotal - totalObligations, delayedTotal }; 
+  };
+
   const currentMonthData = getMonthData(activeTab); 
   let previousSurplus = 0; 
   const currentIndex = MONTHS.indexOf(activeTab); 
@@ -520,28 +639,48 @@ export default function FinancialDashboard() {
         </div>
         </div>
 
-        {/* BOTÕES DE AÇÃO */}
+        {/* BOTÕES DE AÇÃO (MOBILE FIX 📱) */}
         <div className="flex flex-wrap justify-center xl:justify-end gap-3 w-full xl:w-auto items-center">
             {user ? (
-                <div className="relative group">
-                    <button className="h-12 bg-gray-900 border border-gray-800 text-gray-400 px-6 rounded-xl hover:bg-gray-800 hover:text-white flex items-center justify-center gap-2 whitespace-nowrap transition"><User size={18}/> Menu</button>
-                    <div className="absolute top-full right-0 pt-2 w-48 hidden group-hover:block z-50">
-                        <div className="bg-[#111] border border-gray-800 rounded-xl shadow-2xl overflow-hidden">
-                            <div className="p-2 space-y-1">
-                                <button onClick={handleLogout} className="w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 text-red-400 hover:bg-red-950/20"><LogOut size={14}/> Sair da Conta</button>
-                                {userPlan !== 'agent' && (
-                                    <button id="agent-btn" onClick={() => handleCheckout('AGENT')} className="w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 text-purple-400 hover:bg-purple-950/20 border-t border-gray-800 mt-1">
-                                        <Briefcase size={14}/> Sou Consultor Financeiro
-                                    </button>
-                                )}
-                                {(userPlan === 'pro' || userPlan === 'agent') && (
-                                    <button onClick={() => setIsCustomizationOpen(true)} className="w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 text-purple-400 hover:bg-purple-950/20 border-t border-gray-800 mt-1">
-                                        <Palette size={14}/> Personalizar Visual
-                                    </button>
-                                )}
+                <div className="relative">
+                    {/* Botão Menu com ONCLICK (Clique) em vez de Hover */}
+                    <button 
+                        onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} 
+                        className={`h-12 bg-gray-900 border border-gray-800 text-gray-400 px-6 rounded-xl hover:bg-gray-800 hover:text-white flex items-center justify-center gap-2 whitespace-nowrap transition ${isUserMenuOpen ? 'border-gray-600 text-white' : ''}`}
+                    >
+                        <User size={18}/> Menu
+                    </button>
+                    
+                    {/* Menu Dropdown Controlado por Estado */}
+                    {isUserMenuOpen && (
+                        <>
+                            {/* Fundo invisível para fechar ao clicar fora */}
+                            <div className="fixed inset-0 z-40" onClick={() => setIsUserMenuOpen(false)}></div>
+                            
+                            <div className="absolute top-full right-0 pt-2 w-56 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                                <div className="bg-[#111] border border-gray-800 rounded-xl shadow-2xl overflow-hidden relative">
+                                    <div className="p-2 space-y-1">
+                                        <div className="px-3 py-2 text-xs text-gray-500 font-bold border-b border-gray-800 mb-1 truncate">
+                                            {user.email}
+                                        </div>
+                                        <button onClick={handleLogout} className="w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 text-red-400 hover:bg-red-950/20"><LogOut size={14}/> Sair da Conta</button>
+                                        
+                                        {userPlan !== 'agent' && (
+                                            <button onClick={() => { setIsUserMenuOpen(false); handleCheckout('AGENT'); }} className="w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 text-purple-400 hover:bg-purple-950/20 border-t border-gray-800 mt-1">
+                                                <Briefcase size={14}/> Sou Consultor Financeiro
+                                            </button>
+                                        )}
+                                        
+                                        {(userPlan === 'pro' || userPlan === 'agent') && (
+                                            <button onClick={() => { setIsUserMenuOpen(false); setIsCustomizationOpen(true); }} className="w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 text-purple-400 hover:bg-purple-950/20 border-t border-gray-800 mt-1">
+                                                <Palette size={14}/> Personalizar Visual
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    </div>
+                        </>
+                    )}
                 </div>
             ) : (<button id="btn-login" onClick={() => { setIsAuthModalOpen(true); setShowEmailCheck(false); setAuthMode('login'); }} className="h-12 bg-gray-900 border border-gray-800 text-white px-6 rounded-xl hover:border-cyan-500/50 flex items-center justify-center gap-2 whitespace-nowrap transition"><LogIn size={18}/> Entrar</button>)}
             
@@ -649,7 +788,25 @@ export default function FinancialDashboard() {
       {/* OUTROS MODAIS (FORMULÁRIO, PREÇOS, AUTH, IA) - MANTIDOS IGUAIS */}
       {isFormOpen && (<div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"><div className="bg-[#111] border border-gray-700 p-8 rounded-3xl w-full max-w-md shadow-2xl relative max-h-[90vh] overflow-y-auto"><button onClick={() => setIsFormOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white"><X size={24} /></button><h2 className="text-2xl font-bold mb-6 text-white">{editingId ? 'Editar' : 'Novo Lançamento'}</h2>
             <div className="bg-gray-900 p-4 rounded-xl border border-gray-800 mb-6 flex items-center justify-between"><label className="text-gray-400 text-sm">Mês de Referência:</label><select value={formData.targetMonth} onChange={(e) => setFormData({...formData, targetMonth: e.target.value})} className="bg-black text-white p-2 rounded-lg border border-gray-700 outline-none">{MONTHS.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
-            <div className="grid grid-cols-2 gap-2 mb-6"><button onClick={() => setFormMode('income')} className={`py-3 rounded-xl border text-sm font-bold transition flex flex-col items-center justify-center gap-1 ${formMode === 'income' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-500' : 'bg-gray-900 border-gray-800 text-gray-500'}`}><DollarSign size={20}/> Entrada</button><button onClick={() => setFormMode('expense')} className={`py-3 rounded-xl border text-sm font-bold transition flex flex-col items-center justify-center gap-1 ${formMode === 'expense' ? 'bg-red-500/20 border-red-500 text-red-500' : 'bg-gray-900 border-gray-800 text-gray-500'}`}><TrendingDown size={20}/> Gasto</button><button onClick={() => setFormMode('installment')} className={`py-3 rounded-xl border text-sm font-bold transition flex flex-col items-center justify-center gap-1 ${formMode === 'installment' ? 'bg-purple-500/20 border-purple-500 text-purple-500' : 'bg-gray-900 border-gray-800 text-gray-500'}`}><CreditCard size={20}/> Parcelado</button><button onClick={() => setFormMode('fixed_expense')} className={`py-3 rounded-xl border text-sm font-bold transition flex flex-col items-center justify-center gap-1 ${formMode === 'fixed_expense' ? 'bg-blue-500/20 border-blue-500 text-blue-500' : 'bg-gray-900 border-gray-800 text-gray-500'}`}><CheckCircle2 size={20}/> Fixo</button></div><div className="space-y-4">{formMode === 'income' && (<div className="flex items-center gap-3 bg-gray-900 p-3 rounded-lg"><input type="checkbox" id="fixo" checked={formData.isFixedIncome} onChange={(e) => setFormData({...formData, isFixedIncome: e.target.checked})} className="w-5 h-5 rounded accent-emerald-500"/><label htmlFor="fixo" className="text-gray-300 text-sm cursor-pointer select-none">Fixo mensal?</label></div>)}{formMode === 'installment' && (<div className="bg-purple-900/10 p-4 rounded-xl border border-purple-900/30 space-y-3 mb-4"><p className="text-purple-400 text-xs font-bold uppercase mb-2">Financiamento / Valor Personalizado</p><label className="text-gray-400 text-xs block">Valor Real da Parcela (com Juros):</label><input type="number" value={formData.fixedMonthlyValue} onChange={(e) => setFormData({...formData, fixedMonthlyValue: e.target.value})} className="w-full bg-black border border-gray-700 rounded-lg p-2 text-white focus:border-purple-500 outline-none" placeholder="Ex: 850.00"/></div>)}<input type="text" value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none" placeholder="Descrição"/><input type="number" value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none" placeholder={formMode === 'installment' ? "Valor TOTAL da Dívida" : "Valor (R$)"}/>{formMode === 'installment' && (<div className="flex gap-4"><input type="number" placeholder="Parcelas" value={formData.installments} onChange={(e) => setFormData({...formData, installments: e.target.value})} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white outline-none"/><input type="number" placeholder="Dia Venc." value={formData.dueDay} onChange={(e) => setFormData({...formData, dueDay: e.target.value})} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white outline-none"/></div>)}
+            <div className="grid grid-cols-2 gap-2 mb-6"><button onClick={() => setFormMode('income')} className={`py-3 rounded-xl border text-sm font-bold transition flex flex-col items-center justify-center gap-1 ${formMode === 'income' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-500' : 'bg-gray-900 border-gray-800 text-gray-500'}`}><DollarSign size={20}/> Entrada</button><button onClick={() => setFormMode('expense')} className={`py-3 rounded-xl border text-sm font-bold transition flex flex-col items-center justify-center gap-1 ${formMode === 'expense' ? 'bg-red-500/20 border-red-500 text-red-500' : 'bg-gray-900 border-gray-800 text-gray-500'}`}><TrendingDown size={20}/> Gasto</button><button onClick={() => setFormMode('installment')} className={`py-3 rounded-xl border text-sm font-bold transition flex flex-col items-center justify-center gap-1 ${formMode === 'installment' ? 'bg-purple-500/20 border-purple-500 text-purple-500' : 'bg-gray-900 border-gray-800 text-gray-500'}`}><CreditCard size={20}/> Parcelado</button><button onClick={() => setFormMode('fixed_expense')} className={`py-3 rounded-xl border text-sm font-bold transition flex flex-col items-center justify-center gap-1 ${formMode === 'fixed_expense' ? 'bg-blue-500/20 border-blue-500 text-blue-500' : 'bg-gray-900 border-gray-800 text-gray-500'}`}><CheckCircle2 size={20}/> Fixo</button></div><div className="space-y-4">{formMode === 'income' && (<div className="flex items-center gap-3 bg-gray-900 p-3 rounded-lg"><input type="checkbox" id="fixo" checked={formData.isFixedIncome} onChange={(e) => setFormData({...formData, isFixedIncome: e.target.checked})} className="w-5 h-5 rounded accent-emerald-500"/><label htmlFor="fixo" className="text-gray-300 text-sm cursor-pointer select-none">Fixo mensal?</label></div>)}{formMode === 'installment' && (<div className="bg-purple-900/10 p-4 rounded-xl border border-purple-900/30 space-y-3 mb-4"><p className="text-purple-400 text-xs font-bold uppercase mb-2">Financiamento / Valor Personalizado</p><label className="text-gray-400 text-xs block">Valor Real da Parcela (com Juros):</label><input type="number" value={formData.fixedMonthlyValue} onChange={(e) => setFormData({...formData, fixedMonthlyValue: e.target.value})} className="w-full bg-black border border-gray-700 rounded-lg p-2 text-white focus:border-purple-500 outline-none" placeholder="Ex: 850.00"/></div>)}<input type="text" value={formData.title} onChange={(e) => setFormData({...formData, title: e.target.value})} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none" placeholder="Descrição"/>
+            <div className="my-4">
+    <label className="text-gray-500 text-xs uppercase font-bold mb-2 block ml-1">Escolha um Ícone</label>
+    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+        {Object.keys(ICON_MAP).map(iconKey => {
+            const IconComponent = ICON_MAP[iconKey];
+            return (
+                <button 
+                    key={iconKey}
+                    onClick={() => setFormData({...formData, icon: iconKey})}
+                    className={`p-3 rounded-xl border transition flex-shrink-0 ${formData.icon === iconKey ? 'bg-cyan-600 border-cyan-400 text-white shadow-lg shadow-cyan-900/50' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700 hover:text-white'}`}
+                >
+                    <IconComponent size={20} />
+                </button>
+            )
+        })}
+    </div>
+</div>
+            <input type="number" value={formData.amount} onChange={(e) => setFormData({...formData, amount: e.target.value})} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none" placeholder={formMode === 'installment' ? "Valor TOTAL da Dívida" : "Valor (R$)"}/>{formMode === 'installment' && (<div className="flex gap-4"><input type="number" placeholder="Parcelas" value={formData.installments} onChange={(e) => setFormData({...formData, installments: e.target.value})} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white outline-none"/><input type="number" placeholder="Dia Venc." value={formData.dueDay} onChange={(e) => setFormData({...formData, dueDay: e.target.value})} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white outline-none"/></div>)}
             {/* AREA DE UPLOAD DE COMPROVANTE */}
             {((formMode !== 'installment' && formMode !== 'fixed_expense') || editingId) && (
                 <div className="border border-dashed border-gray-700 rounded-xl p-4 flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-gray-900/50 transition relative group">
