@@ -1,47 +1,69 @@
 import React from 'react';
-import { Leaf, ArrowUpCircle, ArrowDownCircle, Wallet } from 'lucide-react';
+import { Leaf, TrendingUp, TrendingDown, Sun } from 'lucide-react';
 
-export default function ZenView({ displayBalance, currentMonthData, activeTab, months, setActiveTab }: any) {
-    const isPositive = displayBalance >= 0;
-    const percentageSpent = Math.min((currentMonthData.expenseTotal / (currentMonthData.income || 1)) * 100, 100);
+export default function ZenView({ currentMonthData, transactions, previousSurplus, activeTab }: any) {
+    const displayBalance = currentMonthData.balance + previousSurplus;
+    
+    // Frases motivacionais aleatórias
+    const quotes = [
+        "A riqueza é a habilidade de experimentar a vida totalmente.",
+        "Não é o quanto você ganha, é o quanto você guarda.",
+        "Paz financeira é viver com menos do que você ganha.",
+        "O melhor investimento é em você mesmo."
+    ];
+    const randomQuote = quotes[Math.floor(Math.random() * quotes.length)];
 
     return (
-        <div className="animate-in fade-in duration-700 flex flex-col items-center justify-center min-h-[60vh] text-center">
+        <div className="animate-in fade-in duration-1000 min-h-[60vh] flex flex-col items-center justify-center p-4">
             
-            {/* Seletor Discreto */}
-            <div className="flex gap-2 mb-12 opacity-50 hover:opacity-100 transition">
-                {months.map((m: string) => (
-                    <button key={m} onClick={() => setActiveTab(m)} className={`text-xs uppercase tracking-widest ${activeTab === m ? 'text-white border-b border-white' : 'text-gray-600'}`}>{m}</button>
-                ))}
+            {/* CABEÇALHO ZEN */}
+            <div className="text-center mb-10">
+                <div className="inline-block p-4 rounded-full bg-emerald-900/10 mb-4 animate-bounce duration-[3000ms]">
+                    <Leaf className="text-emerald-500" size={32} />
+                </div>
+                <h2 className="text-gray-400 text-sm uppercase tracking-[0.2em] mb-2">Modo Zen</h2>
+                <p className="text-gray-500 italic max-w-md mx-auto text-xs md:text-sm">"{randomQuote}"</p>
             </div>
 
-            {/* O Grande Número */}
-            <div className="relative mb-8">
-                <div className={`absolute inset-0 blur-[100px] opacity-20 ${isPositive ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
-                <h1 className="text-gray-400 text-sm uppercase tracking-[0.2em] mb-4 flex items-center justify-center gap-2">
-                    <Leaf size={16} /> Saldo Disponível
-                </h1>
-                <div className={`text-7xl md:text-9xl font-thin tracking-tighter ${isPositive ? 'text-white' : 'text-red-400'}`}>
-                    <span className="text-2xl md:text-4xl align-top opacity-50 mr-2">R$</span>
-                    {displayBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+            {/* CARD PRINCIPAL (FLEX COL NO MOBILE, ROW NO DESKTOP) */}
+            <div className="bg-[#0f1219] border border-gray-800 p-8 md:p-12 rounded-[3rem] shadow-2xl shadow-emerald-900/10 flex flex-col md:flex-row items-center gap-8 md:gap-16 w-full max-w-4xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none"></div>
+
+                {/* Coluna 1: O Número Importante */}
+                <div className="text-center md:text-left z-10">
+                    <p className="text-gray-500 mb-2 font-medium">Livre para Gastar em {activeTab}</p>
+                    <h1 className={`text-5xl md:text-7xl font-thin tracking-tighter ${displayBalance >= 0 ? 'text-white' : 'text-red-400'}`}>
+                        R$ {displayBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </h1>
+                    {previousSurplus > 0 && <p className="text-emerald-500 text-xs mt-2 bg-emerald-900/20 inline-block px-3 py-1 rounded-full">+ R$ {previousSurplus.toFixed(2)} acumulado</p>}
+                </div>
+
+                {/* Divisor Visual */}
+                <div className="w-full h-px md:w-px md:h-32 bg-gray-800"></div>
+
+                {/* Coluna 2: Resumo Minimalista */}
+                <div className="space-y-6 w-full md:w-auto z-10">
+                    <div className="flex items-center justify-between md:justify-start gap-4">
+                        <div className="p-3 bg-emerald-900/20 rounded-2xl text-emerald-400"><TrendingUp size={20}/></div>
+                        <div>
+                            <p className="text-xs text-gray-500 uppercase font-bold">Entradas</p>
+                            <p className="text-xl text-emerald-400">R$ {currentMonthData.income.toFixed(2)}</p>
+                        </div>
+                    </div>
+                    <div className="flex items-center justify-between md:justify-start gap-4">
+                        <div className="p-3 bg-red-900/20 rounded-2xl text-red-400"><TrendingDown size={20}/></div>
+                        <div>
+                            <p className="text-xs text-gray-500 uppercase font-bold">Saídas</p>
+                            <p className="text-xl text-red-400">R$ {currentMonthData.expenseTotal.toFixed(2)}</p>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            {/* Barra de Progresso Minimalista */}
-            <div className="w-64 h-1 bg-gray-900 rounded-full mb-8 overflow-hidden">
-                <div className={`h-full transition-all duration-1000 ${isPositive ? 'bg-emerald-500' : 'bg-red-500'}`} style={{ width: `${percentageSpent}%` }}></div>
-            </div>
-
-            {/* Resumo Zen */}
-            <div className="grid grid-cols-2 gap-12 md:gap-24">
-                <div>
-                    <p className="text-gray-600 text-xs uppercase tracking-widest mb-2 flex items-center justify-center gap-2"><ArrowUpCircle size={14}/> Entrou</p>
-                    <p className="text-2xl text-gray-300 font-light">R$ {currentMonthData.income.toLocaleString('pt-BR')}</p>
-                </div>
-                <div>
-                    <p className="text-gray-600 text-xs uppercase tracking-widest mb-2 flex items-center justify-center gap-2"><ArrowDownCircle size={14}/> Saiu</p>
-                    <p className="text-2xl text-gray-300 font-light">R$ {currentMonthData.expenseTotal.toLocaleString('pt-BR')}</p>
-                </div>
+            {/* Rodapé */}
+            <div className="mt-12 flex items-center gap-2 text-gray-600 text-xs">
+                <Sun size={14} />
+                <span>Respire fundo. Você está no controle.</span>
             </div>
         </div>
     );

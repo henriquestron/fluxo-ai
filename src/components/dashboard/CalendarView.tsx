@@ -2,64 +2,112 @@ import React from 'react';
 import { Calendar as CalIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function CalendarView({ transactions, installments, recurring, activeTab, months, setActiveTab }: any) {
-    const monthIndex = months.indexOf(activeTab);
-    const year = 2026;
-    
-    // Gera os dias do mês
-    const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
-    const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-
-    // Mapeia contas por dia
-    const getItemsForDay = (day: number) => {
-        const dayStr = day < 10 ? `0${day}` : `${day}`;
-        const monthStr = (monthIndex + 1) < 10 ? `0${monthIndex + 1}` : `${monthIndex + 1}`;
-        const dateMatch = `${dayStr}/${monthStr}`; // Ex: 05/02
-
-        const items: any[] = [];
-
-        // Transações normais
-        transactions.forEach((t: any) => { if (t.date?.includes(dateMatch)) items.push({ ...t, color: 'bg-emerald-500' }); });
-        
-        // Recorrentes (Dia fixo)
-        recurring.forEach((r: any) => { if (r.due_day === day && !r.skipped_months?.includes(activeTab)) items.push({ ...r, color: 'bg-blue-500' }); });
-
-        // Parcelas (Dia fixo)
-        installments.forEach((i: any) => { 
-            const currentInst = i.current_installment + monthIndex;
-            if (i.due_day === day && currentInst >= 1 && currentInst <= i.installments_count) items.push({ ...i, color: 'bg-purple-500' }); 
-        });
-
-        return items;
+    // Helper para pegar dias do mês
+    const getDaysInMonth = (monthName: string) => {
+        const monthIndex = months.indexOf(monthName);
+        const year = 2026;
+        const date = new Date(year, monthIndex, 1);
+        const days = [];
+        while (date.getMonth() === monthIndex) {
+            days.push(new Date(date));
+            date.setDate(date.getDate() + 1);
+        }
+        return days;
     };
 
+    const days = getDaysInMonth(activeTab);
+    const monthMap: Record<string, string> = { 'Jan': '/01', 'Fev': '/02', 'Mar': '/03', 'Abr': '/04', 'Mai': '/05', 'Jun': '/06', 'Jul': '/07', 'Ago': '/08', 'Set': '/09', 'Out': '/10', 'Nov': '/11', 'Dez': '/12' };
+
+    // Filtra itens por dia
+    const getItemsForDay = (day: number) => {
+        const dayStr = day.toString().padStart(2, '0');
+        const dateFilter = `${dayStr}${monthMap[activeTab]}`;
+        
+        const trans = transactions.filter((t: any) => t.date?.includes(dateFilter) && t.status !== 'delayed');
+        
+        // Parcelas vencendo neste dia
+        const insts = installments.filter((i: any) => {
+            if (i.status === 'delayed') return false;
+            const due = i.due_day || 10;
+            return due === day && i.current_installment + months.indexOf(activeTab) <= i.installments_count;
+        });
+
+        // Recorrentes vencendo neste dia
+        const recurs = recurring.filter((r: any) => {
+            if (r.status === 'delayed') return false;
+            const due = r.due_day || 10;
+            return due === day && r.type === 'expense';
+        });
+
+        return [...trans, ...insts, ...recurs];
+    };
+
+    // Navegação de Mês
+    const currentIdx = months.indexOf(activeTab);
+    const prevMonth = currentIdx > 0 ? months[currentIdx - 1] : null;
+    const nextMonth = currentIdx < months.length - 1 ? months[currentIdx + 1] : null;
+
     return (
-        <div className="animate-in zoom-in duration-300">
-            <div className="flex justify-between items-center mb-6 bg-[#111] p-4 rounded-xl border border-gray-800">
-                <h2 className="text-xl font-bold flex items-center gap-2"><CalIcon className="text-cyan-500"/> Agenda: {activeTab}/{year}</h2>
-                <div className="flex gap-2">
-                    {months.map((m: string) => (
-                        <button key={m} onClick={() => setActiveTab(m)} className={`px-3 py-1 rounded text-xs ${activeTab === m ? 'bg-cyan-900 text-cyan-400 border border-cyan-500' : 'text-gray-500'}`}>{m}</button>
-                    ))}
+        <div className="animate-in fade-in zoom-in duration-500">
+            {/* Header do Calendário */}
+            <div className="flex justify-between items-center mb-6 bg-[#0f1219] p-4 rounded-2xl border border-gray-800">
+                <div className="flex items-center gap-2">
+                    <div className="bg-purple-900/20 p-2 rounded-lg text-purple-400"><CalIcon size={20}/></div>
+                    <h2 className="text-xl font-bold text-white">Calendário de Vencimentos</h2>
+                </div>
+                <div className="flex items-center gap-2">
+                    <button onClick={() => prevMonth && setActiveTab(prevMonth)} disabled={!prevMonth} className="p-2 hover:bg-gray-800 rounded-lg disabled:opacity-30 transition"><ChevronLeft/></button>
+                    <span className="font-mono font-bold text-cyan-400 w-16 text-center">{activeTab}</span>
+                    <button onClick={() => nextMonth && setActiveTab(nextMonth)} disabled={!nextMonth} className="p-2 hover:bg-gray-800 rounded-lg disabled:opacity-30 transition"><ChevronRight/></button>
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
-                {days.map(day => {
-                    const items = getItemsForDay(day);
-                    return (
-                        <div key={day} className={`min-h-[100px] bg-[#0a0a0a] border border-gray-800 rounded-xl p-2 hover:border-gray-600 transition relative ${items.length > 0 ? 'bg-[#0f1219]' : ''}`}>
-                            <span className="absolute top-2 right-3 text-gray-600 font-bold text-xs">{day}</span>
-                            <div className="mt-6 space-y-1">
-                                {items.map((item, idx) => (
-                                    <div key={idx} className={`text-[10px] px-2 py-1 rounded text-white truncate ${item.type === 'income' ? 'bg-emerald-900/50 border border-emerald-500/30' : 'bg-gray-800 border border-gray-700'}`}>
-                                        {item.title}
+            {/* CONTAINER COM SCROLL HORIZONTAL PARA MOBILE */}
+            <div className="overflow-x-auto pb-4">
+                {/* min-w-[800px] força o calendário a ter tamanho decente e ativar o scroll no mobile */}
+                <div className="min-w-[800px] bg-[#0f1219] border border-gray-800 rounded-2xl overflow-hidden">
+                    {/* Cabeçalho dias da semana */}
+                    <div className="grid grid-cols-7 bg-gray-900 border-b border-gray-800">
+                        {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(d => (
+                            <div key={d} className="py-3 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">{d}</div>
+                        ))}
+                    </div>
+
+                    {/* Grade de Dias */}
+                    <div className="grid grid-cols-7 auto-rows-fr">
+                        {/* Espaços vazios antes do dia 1 */}
+                        {Array.from({ length: days[0].getDay() }).map((_, i) => (
+                            <div key={`empty-${i}`} className="bg-[#0a0a0a] border-r border-b border-gray-800/50 min-h-[120px]"></div>
+                        ))}
+
+                        {days.map((date) => {
+                            const dayNum = date.getDate();
+                            const items = getItemsForDay(dayNum);
+                            const totalDay = items.reduce((acc: number, curr: any) => acc + (curr.amount || curr.value || curr.value_per_month), 0);
+                            const isToday = new Date().getDate() === dayNum && new Date().getMonth() === months.indexOf(activeTab) && new Date().getFullYear() === 2026;
+
+                            return (
+                                <div key={dayNum} className={`border-r border-b border-gray-800/50 min-h-[120px] p-2 transition hover:bg-gray-800/20 relative group ${isToday ? 'bg-cyan-900/10' : ''}`}>
+                                    <div className="flex justify-between items-start mb-1">
+                                        <span className={`text-sm font-bold ${isToday ? 'text-cyan-400 bg-cyan-900/30 w-6 h-6 flex items-center justify-center rounded-full' : 'text-gray-500'}`}>{dayNum}</span>
+                                        {totalDay > 0 && <span className="text-[10px] text-red-300 bg-red-900/20 px-1 rounded">- {Math.round(totalDay)}</span>}
                                     </div>
-                                ))}
-                            </div>
-                        </div>
-                    )
-                })}
+                                    
+                                    <div className="space-y-1 overflow-y-auto max-h-[80px] scrollbar-hide">
+                                        {items.map((item: any, idx: number) => (
+                                            <div key={idx} className={`text-[10px] px-1.5 py-0.5 rounded truncate border ${item.is_paid ? 'bg-emerald-900/20 text-emerald-400 border-emerald-900/30' : 'bg-gray-800 text-gray-300 border-gray-700'}`}>
+                                                {item.title}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
             </div>
+            
+            <p className="md:hidden text-center text-xs text-gray-500 mt-2 animate-pulse">← Arraste para ver a semana inteira →</p>
         </div>
     );
 }
