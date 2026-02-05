@@ -15,6 +15,7 @@ import { driver } from "driver.js";
 import "driver.js/dist/driver.css";
 import TimelineView from '@/components/dashboard/TimelineView';
 import BentoView from '@/components/dashboard/BentoView';
+import { Toaster, toast } from 'sonner';
 
 // COMPONENTES
 import StandardView from '@/components/dashboard/StandardView';
@@ -307,20 +308,20 @@ const [currentLayout, setCurrentLayout] = useState<'standard' | 'trader' | 'zen'
 
  const handleCreateProfile = async () => {
       // --- TRAVA 1: USUÁRIO LOCAL (SEM CONTA) ---
-      if (!user) {
-          setIsNewProfileModalOpen(false);
-          alert("☁️ Recurso na Nuvem Necessário\n\nPara criar múltiplos perfis personalizados, você precisa criar uma conta gratuita para salvar seus dados.");
-          setIsAuthModalOpen(true); // Abre o modal de Login/Cadastro na cara dele
-          return;
-      }
+      // ... dentro das travas ...
+  if (!user) {
+      setIsNewProfileModalOpen(false);
+      toast.info("Recurso na Nuvem Necessário", { description: "Crie uma conta gratuita para salvar seus perfis." }); // Troquei
+      setIsAuthModalOpen(true);
+      return;
+  }
 
-      // --- TRAVA 2: PLANO FREE (LIMITE DE 1 PERFIL) ---
-      if (userPlan === 'free' && workspaces.length >= 1) {
-          setIsNewProfileModalOpen(false); 
-          alert("🔒 Múltiplos Perfis é exclusivo para membros Premium.\n\nOrganize 'Trader', 'Loja' e 'Casa' separadamente sendo um Aliado.");
-          openPricingModal(); // Abre o modal de Venda
-          return;
-      }
+  if (userPlan === 'free' && workspaces.length >= 1) {
+      setIsNewProfileModalOpen(false);
+      toast.error("Limite de Perfis Atingido", { description: "Seja Premium para criar múltiplos perfis." }); // Troquei
+      openPricingModal();
+      return;
+  }
 
       // --- CRIAÇÃO DO PERFIL (Se passou pelas travas) ---
       if (!newProfileName) return;
@@ -373,12 +374,20 @@ const [currentLayout, setCurrentLayout] = useState<'standard' | 'trader' | 'zen'
       if (data) setClients(data);
   };
 
-  const handleAddClient = async () => {
-      if (!newClientEmail) return;
+ const handleAddClient = async () => {
+      if (!newClientEmail) return toast.warning("Digite o e-mail do cliente."); // Troquei
+      
       setAddingClient(true);
       const { error } = await supabase.from('manager_clients').insert({ manager_id: user.id, client_email: newClientEmail, status: 'active' });
-      if (error) alert("Erro ao adicionar: " + error.message);
-      else { setNewClientEmail(''); setIsClientModalOpen(false); fetchClients(user.id); alert("Cliente adicionado!"); }
+      
+      if (error) {
+          toast.error("Erro ao adicionar: " + error.message); // Troquei
+      } else { 
+          setNewClientEmail(''); 
+          setIsClientModalOpen(false); 
+          fetchClients(user.id); 
+          toast.success("Cliente adicionado com sucesso! 🎉"); // Troquei
+      }
       setAddingClient(false);
   };
 
@@ -459,18 +468,17 @@ const [currentLayout, setCurrentLayout] = useState<'standard' | 'trader' | 'zen'
   };
 
   const handleUpdatePassword = async () => {
-      if (!newPassword) return alert("Digite a nova senha.");
+      if (!newPassword) return toast.warning("Digite a nova senha."); // Troquei
       
       setLoadingAuth(true);
       const { error } = await supabase.auth.updateUser({ password: newPassword });
 
       if (error) {
-          alert("Erro ao atualizar: " + error.message);
+          toast.error("Erro ao atualizar: " + error.message); // Troquei
       } else {
-          alert("✅ Senha atualizada com sucesso!");
+          toast.success("Senha atualizada com sucesso! 🔒"); // Troquei
           setIsChangePasswordOpen(false);
           setNewPassword('');
-          // Opcional: Deslogar para ele testar a senha nova ou manter logado
       }
       setLoadingAuth(false);
   };
@@ -486,8 +494,11 @@ const [currentLayout, setCurrentLayout] = useState<'standard' | 'trader' | 'zen'
       try {
           const response = await fetch('/api/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, email: user.email, priceId }), });
           const data = await response.json();
-          if (data.url) window.location.href = data.url; else alert("Erro ao criar pagamento.");
-      } catch (e) { alert("Erro de conexão."); }
+          if (data.url) window.location.href = data.url; 
+      else toast.error("Erro ao criar pagamento."); // Troquei
+  } catch (e) { 
+      toast.error("Erro de conexão. Tente novamente."); // Troquei
+  }
       if(btn) btn.innerText = "Assinar Agora";
   };
 
@@ -528,7 +539,7 @@ const [currentLayout, setCurrentLayout] = useState<'standard' | 'trader' | 'zen'
       const file = e.target.files[0];
       if (!file || !user) return;
       setUploadingFile(true);
-      try { const fileExt = file.name.split('.').pop(); const fileName = `${user.id}/${Date.now()}.${fileExt}`; const { error: uploadError } = await supabase.storage.from('comprovantes').upload(fileName, file); if (uploadError) throw uploadError; const { data } = supabase.storage.from('comprovantes').getPublicUrl(fileName); setFormData({ ...formData, receiptUrl: data.publicUrl }); } catch (error: any) { alert("Erro no upload: " + error.message); } finally { setUploadingFile(false); }
+      try { const fileExt = file.name.split('.').pop(); const fileName = `${user.id}/${Date.now()}.${fileExt}`; const { error: uploadError } = await supabase.storage.from('comprovantes').upload(fileName, file); if (uploadError) throw uploadError; const { data } = supabase.storage.from('comprovantes').getPublicUrl(fileName); setFormData({ ...formData, receiptUrl: data.publicUrl }); } catch (error: any) { toast.error("Erro no upload: " + error.message); } finally { setUploadingFile(false); }
   };
 
   const handleRemoveReceipt = (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); if (confirm("Tem certeza?")) setFormData({ ...formData, receiptUrl: '' }); };
@@ -537,8 +548,9 @@ const [currentLayout, setCurrentLayout] = useState<'standard' | 'trader' | 'zen'
     // 1. Verificação de Plano Free
     const totalItems = transactions.length + installments.length + recurring.length;
     const FREE_LIMIT = 50; 
+    // ... trava do plano free ...
     if (userPlan === 'free' && totalItems >= FREE_LIMIT && !editingId) {
-        alert(`🔒 Limite Grátis Atingido!\n\nVocê já usou ${totalItems} lançamentos. Ative um plano para continuar.`);
+        toast.error("Limite Grátis Atingido!", { description: "Você já usou seus 50 lançamentos mensais." }); // Troquei
         openPricingModal(); 
         return;
     }
@@ -1323,7 +1335,9 @@ const [currentLayout, setCurrentLayout] = useState<'standard' | 'trader' | 'zen'
                       </button>
                   </div>
               </div>
+              <Toaster richColors position="top-center" theme={currentTheme === 'light' ? 'light' : 'dark'} />
           </div>
+          
       )}      {isRolloverModalOpen && (<div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[200] p-6"><div className="bg-[#111] border border-gray-700 p-8 rounded-3xl w-full max-w-lg shadow-2xl relative"><h2 className="text-2xl font-bold mb-2 text-white flex items-center gap-2"><AlertCircle className="text-orange-500"/> Contas em Aberto</h2><p className="text-gray-400 text-sm mb-6">Existem contas de meses passados que você não marcou como pagas.</p><div className="max-h-[300px] overflow-y-auto space-y-2 mb-6 pr-2">{pastDueItems.map((item, idx) => (<div key={idx} className="flex justify-between items-center p-3 bg-gray-900 rounded-lg border border-gray-800"><div><p className="text-white font-medium text-sm">{item.title}</p><p className="text-xs text-gray-500">{item.month}</p></div><div className="flex items-center gap-3"><span className="text-red-400 font-mono">R$ {item.amount || item.value || item.value_per_month}</span><button onClick={() => toggleDelay(item.origin, item)} className="text-xs bg-orange-500/20 text-orange-400 px-2 py-1 rounded border border-orange-500/50 hover:bg-orange-500 hover:text-white transition">Mover p/ Stand-by</button></div></div>))}</div><div className="flex justify-end gap-3"><button onClick={() => setIsRolloverModalOpen(false)} className="bg-white text-black px-6 py-2 rounded-full font-bold hover:bg-gray-200 transition">OK</button></div></div></div>)}
     </div>
   );
