@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';import { supabase } from '@/supabase';
 import { driver } from "driver.js";
 import "driver.js/dist/driver.css";
+import TimelineView from '@/components/dashboard/TimelineView';
+import BentoView from '@/components/dashboard/BentoView';
 
 // COMPONENTES
 import StandardView from '@/components/dashboard/StandardView';
@@ -46,7 +48,8 @@ export default function FinancialDashboard() {
 
   // --- ESTADOS GLOBAIS ---
   const [activeTab, setActiveTab] = useState(currentSystemMonthName); 
-  const [currentLayout, setCurrentLayout] = useState<'standard' | 'trader' | 'zen' | 'calendar'>('standard'); 
+ // Exemplo (se estiver usando TypeScript explícito)
+const [currentLayout, setCurrentLayout] = useState<'standard' | 'trader' | 'zen' | 'calendar' | 'timeline' | 'bento'>('standard');
   const [currentTheme, setCurrentTheme] = useState('default');
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   
@@ -686,6 +689,7 @@ export default function FinancialDashboard() {
  // --- FUNÇÃO IA "CENTRO DE COMANDO" ---
   // --- FUNÇÃO IA "CENTRO DE COMANDO" (BUSCA INTELIGENTE) ---
   // --- FUNÇÃO IA "CENTRO DE COMANDO" (AGORA COM MODO CARTEIRA) ---
+  // --- FUNÇÃO IA COMPLETA (PORTFÓLIO + DETETIVE + TRAVA FREE) ---
   const askGemini = async (overridePrompt?: string) => {
     const promptToSend = overridePrompt || aiPrompt;
     if (!promptToSend) return;
@@ -698,30 +702,23 @@ export default function FinancialDashboard() {
     let targetContextData = null;
 
     // --- MODO 1: VISÃO DE PORTFÓLIO (TODOS OS CLIENTES) ---
-    // Palavras-chave: "todos", "geral", "carteira", "resumo dos clientes"
     const isPortfolioRequest = ['todos', 'geral', 'carteira', 'resumo dos clientes', 'visão geral'].some(k => promptLower.includes(k));
 
     if ((userPlan === 'agent' || userPlan === 'admin') && clients.length > 0 && isPortfolioRequest) {
         setAiResponse(`📊 Compilando relatório da carteira (${clients.length} clientes)...`);
         
         const clientIds = clients.map(c => c.client_id);
-
-        // Busca OTIMIZADA: Traz tudo de todo mundo em 3 chamadas (não trava o banco)
         const { data: allTrans } = await supabase.from('transactions').select('user_id, amount, type').in('user_id', clientIds).eq('status', 'active');
         const { data: allInst } = await supabase.from('installments').select('user_id, value_per_month').in('user_id', clientIds).eq('status', 'active');
         const { data: allRecur } = await supabase.from('recurring').select('user_id, value, type').in('user_id', clientIds).eq('status', 'active');
 
-        // Processa os dados cliente por cliente
         const portfolioSummary = clients.map(client => {
             const cId = client.client_id;
             const cName = client.client_email.split('@')[0];
-
-            // Filtra os dados deste cliente específico nos arrays gerais
             const cTrans = allTrans?.filter(t => t.user_id === cId) || [];
             const cInst = allInst?.filter(i => i.user_id === cId) || [];
             const cRecur = allRecur?.filter(r => r.user_id === cId) || [];
 
-            // Calcula Totais
             const income = cTrans.filter(t => t.type === 'income').reduce((acc, curr) => acc + curr.amount, 0) + 
                            cRecur.filter(r => r.type === 'income').reduce((acc, curr) => acc + curr.value, 0);
             
@@ -729,18 +726,11 @@ export default function FinancialDashboard() {
                             cRecur.filter(r => r.type === 'expense').reduce((acc, curr) => acc + curr.value, 0) +
                             cInst.reduce((acc, curr) => acc + curr.value_per_month, 0);
 
-            return {
-                cliente: cName,
-                renda: income,
-                gastos: expense,
-                saldo: income - expense,
-                status: (income - expense) < 0 ? 'CRÍTICO 🚨' : 'SAUDÁVEL ✅'
-            };
+            return { cliente: cName, renda: income, gastos: expense, saldo: income - expense, status: (income - expense) < 0 ? 'CRÍTICO 🚨' : 'SAUDÁVEL ✅' };
         });
 
-        // Monta o contexto especial de portfólio
         targetContextData = {
-            report_type: 'PORTFOLIO_ANALYSIS', // A IA vai saber que é um resumo
+            report_type: 'PORTFOLIO_ANALYSIS',
             resumo_carteira: portfolioSummary,
             is_consultant: true,
             client_name: "Toda a Carteira"
@@ -748,7 +738,6 @@ export default function FinancialDashboard() {
     }
 
     // --- MODO 2: DETETIVE (BUSCA ESPECÍFICA) ---
-    // Só roda se NÃO for modo portfólio
     if (!targetContextData && (userPlan === 'agent' || userPlan === 'admin') && clients.length > 0) {
         const mentionedClient = clients.find(c => {
             const emailPrefix = c.client_email.split('@')[0].toLowerCase();
@@ -788,7 +777,7 @@ export default function FinancialDashboard() {
         }
     }
 
-    // --- MODO 3: VISÃO PADRÃO (TELA ATUAL) ---
+    // --- MODO 3: VISÃO PADRÃO ---
     if (!targetContextData) {
         const topExpenses = transactions.filter(t => t.type === 'expense' && t.status !== 'delayed').sort((a, b) => b.amount - a.amount).slice(0, 15);
         const activeInstallments = installments.filter(i => i.status !== 'delayed').map(i => ({ title: i.title, parcelas: i.installments_count, valor_mes: i.value_per_month }));
@@ -821,14 +810,67 @@ export default function FinancialDashboard() {
         const data = await response.json();
         const text = data.response || "";
 
-        // LÓGICA DE COMANDOS JSON (Mantida igual, só roda se não for relatório geral)
-        if (userPlan !== 'free' && !targetContextData.report_type) {
-             // ... (Mantenha seu código de inserção de dados aqui, igualzinho à versão anterior) ...
-             // Se precisar que eu repita o bloco de inserção, me avise!
-             // Mas é só copiar e colar da última versão que te mandei.
-             // O importante é colar dentro desse IF para a IA não tentar lançar conta enquanto faz resumo de carteira.
-             const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-             // ... resto do código de insert ...
+        // --- LÓGICA DE COMANDOS (ADD/LANÇAR) ---
+        // Só tenta executar comandos se NÃO for relatório de portfólio
+        if (!targetContextData.report_type) {
+            const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+            const firstBracket = cleanText.search(/\[|\{/);
+            const lastBracket = cleanText.search(/\]|\}(?!.*\]|\})/);
+            
+            if (firstBracket !== -1 && lastBracket !== -1) {
+                const potentialJson = cleanText.substring(firstBracket, lastBracket + 1);
+                try {
+                    const parsed = JSON.parse(potentialJson);
+                    const commands = Array.isArray(parsed) ? parsed : [parsed];
+                    
+                    // --- TRAVA DE SEGURANÇA DO PLANO FREE 🔒 ---
+                    // Se a IA mandou comando de adicionar, mas o usuário é FREE
+                    if (userPlan === 'free' && commands.some((c: any) => c.action === 'add')) {
+                        setAiResponse(`🔒 **Funcionalidade Bloqueada**\n\nNo plano Lite, eu posso analisar seus dados e tirar dúvidas, mas **não tenho permissão para lançar contas automaticamente**.\n\nPor favor, faça o upgrade para que eu possa gerenciar seus lançamentos.`);
+                        setIsLoading(false);
+                        return; // PARE TUDO AQUI
+                    }
+                    // --------------------------------------------
+
+                    let itemsAdded = 0;
+                    for (const command of commands) {
+                        const activeId = getActiveUserId(); 
+                        if (command.action === 'add' && user && activeId) {
+                            let payload: any = { user_id: activeId, context: context };
+                            const rawData = command.data;
+                            const todayDate = new Date().toLocaleDateString('pt-BR');
+                            let validDate = rawData.date;
+                            if (!validDate || validDate === 'DD/MM/AAAA' || validDate.includes('DD/MM')) validDate = todayDate;
+                            
+                            const aiIcon = rawData.icon || null;
+
+                            if (command.table === 'installments') { 
+                                const totalVal = rawData.total_value || rawData.amount || rawData.value || 0; 
+                                const qtd = rawData.installments_count || 1; 
+                                const currentMonthIndex = MONTHS.indexOf(activeTab); 
+                                const installmentOffset = 1 - currentMonthIndex; 
+                                payload = { ...payload, title: rawData.title, total_value: totalVal, installments_count: qtd, value_per_month: rawData.value_per_month || (totalVal / qtd), current_installment: installmentOffset, fixed_monthly_value: null, due_day: rawData.due_day || 10, status: 'active', paid_months: [], icon: aiIcon }; 
+                            } 
+                            else if (command.table === 'transactions') { 
+                                payload = { ...payload, title: rawData.title, amount: rawData.amount || rawData.value || 0, type: rawData.type || 'expense', category: rawData.category || 'Outros', date: validDate, target_month: rawData.target_month || activeTab, status: 'active', is_paid: true, icon: aiIcon }; 
+                            } 
+                            else if (command.table === 'recurring') { 
+                                let validStartDate = rawData.start_date; 
+                                if (!validStartDate || validStartDate.includes('DD/MM')) validStartDate = `01/${activeTab === 'Jan' ? '01' : '02'}/2026`; 
+                                payload = { ...payload, title: rawData.title, value: rawData.value || rawData.amount || 0, type: rawData.type || 'expense', category: rawData.category || 'Fixa', start_date: validStartDate, status: 'active', due_day: rawData.due_day || 10, icon: aiIcon }; 
+                            }
+                            const { error } = await supabase.from(command.table).insert([payload]); 
+                            if (!error) itemsAdded++;
+                        }
+                    }
+                    if (itemsAdded > 0) { 
+                        await loadData(getActiveUserId(), context); 
+                        setAiResponse(`✅ Feito! Registrei ${itemsAdded} lançamentos.`); 
+                        setIsLoading(false);
+                        return; 
+                    }
+                } catch (e) { }
+            }
         }
 
         setAiResponse(text);
@@ -959,7 +1001,28 @@ export default function FinancialDashboard() {
             
             {userPlan === 'free' && user && (<button id="premium-btn" onClick={openPricingModal} className="h-12 bg-gradient-to-r from-amber-500 to-orange-600 text-white px-6 rounded-xl font-bold hover:shadow-[0_0_20px_rgba(245,158,11,0.4)] transition flex items-center justify-center gap-2 whitespace-nowrap"><Crown size={18}/> Seja Premium</button>)}
             
-            <button id="btn-ai" onClick={() => setIsAIOpen(true)} className={`h-12 bg-gradient-to-r ${userPlan === 'premium' || userPlan === 'agent' || userPlan === 'pro' ? 'from-cyan-600 to-blue-600' : 'from-gray-800 to-gray-700'} text-white px-6 rounded-xl font-bold hover:scale-105 transition border border-white/10 flex items-center justify-center gap-2 whitespace-nowrap shadow-lg`}><Sparkles size={18} className={userPlan === 'premium' || userPlan === 'agent' || userPlan === 'pro' ? "text-cyan-200" : "text-gray-400"}/> {userPlan === 'premium' || userPlan === 'agent' || userPlan === 'pro' ? 'Agente IA' : 'Consultor'}</button>
+            {/* BOTÃO IA COM TRAVAS DE SEGURANÇA 🔒 */}
+            {/* BOTÃO IA (LIBERADO PARA FREE, MAS LIMITADO) */}
+            <button 
+                id="btn-ai" 
+                onClick={() => {
+                    // TRAVA 1: Login Obrigatório
+                    if (!user) {
+                        setIsAuthModalOpen(true);
+                        setAuthMessage("✨ Entre para conversar com sua IA Financeira.");
+                        return;
+                    }
+                    // REMOVIDA A TRAVA DO PLANO FREE AQUI!
+                    
+                    // ABRE A IA
+                    setIsAIOpen(true);
+                }} 
+                className={`h-12 bg-gradient-to-r ${userPlan === 'premium' || userPlan === 'agent' || userPlan === 'pro' ? 'from-cyan-600 to-blue-600' : 'from-gray-800 to-gray-700'} text-white px-6 rounded-xl font-bold hover:scale-105 transition border border-white/10 flex items-center justify-center gap-2 whitespace-nowrap shadow-lg`}
+            >
+                <Sparkles size={18} className={userPlan === 'premium' || userPlan === 'agent' || userPlan === 'pro' ? "text-cyan-200" : "text-gray-400"}/> 
+                {userPlan === 'premium' || userPlan === 'agent' || userPlan === 'pro' ? 'Agente IA' : 'IA Lite'}
+            </button>
+
             <button id="btn-novo" onClick={openNewTransactionModal} className="h-12 bg-white text-black px-6 rounded-xl font-bold hover:bg-gray-200 transition flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(255,255,255,0.1)] whitespace-nowrap"><Plus size={18}/> Novo</button>
             <button onClick={runTour} className="h-12 w-12 flex items-center justify-center bg-gray-900 text-gray-400 hover:text-white rounded-xl border border-gray-800" title="Ajuda / Tour"><HelpCircle size={18}/></button>
         </div>
@@ -1026,6 +1089,27 @@ export default function FinancialDashboard() {
         setActiveTab={setActiveTab}
     />
 )}
+{/* NOVO: TIMELINE VIEW */}
+{currentLayout === 'timeline' && (
+    <TimelineView 
+        transactions={transactions}
+        activeTab={activeTab}
+    />
+)}
+
+{/* NOVO: BENTO VIEW */}
+    {currentLayout === 'bento' && (
+        <BentoView 
+            currentMonthData={currentMonthData}
+            transactions={transactions}
+            installments={installments}
+            recurring={recurring}
+            
+            // LIGANDO OS BOTÕES 👇
+            onOpenCalendar={() => setCurrentLayout('calendar')} // Muda a tela pra Calendário
+            onOpenRollover={() => setIsRolloverModalOpen(true)} // Abre o modal de Contas Atrasadas
+        />
+    )}
 
       {/* MODAL DE PERSONALIZAÇÃO */}
       <CustomizationModal 
@@ -1143,8 +1227,60 @@ export default function FinancialDashboard() {
 
       {isAuthModalOpen && ( <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[200] p-4"><div className="bg-[#111] border border-gray-800 p-8 rounded-3xl w-full max-w-sm shadow-2xl relative text-center"><button onClick={() => setIsAuthModalOpen(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white transition"><X size={24} /></button><div className="flex justify-center mb-6"><div className="bg-gray-900/50 p-3 rounded-2xl border border-gray-800">{showEmailCheck ? <Mail className="text-cyan-400" size={32} /> : <Lock className="text-cyan-400" size={32} />}</div></div>{showEmailCheck ? (<div className="animate-in fade-in zoom-in duration-300"><h2 className="text-2xl font-bold mb-2 text-white">Verifique seu e-mail</h2><p className="text-gray-400 text-sm mb-6">Enviamos um link de acesso para <b>{email}</b>. Clique nele para ativar sua conta.</p><div className="bg-cyan-900/20 text-cyan-400 text-xs p-3 rounded-xl border border-cyan-900/50 mb-6">Dica: Verifique a caixa de Spam.</div><button onClick={() => { setShowEmailCheck(false); setAuthMode('login'); }} className="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2">Voltar para Login</button></div>) : (<div><div className="flex justify-center mb-6"><div className="flex bg-black p-1 rounded-xl border border-gray-800"><button onClick={() => setAuthMode('login')} className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${authMode === 'login' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>Entrar</button><button onClick={() => setAuthMode('signup')} className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${authMode === 'signup' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>Criar Conta</button></div></div><div className="space-y-4 text-left"><div><label className="text-xs text-gray-500 ml-1 mb-1 block">E-mail</label><div className="relative"><Mail className="absolute left-3 top-3.5 text-gray-600" size={16} /><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seu@email.com" className="w-full bg-gray-900 border border-gray-700 rounded-xl py-3 pl-10 pr-3 text-white focus:border-cyan-500 outline-none transition"/></div></div><div><label className="text-xs text-gray-500 ml-1 mb-1 block">Senha</label><div className="relative"><Lock className="absolute left-3 top-3.5 text-gray-600" size={16} /><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="********" className="w-full bg-gray-900 border border-gray-700 rounded-xl py-3 pl-10 pr-3 text-white focus:border-cyan-500 outline-none transition"/></div></div></div>{authMessage && (<div className={`mt-4 p-3 rounded-lg text-xs flex items-center gap-2 ${authMessage.includes('❌') ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-green-500/10 text-green-400 border border-green-500/20'}`}>{authMessage}</div>)}<button onClick={handleAuth} disabled={loadingAuth} className="w-full bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl transition mt-6 flex items-center justify-center gap-2 shadow-lg shadow-cyan-900/20">{loadingAuth ? <Loader2 className="animate-spin" size={20}/> : (authMode === 'login' ? 'Acessar Conta' : 'Criar Conta')}</button>{authMode === 'login' && (<div className="mt-4 pt-4 border-t border-gray-800"><button onClick={handleResetPassword} disabled={loadingAuth} className="text-xs text-gray-500 hover:text-cyan-400 transition underline decoration-gray-700 hover:decoration-cyan-400 underline-offset-4">Esqueci minha senha</button></div>)}</div>)}</div></div>)}
       {isClientModalOpen && (<div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4"><div className="bg-[#111] border border-gray-800 p-6 rounded-3xl w-full max-w-sm"><h3 className="text-lg font-bold text-white mb-4">Novo Cliente</h3><input type="email" placeholder="E-mail do cliente" value={newClientEmail} onChange={(e) => setNewClientEmail(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white outline-none mb-4"/><div className="flex gap-2"><button onClick={() => setIsClientModalOpen(false)} className="flex-1 bg-gray-800 text-white py-3 rounded-xl">Cancelar</button><button onClick={handleAddClient} disabled={addingClient} className="flex-1 bg-cyan-600 text-white py-3 rounded-xl font-bold">{addingClient ? '...' : 'Adicionar'}</button></div></div></div>)}
-      {isAIOpen && (<div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[200] p-4"><div className="bg-[#0f0f13] border border-gray-700 w-full max-w-2xl h-[600px] rounded-3xl shadow-2xl flex flex-col relative overflow-hidden"><div className="p-6 border-b border-gray-800 bg-[#111] flex justify-between items-center z-10"><div className="flex items-center gap-3"><div className="bg-purple-600/20 p-2 rounded-lg"><Sparkles className="text-purple-400" size={24} /></div><h2 className="text-xl font-bold text-white">Consultor IA</h2></div><button onClick={() => setIsAIOpen(false)} className="text-gray-500 hover:text-white"><X /></button></div><div className="flex-1 p-6 overflow-y-auto space-y-4">{aiResponse ? (typeof aiResponse === 'string' ? <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700 text-gray-200 leading-relaxed whitespace-pre-line">{aiResponse}</div> : aiResponse) : <p className="text-center text-gray-600 mt-20 italic">"Como está minha saúde financeira?"</p>}{isLoading && <div className="text-purple-400 animate-pulse text-center">Pensando...</div>}</div><div className="px-6 py-2 flex gap-3 overflow-x-auto scrollbar-hide border-t border-gray-800 bg-[#111]"><button onClick={() => askGemini("Faça um diagnóstico de risco completo do meu mês atual. Me dê status (Verde/Amarelo/Vermelho) e alertas.")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-full text-xs font-bold text-cyan-400 border border-cyan-900/30 flex items-center gap-2 transition"><BarChart3 size={14}/> Diagnóstico</button><button onClick={() => askGemini("Analise meus maiores gastos e contas fixas. Onde estou perdendo dinheiro? Tem algo supérfluo?")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-full text-xs font-bold text-purple-400 border border-purple-900/30 flex items-center gap-2 transition"><Search size={14}/> Detetive</button><button onClick={() => askGemini("Meu saldo está negativo ou apertado. Me dê um plano de 3 passos práticos para sair dessa situação agora.")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-full text-xs font-bold text-emerald-400 border border-emerald-900/30 flex items-center gap-2 transition"><Target size={14}/> Plano de Resgate</button></div><div className="p-4 bg-[#111] flex gap-2"><input type="text" value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && askGemini()} placeholder="Pergunte ou lance um gasto..." className="flex-1 bg-gray-900 border border-gray-700 rounded-xl p-4 text-white outline-none"/><button onClick={() => askGemini()} className="bg-purple-600 hover:bg-purple-700 text-white p-4 rounded-xl"><Send size={24}/></button></div></div></div>)}
-      {isRolloverModalOpen && (<div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[200] p-6"><div className="bg-[#111] border border-gray-700 p-8 rounded-3xl w-full max-w-lg shadow-2xl relative"><h2 className="text-2xl font-bold mb-2 text-white flex items-center gap-2"><AlertCircle className="text-orange-500"/> Contas em Aberto</h2><p className="text-gray-400 text-sm mb-6">Existem contas de meses passados que você não marcou como pagas.</p><div className="max-h-[300px] overflow-y-auto space-y-2 mb-6 pr-2">{pastDueItems.map((item, idx) => (<div key={idx} className="flex justify-between items-center p-3 bg-gray-900 rounded-lg border border-gray-800"><div><p className="text-white font-medium text-sm">{item.title}</p><p className="text-xs text-gray-500">{item.month}</p></div><div className="flex items-center gap-3"><span className="text-red-400 font-mono">R$ {item.amount || item.value || item.value_per_month}</span><button onClick={() => toggleDelay(item.origin, item)} className="text-xs bg-orange-500/20 text-orange-400 px-2 py-1 rounded border border-orange-500/50 hover:bg-orange-500 hover:text-white transition">Mover p/ Stand-by</button></div></div>))}</div><div className="flex justify-end gap-3"><button onClick={() => setIsRolloverModalOpen(false)} className="bg-white text-black px-6 py-2 rounded-full font-bold hover:bg-gray-200 transition">OK</button></div></div></div>)}
+{isAIOpen && (
+          <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[200] p-4">
+              <div className="bg-[#0f0f13] border border-gray-700 w-full max-w-2xl h-[600px] rounded-3xl shadow-2xl flex flex-col relative overflow-hidden">
+                  
+                  {/* CABEÇALHO */}
+                  <div className="p-6 border-b border-gray-800 bg-[#111] flex justify-between items-center z-10">
+                      <div className="flex items-center gap-3">
+                          <div className="bg-purple-600/20 p-2 rounded-lg"><Sparkles className="text-purple-400" size={24} /></div>
+                          <h2 className="text-xl font-bold text-white">Consultor IA</h2>
+                      </div>
+                      <button onClick={() => setIsAIOpen(false)} className="text-gray-500 hover:text-white"><X /></button>
+                  </div>
+
+                  {/* ÁREA DE CHAT */}
+                  <div className="flex-1 p-6 overflow-y-auto space-y-4">
+                      {aiResponse ? (
+                          typeof aiResponse === 'string' ? 
+                          <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700 text-gray-200 leading-relaxed whitespace-pre-line">{aiResponse}</div> : aiResponse
+                      ) : (
+                          <p className="text-center text-gray-600 mt-20 italic">"Como está minha saúde financeira?"</p>
+                      )}
+                      {isLoading && <div className="text-purple-400 animate-pulse text-center">Pensando...</div>}
+                  </div>
+
+                  {/* ÁREA DE BOTÕES RÁPIDOS (COM TRAVA FREE 🔒) */}
+                  {userPlan !== 'free' ? (
+                      <div className="px-6 py-2 flex gap-3 overflow-x-auto scrollbar-hide border-t border-gray-800 bg-[#111]">
+                          <button onClick={() => askGemini("Faça um diagnóstico de risco completo do meu mês atual. Me dê status (Verde/Amarelo/Vermelho) e alertas.")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-full text-xs font-bold text-cyan-400 border border-cyan-900/30 flex items-center gap-2 transition"><BarChart3 size={14}/> Diagnóstico</button>
+                          <button onClick={() => askGemini("Analise meus maiores gastos e contas fixas. Onde estou perdendo dinheiro? Tem algo supérfluo?")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-full text-xs font-bold text-purple-400 border border-purple-900/30 flex items-center gap-2 transition"><Search size={14}/> Detetive</button>
+                          <button onClick={() => askGemini("Meu saldo está negativo ou apertado. Me dê um plano de 3 passos práticos para sair dessa situação agora.")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-full text-xs font-bold text-emerald-400 border border-emerald-900/30 flex items-center gap-2 transition"><Target size={14}/> Plano de Resgate</button>
+                      </div>
+                  ) : (
+                      // MENSAGEM PARA USUÁRIO FREE
+                      <div className="px-6 py-3 border-t border-gray-800 bg-[#111] flex justify-between items-center">
+                          <span className="text-xs text-gray-500 flex items-center gap-2"><Lock size={12}/> Modo Lite: Apenas consultas básicas.</span>
+                          <button onClick={() => { setIsAIOpen(false); openPricingModal(); }} className="text-xs bg-gradient-to-r from-amber-500 to-orange-600 text-white px-3 py-1.5 rounded-lg font-bold hover:shadow-lg transition">Desbloquear IA Completa</button>
+                      </div>
+                  )}
+
+                  {/* INPUT */}
+                  <div className="p-4 bg-[#111] flex gap-2">
+                      <input 
+                        type="text" 
+                        value={aiPrompt} 
+                        onChange={(e) => setAiPrompt(e.target.value)} 
+                        onKeyDown={(e) => e.key === 'Enter' && askGemini()} 
+                        placeholder={userPlan === 'free' ? "Tire uma dúvida sobre suas finanças..." : "Pergunte ou lance um gasto..."}
+                        className="flex-1 bg-gray-900 border border-gray-700 rounded-xl p-4 text-white outline-none focus:border-purple-500 transition"
+                      />
+                      <button onClick={() => askGemini()} className="bg-purple-600 hover:bg-purple-700 text-white p-4 rounded-xl shadow-lg shadow-purple-900/20"><Send size={24}/></button>
+                  </div>
+              </div>
+          </div>
+      )}      {isRolloverModalOpen && (<div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[200] p-6"><div className="bg-[#111] border border-gray-700 p-8 rounded-3xl w-full max-w-lg shadow-2xl relative"><h2 className="text-2xl font-bold mb-2 text-white flex items-center gap-2"><AlertCircle className="text-orange-500"/> Contas em Aberto</h2><p className="text-gray-400 text-sm mb-6">Existem contas de meses passados que você não marcou como pagas.</p><div className="max-h-[300px] overflow-y-auto space-y-2 mb-6 pr-2">{pastDueItems.map((item, idx) => (<div key={idx} className="flex justify-between items-center p-3 bg-gray-900 rounded-lg border border-gray-800"><div><p className="text-white font-medium text-sm">{item.title}</p><p className="text-xs text-gray-500">{item.month}</p></div><div className="flex items-center gap-3"><span className="text-red-400 font-mono">R$ {item.amount || item.value || item.value_per_month}</span><button onClick={() => toggleDelay(item.origin, item)} className="text-xs bg-orange-500/20 text-orange-400 px-2 py-1 rounded border border-orange-500/50 hover:bg-orange-500 hover:text-white transition">Mover p/ Stand-by</button></div></div>))}</div><div className="flex justify-end gap-3"><button onClick={() => setIsRolloverModalOpen(false)} className="bg-white text-black px-6 py-2 rounded-full font-bold hover:bg-gray-200 transition">OK</button></div></div></div>)}
     </div>
   );
 }
