@@ -1228,55 +1228,99 @@ const [currentLayout, setCurrentLayout] = useState<'standard' | 'trader' | 'zen'
       {isAuthModalOpen && ( <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[200] p-4"><div className="bg-[#111] border border-gray-800 p-8 rounded-3xl w-full max-w-sm shadow-2xl relative text-center"><button onClick={() => setIsAuthModalOpen(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white transition"><X size={24} /></button><div className="flex justify-center mb-6"><div className="bg-gray-900/50 p-3 rounded-2xl border border-gray-800">{showEmailCheck ? <Mail className="text-cyan-400" size={32} /> : <Lock className="text-cyan-400" size={32} />}</div></div>{showEmailCheck ? (<div className="animate-in fade-in zoom-in duration-300"><h2 className="text-2xl font-bold mb-2 text-white">Verifique seu e-mail</h2><p className="text-gray-400 text-sm mb-6">Enviamos um link de acesso para <b>{email}</b>. Clique nele para ativar sua conta.</p><div className="bg-cyan-900/20 text-cyan-400 text-xs p-3 rounded-xl border border-cyan-900/50 mb-6">Dica: Verifique a caixa de Spam.</div><button onClick={() => { setShowEmailCheck(false); setAuthMode('login'); }} className="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2">Voltar para Login</button></div>) : (<div><div className="flex justify-center mb-6"><div className="flex bg-black p-1 rounded-xl border border-gray-800"><button onClick={() => setAuthMode('login')} className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${authMode === 'login' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>Entrar</button><button onClick={() => setAuthMode('signup')} className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${authMode === 'signup' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>Criar Conta</button></div></div><div className="space-y-4 text-left"><div><label className="text-xs text-gray-500 ml-1 mb-1 block">E-mail</label><div className="relative"><Mail className="absolute left-3 top-3.5 text-gray-600" size={16} /><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seu@email.com" className="w-full bg-gray-900 border border-gray-700 rounded-xl py-3 pl-10 pr-3 text-white focus:border-cyan-500 outline-none transition"/></div></div><div><label className="text-xs text-gray-500 ml-1 mb-1 block">Senha</label><div className="relative"><Lock className="absolute left-3 top-3.5 text-gray-600" size={16} /><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="********" className="w-full bg-gray-900 border border-gray-700 rounded-xl py-3 pl-10 pr-3 text-white focus:border-cyan-500 outline-none transition"/></div></div></div>{authMessage && (<div className={`mt-4 p-3 rounded-lg text-xs flex items-center gap-2 ${authMessage.includes('❌') ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-green-500/10 text-green-400 border border-green-500/20'}`}>{authMessage}</div>)}<button onClick={handleAuth} disabled={loadingAuth} className="w-full bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl transition mt-6 flex items-center justify-center gap-2 shadow-lg shadow-cyan-900/20">{loadingAuth ? <Loader2 className="animate-spin" size={20}/> : (authMode === 'login' ? 'Acessar Conta' : 'Criar Conta')}</button>{authMode === 'login' && (<div className="mt-4 pt-4 border-t border-gray-800"><button onClick={handleResetPassword} disabled={loadingAuth} className="text-xs text-gray-500 hover:text-cyan-400 transition underline decoration-gray-700 hover:decoration-cyan-400 underline-offset-4">Esqueci minha senha</button></div>)}</div>)}</div></div>)}
       {isClientModalOpen && (<div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4"><div className="bg-[#111] border border-gray-800 p-6 rounded-3xl w-full max-w-sm"><h3 className="text-lg font-bold text-white mb-4">Novo Cliente</h3><input type="email" placeholder="E-mail do cliente" value={newClientEmail} onChange={(e) => setNewClientEmail(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white outline-none mb-4"/><div className="flex gap-2"><button onClick={() => setIsClientModalOpen(false)} className="flex-1 bg-gray-800 text-white py-3 rounded-xl">Cancelar</button><button onClick={handleAddClient} disabled={addingClient} className="flex-1 bg-cyan-600 text-white py-3 rounded-xl font-bold">{addingClient ? '...' : 'Adicionar'}</button></div></div></div>)}
 {isAIOpen && (
-          <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[200] p-4">
+          <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[200] p-4 animate-in fade-in duration-300">
               <div className="bg-[#0f0f13] border border-gray-700 w-full max-w-2xl h-[600px] rounded-3xl shadow-2xl flex flex-col relative overflow-hidden">
                   
                   {/* CABEÇALHO */}
                   <div className="p-6 border-b border-gray-800 bg-[#111] flex justify-between items-center z-10">
                       <div className="flex items-center gap-3">
-                          <div className="bg-purple-600/20 p-2 rounded-lg"><Sparkles className="text-purple-400" size={24} /></div>
-                          <h2 className="text-xl font-bold text-white">Consultor IA</h2>
+                          <div className={`p-2 rounded-lg ${userPlan === 'free' ? 'bg-gray-800 text-gray-400' : 'bg-purple-600/20 text-purple-400'}`}>
+                              <Sparkles size={24} />
+                          </div>
+                          <div>
+                              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                                  Consultor IA 
+                                  {userPlan === 'free' && <span className="text-[10px] bg-gray-800 text-gray-400 px-2 py-0.5 rounded border border-gray-700">LITE</span>}
+                              </h2>
+                              <p className="text-xs text-gray-500">Seu assistente financeiro pessoal</p>
+                          </div>
                       </div>
-                      <button onClick={() => setIsAIOpen(false)} className="text-gray-500 hover:text-white"><X /></button>
+                      <button onClick={() => setIsAIOpen(false)} className="text-gray-500 hover:text-white transition bg-gray-800/50 p-2 rounded-full hover:bg-gray-700"><X size={20}/></button>
                   </div>
 
                   {/* ÁREA DE CHAT */}
-                  <div className="flex-1 p-6 overflow-y-auto space-y-4">
+                  <div className="flex-1 p-6 overflow-y-auto space-y-4 scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent">
                       {aiResponse ? (
                           typeof aiResponse === 'string' ? 
-                          <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700 text-gray-200 leading-relaxed whitespace-pre-line">{aiResponse}</div> : aiResponse
+                          <div className="bg-gray-800/40 p-6 rounded-2xl rounded-tl-none border border-gray-700/50 text-gray-200 leading-relaxed whitespace-pre-line shadow-inner animate-in slide-in-from-left-2 duration-300">
+                              {aiResponse}
+                          </div> : aiResponse
                       ) : (
-                          <p className="text-center text-gray-600 mt-20 italic">"Como está minha saúde financeira?"</p>
+                          <div className="h-full flex flex-col items-center justify-center text-center opacity-40">
+                              <Sparkles size={48} className="mb-4 text-purple-500"/>
+                              <p className="text-gray-400 font-medium">"Como posso te ajudar hoje?"</p>
+                              <p className="text-xs text-gray-600 mt-2 max-w-xs">
+                                  {userPlan === 'free' 
+                                      ? "Posso tirar dúvidas sobre economia, investimentos e organização financeira." 
+                                      : "Posso analisar seus dados, encontrar padrões de gastos e sugerir melhorias."}
+                              </p>
+                          </div>
                       )}
-                      {isLoading && <div className="text-purple-400 animate-pulse text-center">Pensando...</div>}
+                      {isLoading && (
+                          <div className="flex items-center gap-2 text-purple-400 text-sm bg-purple-900/10 p-3 rounded-xl w-fit animate-pulse">
+                              <Loader2 size={16} className="animate-spin"/> Analisando...
+                          </div>
+                      )}
                   </div>
 
-                  {/* ÁREA DE BOTÕES RÁPIDOS (COM TRAVA FREE 🔒) */}
-                  {userPlan !== 'free' ? (
-                      <div className="px-6 py-2 flex gap-3 overflow-x-auto scrollbar-hide border-t border-gray-800 bg-[#111]">
-                          <button onClick={() => askGemini("Faça um diagnóstico de risco completo do meu mês atual. Me dê status (Verde/Amarelo/Vermelho) e alertas.")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-full text-xs font-bold text-cyan-400 border border-cyan-900/30 flex items-center gap-2 transition"><BarChart3 size={14}/> Diagnóstico</button>
-                          <button onClick={() => askGemini("Analise meus maiores gastos e contas fixas. Onde estou perdendo dinheiro? Tem algo supérfluo?")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-full text-xs font-bold text-purple-400 border border-purple-900/30 flex items-center gap-2 transition"><Search size={14}/> Detetive</button>
-                          <button onClick={() => askGemini("Meu saldo está negativo ou apertado. Me dê um plano de 3 passos práticos para sair dessa situação agora.")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-full text-xs font-bold text-emerald-400 border border-emerald-900/30 flex items-center gap-2 transition"><Target size={14}/> Plano de Resgate</button>
-                      </div>
-                  ) : (
-                      // MENSAGEM PARA USUÁRIO FREE
-                      <div className="px-6 py-3 border-t border-gray-800 bg-[#111] flex justify-between items-center">
-                          <span className="text-xs text-gray-500 flex items-center gap-2"><Lock size={12}/> Modo Lite: Apenas consultas básicas.</span>
-                          <button onClick={() => { setIsAIOpen(false); openPricingModal(); }} className="text-xs bg-gradient-to-r from-amber-500 to-orange-600 text-white px-3 py-1.5 rounded-lg font-bold hover:shadow-lg transition">Desbloquear IA Completa</button>
-                      </div>
-                  )}
+                  {/* ÁREA DE BOTÕES RÁPIDOS (INTELIGENTE) */}
+                  <div className="px-6 py-2 border-t border-gray-800 bg-[#111]">
+                    {userPlan !== 'free' ? (
+                        // BOTÕES PREMIUM (AÇÕES REAIS)
+                        <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-2">
+                            <button onClick={() => askGemini("Faça um diagnóstico de risco completo...")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 hover:text-white rounded-full text-xs font-bold text-cyan-400 border border-cyan-900/30 flex items-center gap-2 transition active:scale-95"><BarChart3 size={14}/> Diagnóstico</button>
+                            <button onClick={() => askGemini("Analise meus maiores gastos...")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 hover:text-white rounded-full text-xs font-bold text-purple-400 border border-purple-900/30 flex items-center gap-2 transition active:scale-95"><Search size={14}/> Detetive</button>
+                            <button onClick={() => askGemini("Me dê um plano de resgate...")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 hover:text-white rounded-full text-xs font-bold text-emerald-400 border border-emerald-900/30 flex items-center gap-2 transition active:scale-95"><Target size={14}/> Plano de Resgate</button>
+                        </div>
+                    ) : (
+                        // BOTÕES FREE (EDUCATIVOS - ENGAGEMENT)
+                        <div className="flex flex-col gap-2">
+                            <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 opacity-70">
+                                <button onClick={() => askGemini("O que é Reserva de Emergência?")} className="whitespace-nowrap px-3 py-1.5 bg-gray-800/50 hover:bg-gray-700 rounded-full text-[10px] text-gray-300 border border-gray-700 transition">💡 O que é Reserva?</button>
+                                <button onClick={() => askGemini("Dicas simples para economizar no mercado")} className="whitespace-nowrap px-3 py-1.5 bg-gray-800/50 hover:bg-gray-700 rounded-full text-[10px] text-gray-300 border border-gray-700 transition">🛒 Dicas de Mercado</button>
+                                <button onClick={() => askGemini("Como começar a investir com pouco?")} className="whitespace-nowrap px-3 py-1.5 bg-gray-800/50 hover:bg-gray-700 rounded-full text-[10px] text-gray-300 border border-gray-700 transition">💰 Investir com Pouco</button>
+                            </div>
+                            {/* CTA DE VENDA DISCRETO MAS VISÍVEL */}
+                            <div className="flex justify-between items-center bg-gradient-to-r from-amber-900/20 to-orange-900/20 p-2 rounded-lg border border-amber-900/30">
+                                <span className="text-[10px] text-amber-500 font-bold flex items-center gap-1 ml-1"><Lock size={10}/> Desbloqueie análises da sua conta</span>
+                                <button onClick={() => { setIsAIOpen(false); openPricingModal(); }} className="text-[10px] bg-amber-600 hover:bg-amber-500 text-white px-3 py-1 rounded shadow-lg transition">Virar Premium</button>
+                            </div>
+                        </div>
+                    )}
+                  </div>
 
                   {/* INPUT */}
-                  <div className="p-4 bg-[#111] flex gap-2">
-                      <input 
-                        type="text" 
-                        value={aiPrompt} 
-                        onChange={(e) => setAiPrompt(e.target.value)} 
-                        onKeyDown={(e) => e.key === 'Enter' && askGemini()} 
-                        placeholder={userPlan === 'free' ? "Tire uma dúvida sobre suas finanças..." : "Pergunte ou lance um gasto..."}
-                        className="flex-1 bg-gray-900 border border-gray-700 rounded-xl p-4 text-white outline-none focus:border-purple-500 transition"
-                      />
-                      <button onClick={() => askGemini()} className="bg-purple-600 hover:bg-purple-700 text-white p-4 rounded-xl shadow-lg shadow-purple-900/20"><Send size={24}/></button>
+                  <div className="p-4 bg-[#111] flex gap-2 pt-2">
+                      <div className="relative flex-1">
+                          <input 
+                            type="text" 
+                            value={aiPrompt} 
+                            onChange={(e) => setAiPrompt(e.target.value)} 
+                            onKeyDown={(e) => e.key === 'Enter' && askGemini()} 
+                            disabled={isLoading}
+                            placeholder={userPlan === 'free' ? "Tire uma dúvida sobre finanças..." : "Pergunte ou lance um gasto..."}
+                            className="w-full bg-gray-900 border border-gray-700 rounded-xl py-4 pl-4 pr-10 text-white outline-none focus:border-purple-500 focus:bg-gray-800 transition disabled:opacity-50"
+                          />
+                          {/* REMOVIDO O 'TITLE' QUE DAVA ERRO NO TYPESCRIPT */}
+                          {userPlan === 'free' && <Lock size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-600" />}
+                      </div>
+                      <button 
+                        onClick={() => askGemini()} 
+                        disabled={!aiPrompt.trim() || isLoading}
+                        className="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white p-4 rounded-xl shadow-lg shadow-purple-900/20 transition active:scale-95"
+                      >
+                        <Send size={24}/>
+                      </button>
                   </div>
               </div>
           </div>
