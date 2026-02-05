@@ -109,20 +109,116 @@ export default function FinancialDashboard() {
       }
   };
   // --- TOUR GUIADO ---
+  // --- TUTORIAL / TOUR GUIADO (VERSÃO FUSION COMPLETA) ---
   const runTour = () => {
-      const steps = [
-          { element: '#logo-area', popover: { title: 'Olá! Sou seu Aliado 🛡️', description: 'Vou te ajudar a dominar suas finanças.' } },
-          { element: '#btn-login', popover: { title: 'Salve na Nuvem ☁️', description: 'Crie sua conta para acessar em qualquer lugar.' } },
-          { element: '#btn-novo', popover: { title: 'Lançar Contas', description: 'Clique aqui para adicionar gastos, salários ou parcelas.' } },
-          { element: '#card-saldo', popover: { title: 'Seu Termômetro 🌡️', description: 'Aqui fica o saldo final. Verde é lucro, Vermelho é alerta!' } },
-          { element: '#btn-ai', popover: { title: 'Cérebro Financeiro 🧠', description: 'Fale com a IA para analisar gastos ou pedir dicas.' } },
-      ];
-      const firstActionGroup = document.getElementById('action-group-0');
-      if (firstActionGroup) steps.push({ element: '#action-group-0', popover: { title: 'Controles 🎮', description: 'Use os ícones na lista para pagar, adiar ou editar contas.' } });
-      
-      const driverObj = driver({ showProgress: true, nextBtnText: 'Próximo', prevBtnText: 'Anterior', doneBtnText: 'Ok!', steps: steps });
-      driverObj.drive();
+    // 1. Verifica se a biblioteca carregou
+    const driver = (window as any).driver?.js?.driver;
+    if (!driver) return;
+
+    // --- ROTEIRO DO AGENTE (Consultor) ---
+    const agentSteps = [
+        { 
+            element: '#agent-bar', 
+            popover: { 
+                title: '🕵️ Painel do Consultor', 
+                description: 'Esta barra roxa é sua central de comando. Só você vê isso.', 
+                side: "bottom", align: 'start' 
+            } 
+        },
+        { 
+            element: '#client-selector', 
+            popover: { 
+                title: '📂 Seus Clientes', 
+                description: 'Aqui ficam as carteiras dos seus clientes. Clique para entrar na conta deles e gerenciar tudo como se fosse eles.', 
+                side: "bottom", align: 'start' 
+            } 
+        },
+        { 
+            element: '#btn-add-client', 
+            popover: { 
+                title: '➕ Adicionar Cliente', 
+                description: 'Cadastre um novo cliente pelo e-mail. Se ele já tiver conta, ele vira PRO automaticamente e vincula a você.', 
+                side: "left", align: 'start' 
+            } 
+        },
+        { 
+            element: '#card-saldo', 
+            popover: { 
+                title: '👁️ Visão Dinâmica', 
+                description: 'Quando você seleciona um cliente, o saldo e os gráficos mostram a realidade DELE, não a sua.', 
+                side: "bottom", align: 'start' 
+            } 
+        }
+    ];
+
+    // --- ROTEIRO PADRÃO (Restaurado com seus textos originais) ---
+    const standardSteps = [
+        { 
+            element: '#logo-area', 
+            popover: { title: 'Olá! Sou seu Aliado 🛡️', description: 'Vou te ajudar a dominar suas finanças.' } 
+        },
+        // Só mostra o passo de Login se o botão existir (usuário deslogado)
+        ...(document.getElementById('btn-login') ? [{ 
+            element: '#btn-login', 
+            popover: { title: 'Salve na Nuvem ☁️', description: 'Crie sua conta para acessar em qualquer lugar.' } 
+        }] : []),
+        { 
+            element: '#btn-novo', 
+            popover: { title: 'Lançar Contas', description: 'Clique aqui para adicionar gastos, salários ou parcelas.' } 
+        },
+        { 
+            element: '#card-saldo', 
+            popover: { title: 'Seu Termômetro 🌡️', description: 'Aqui fica o saldo final. Verde é lucro, Vermelho é alerta!' } 
+        },
+        { 
+            element: '#btn-ai', 
+            popover: { title: 'Cérebro Financeiro 🧠', description: 'Fale com a IA para analisar gastos ou pedir dicas.' } 
+        }
+    ];
+
+    // Adiciona o passo dos "Controles" dinamicamente (se houver contas na tela)
+    const firstActionGroup = document.getElementById('action-group-0');
+    if (firstActionGroup) {
+        standardSteps.push({ 
+            element: '#action-group-0', 
+            popover: { title: 'Controles 🎮', description: 'Use os ícones na lista para pagar, adiar ou editar contas.' } 
+        });
+    }
+
+    // --- DECISÃO: QUAL TOUR RODAR? ---
+    const steps = (userPlan === 'agent') ? agentSteps : standardSteps;
+
+    // Configuração e Start
+    const driverObj = driver({
+        showProgress: true,
+        animate: true,
+        steps: steps,
+        nextBtnText: 'Próximo ->',
+        prevBtnText: 'Anterior',
+        doneBtnText: 'Entendi!',
+        overlayColor: 'rgba(0,0,0,0.8)' 
+    });
+
+    driverObj.drive();
   };
+  // --- AUTO-RUN DO TUTORIAL (SÓ NA PRIMEIRA VEZ) ---
+  useEffect(() => {
+    // 1. Verifica se é Agente e se o Driver.js já carregou
+    if (userPlan === 'agent' && (window as any).driver) {
+        
+        // 2. Verifica no "cérebro" do navegador se já mostramos o tour
+        const hasSeenTour = localStorage.getItem('has_seen_agent_tour_v1');
+        
+        if (!hasSeenTour) {
+            // 3. Pequeno delay para garantir que a barra roxa renderizou
+            setTimeout(() => {
+                runTour();
+                // 4. Marca como "visto" para não mostrar de novo
+                localStorage.setItem('has_seen_agent_tour_v1', 'true');
+            }, 1500); // 1.5 segundos de espera
+        }
+    }
+  }, [userPlan]); // Roda sempre que o plano do usuário carregar
 
   useEffect(() => {
       const hasSeenTour = localStorage.getItem('hasSeenTour_v3');
@@ -621,29 +717,49 @@ export default function FinancialDashboard() {
         
         {/* DROPDOWN DE CLIENTES */}
         <div id="menu-clientes" className="flex items-center gap-2 mt-2 justify-center md:justify-start">
-             {user && userPlan === 'agent' && (
-                 <div className="relative group">
-                     <button className="flex items-center gap-2 bg-gray-900 border border-gray-800 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:border-gray-600 transition">
-                         {viewingAs ? (<><Users size={14} className="text-purple-400"/> Vendo: {viewingAs.client_email}</>) : (<><User size={14} className="text-emerald-400"/> Vendo: Minha Conta</>)}
-                         <ChevronDown size={12} className="text-gray-500"/>
-                     </button>
-                     <div className="absolute top-full left-0 pt-2 w-64 hidden group-hover:block z-50">
-                         <div className="bg-[#111] border border-gray-800 rounded-xl shadow-2xl overflow-hidden">
-                             <div className="p-2 space-y-1">
-                                 <button onClick={() => switchView(null)} className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${!viewingAs ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-900'}`}><User size={14}/> Minha Conta Pessoal</button>
-                                 <div className="h-px bg-gray-800 my-1"></div>
-                                 <p className="text-[10px] text-gray-500 px-3 uppercase font-bold tracking-wider mb-1">Meus Clientes</p>
-                                 {clients.map(client => (
-                                     <button key={client.id} onClick={() => switchView(client)} className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 ${viewingAs?.id === client.id ? 'bg-purple-900/20 text-purple-300' : 'text-gray-400 hover:bg-gray-900'}`}>
-                                         <div className={`w-1.5 h-1.5 rounded-full ${client.client_id ? 'bg-emerald-500' : 'bg-orange-500'}`}></div>{client.client_email}
-                                     </button>
-                                 ))}
-                                 <button onClick={() => setIsClientModalOpen(true)} className="w-full text-left px-3 py-2 rounded-lg text-xs flex items-center gap-2 text-cyan-400 hover:bg-cyan-950/20 border border-dashed border-gray-800 mt-2"><UserPlus size={14}/> Adicionar Novo Cliente</button>
-                             </div>
-                         </div>
-                     </div>
-                 </div>
-             )}
+            {/* BARRA DO AGENTE (SUBSTITUI O MENU ANTIGO) */}
+        {(userPlan === 'agent' || userPlan === 'admin') && (
+            <div id="agent-bar" className="w-full bg-purple-950/30 border-b border-purple-500/20 p-2 mb-4 overflow-x-auto">
+                <div className="max-w-7xl mx-auto flex items-center gap-4 px-2">
+                    <div className="flex items-center gap-2 text-purple-400 min-w-fit font-bold uppercase text-xs tracking-wider">
+                        <Briefcase size={16}/> Painel Consultor
+                    </div>
+                    
+                    <div className="h-6 w-px bg-purple-500/20"></div>
+                    
+                    {/* SELETOR DE CLIENTES (COM ID PARA O TOUR) */}
+                    <div id="client-selector" className="flex items-center gap-2 overflow-x-auto scrollbar-hide flex-1">
+                        <button 
+                            onClick={() => switchView(null)} 
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition whitespace-nowrap ${!viewingAs ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/50' : 'text-purple-300 hover:bg-purple-900/40'}`}
+                        >
+                            <User size={12}/> Minha Carteira
+                        </button>
+                        
+                        {/* Lista de Clientes */}
+                        {clients.map(client => (
+                            <button 
+                                key={client.id} 
+                                onClick={() => switchView(client)} 
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition whitespace-nowrap ${viewingAs?.id === client.id ? 'bg-purple-600 text-white shadow-lg' : 'text-purple-300 hover:bg-purple-900/40'}`}
+                            >
+                                <div className={`w-1.5 h-1.5 rounded-full ${client.client_id ? 'bg-emerald-400' : 'bg-orange-500'}`}></div>
+                                {client.client_email.split('@')[0]}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* BOTÃO ADICIONAR (COM ID PARA O TOUR) */}
+                    <button 
+                        id="btn-add-client"
+                        onClick={() => setIsClientModalOpen(true)}
+                        className="ml-auto flex items-center gap-1 text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1.5 rounded-lg transition shadow-lg shadow-purple-900/20 whitespace-nowrap"
+                    >
+                        <UserPlus size={12}/> <span className="hidden md:inline">Novo Cliente</span>
+                    </button>
+                </div>
+            </div>
+        )}
         </div>
         </div>
 

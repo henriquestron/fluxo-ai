@@ -36,6 +36,14 @@ export default function RootLayout({
   return (
     // 3. Configuração de Idioma (pt-BR)
     <html lang="pt-BR" className="dark">
+      
+      {/* 👇👇👇 ADICIONEI ESTE BLOCO HEAD AQUI 👇👇👇 */}
+      <head>
+        <script src="https://cdn.jsdelivr.net/npm/driver.js@1.0.1/dist/driver.js.iife.js"></script>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.0.1/dist/driver.css"/>
+      </head>
+      {/* 👆👆👆 FIM DO BLOCO HEAD 👆👆👆 */}
+
       <body
         // Adicionei bg-[#050505] aqui para evitar clarão branco ao carregar
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#050505] text-gray-100`}
