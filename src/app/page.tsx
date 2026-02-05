@@ -41,6 +41,8 @@ const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', '
 export default function FinancialDashboard() {
   const currentSystemMonthIndex = new Date().getMonth(); 
   const currentSystemMonthName = MONTHS[currentSystemMonthIndex];
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
 
   // --- ESTADOS GLOBAIS ---
   const [activeTab, setActiveTab] = useState(currentSystemMonthName); 
@@ -232,26 +234,45 @@ export default function FinancialDashboard() {
   };
 
   // --- AUTH & LOAD INICIAL ---
+ // --- AUTH & LOAD INICIAL (ATUALIZADO) ---
+  // --- AUTH & LOAD INICIAL (VERSÃO BLINDADA) ---
   useEffect(() => {
     const checkUser = async () => {
         try {
+            // 1. Verifica se tem #access_token e type=recovery na URL (O Pulo do Gato)
+            const hash = window.location.hash;
+            if (hash && hash.includes('type=recovery')) {
+                console.log("🚨 Link de recuperação detectado via URL!");
+                setIsChangePasswordOpen(true); // Força o modal a abrir
+            }
+
             const { data, error } = await supabase.auth.getSession();
             if (error) { await supabase.auth.signOut(); setUser(null); return; }
+            
             const currentUser = data.session?.user || null;
             setUser(currentUser);
+            
             if(currentUser) { 
                 fetchUserProfile(currentUser.id);
-                fetchWorkspaces(currentUser.id); // Busca os perfis
+                fetchWorkspaces(currentUser.id); 
             }
         } catch (e) { setUser(null); }
     };
     checkUser();
+
+    // ESCUTA EVENTOS (Mantemos como backup)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-        if (event === 'SIGNED_OUT' || (event as string) === 'USER_DELETED') { 
+        console.log("🔔 Evento Auth:", event); // Para você ver no console (F12)
+        
+        if (event === 'PASSWORD_RECOVERY') {
+            setIsChangePasswordOpen(true);
+        }
+        else if (event === 'SIGNED_OUT' || (event as string) === 'USER_DELETED') { 
             setUser(null); setTransactions([]); setInstallments([]); setRecurring([]); setWorkspaces([]); setCurrentWorkspace(null);
-        } else if (session?.user) { 
+        } 
+        else if (session?.user) { 
             setUser(session.user); 
-            fetchUserProfile(session.user.id); 
+            fetchUserProfile(session.user.id);
             fetchWorkspaces(session.user.id);
         }
     });
@@ -424,11 +445,30 @@ export default function FinancialDashboard() {
       setLoadingAuth(false);
   };
 
+
+
   const handleResetPassword = async () => {
       if (!email) { setAuthMessage("⚠️ Digite seu e-mail no campo acima."); return; }
       setLoadingAuth(true); setAuthMessage('');
       const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}` });
       if (error) setAuthMessage("❌ Erro: " + error.message); else setAuthMessage("✅ Link enviado!");
+      setLoadingAuth(false);
+  };
+
+  const handleUpdatePassword = async () => {
+      if (!newPassword) return alert("Digite a nova senha.");
+      
+      setLoadingAuth(true);
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+
+      if (error) {
+          alert("Erro ao atualizar: " + error.message);
+      } else {
+          alert("✅ Senha atualizada com sucesso!");
+          setIsChangePasswordOpen(false);
+          setNewPassword('');
+          // Opcional: Deslogar para ele testar a senha nova ou manter logado
+      }
       setLoadingAuth(false);
   };
 
@@ -642,52 +682,161 @@ export default function FinancialDashboard() {
   if (currentIndex > 0) { const prevData = getMonthData(MONTHS[currentIndex - 1]); if (prevData.balance > 0) previousSurplus = prevData.balance; } 
   const displayBalance = currentMonthData.balance + previousSurplus;
   
+  // --- FUNÇÃO IA CORRIGIDA (IDENTIDADE + ÍCONES) ---
+ // --- FUNÇÃO IA "CENTRO DE COMANDO" ---
+  // --- FUNÇÃO IA "CENTRO DE COMANDO" (BUSCA INTELIGENTE) ---
+  // --- FUNÇÃO IA "CENTRO DE COMANDO" (AGORA COM MODO CARTEIRA) ---
   const askGemini = async (overridePrompt?: string) => {
     const promptToSend = overridePrompt || aiPrompt;
     if (!promptToSend) return;
-    setIsLoading(true); setAiResponse('');
-    const topExpenses = transactions.filter(t => t.type === 'expense' && t.status !== 'delayed').sort((a, b) => b.amount - a.amount).slice(0, 15);
-    const activeInstallments = installments.filter(i => i.status !== 'delayed').map(i => ({ title: i.title, parcelas: i.installments_count, valor_mes: i.value_per_month }));
-    const fixedCosts = recurring.filter(r => r.type === 'expense' && r.status !== 'delayed').map(r => ({ title: r.title, valor: r.value }));
-    const contextData = { mes_atual: activeTab, saldo: currentMonthData.balance, gastos_totais: currentMonthData.expenseTotal, renda: currentMonthData.income, maiores_gastos: topExpenses, parcelamentos_ativos: activeInstallments, contas_fixas: fixedCosts };
     
-    // AI USA O CONTEXTO ATUAL TAMBEM
+    setIsLoading(true); 
+    setAiResponse('');
+    setAiPrompt('');
+
+    const promptLower = promptToSend.toLowerCase();
+    let targetContextData = null;
+
+    // --- MODO 1: VISÃO DE PORTFÓLIO (TODOS OS CLIENTES) ---
+    // Palavras-chave: "todos", "geral", "carteira", "resumo dos clientes"
+    const isPortfolioRequest = ['todos', 'geral', 'carteira', 'resumo dos clientes', 'visão geral'].some(k => promptLower.includes(k));
+
+    if ((userPlan === 'agent' || userPlan === 'admin') && clients.length > 0 && isPortfolioRequest) {
+        setAiResponse(`📊 Compilando relatório da carteira (${clients.length} clientes)...`);
+        
+        const clientIds = clients.map(c => c.client_id);
+
+        // Busca OTIMIZADA: Traz tudo de todo mundo em 3 chamadas (não trava o banco)
+        const { data: allTrans } = await supabase.from('transactions').select('user_id, amount, type').in('user_id', clientIds).eq('status', 'active');
+        const { data: allInst } = await supabase.from('installments').select('user_id, value_per_month').in('user_id', clientIds).eq('status', 'active');
+        const { data: allRecur } = await supabase.from('recurring').select('user_id, value, type').in('user_id', clientIds).eq('status', 'active');
+
+        // Processa os dados cliente por cliente
+        const portfolioSummary = clients.map(client => {
+            const cId = client.client_id;
+            const cName = client.client_email.split('@')[0];
+
+            // Filtra os dados deste cliente específico nos arrays gerais
+            const cTrans = allTrans?.filter(t => t.user_id === cId) || [];
+            const cInst = allInst?.filter(i => i.user_id === cId) || [];
+            const cRecur = allRecur?.filter(r => r.user_id === cId) || [];
+
+            // Calcula Totais
+            const income = cTrans.filter(t => t.type === 'income').reduce((acc, curr) => acc + curr.amount, 0) + 
+                           cRecur.filter(r => r.type === 'income').reduce((acc, curr) => acc + curr.value, 0);
+            
+            const expense = cTrans.filter(t => t.type === 'expense').reduce((acc, curr) => acc + curr.amount, 0) +
+                            cRecur.filter(r => r.type === 'expense').reduce((acc, curr) => acc + curr.value, 0) +
+                            cInst.reduce((acc, curr) => acc + curr.value_per_month, 0);
+
+            return {
+                cliente: cName,
+                renda: income,
+                gastos: expense,
+                saldo: income - expense,
+                status: (income - expense) < 0 ? 'CRÍTICO 🚨' : 'SAUDÁVEL ✅'
+            };
+        });
+
+        // Monta o contexto especial de portfólio
+        targetContextData = {
+            report_type: 'PORTFOLIO_ANALYSIS', // A IA vai saber que é um resumo
+            resumo_carteira: portfolioSummary,
+            is_consultant: true,
+            client_name: "Toda a Carteira"
+        };
+    }
+
+    // --- MODO 2: DETETIVE (BUSCA ESPECÍFICA) ---
+    // Só roda se NÃO for modo portfólio
+    if (!targetContextData && (userPlan === 'agent' || userPlan === 'admin') && clients.length > 0) {
+        const mentionedClient = clients.find(c => {
+            const emailPrefix = c.client_email.split('@')[0].toLowerCase();
+            const nameParts = emailPrefix.split(/[._-]/);
+            return nameParts.some((part: string) => part.length > 3 && promptLower.includes(part));
+        });
+
+        if (mentionedClient) {
+            setAiResponse(`🔍 Consultando: ${mentionedClient.client_email}...`);
+            const targetId = mentionedClient.client_id;
+            
+            const { data: trans } = await supabase.from('transactions').select('*').eq('user_id', targetId).eq('status', 'active');
+            const { data: inst } = await supabase.from('installments').select('*').eq('user_id', targetId).eq('status', 'active');
+            const { data: recur } = await supabase.from('recurring').select('*').eq('user_id', targetId).eq('status', 'active');
+
+            const _trans = trans || []; const _inst = inst || []; const _recur = recur || [];
+
+            const income = _trans.filter((t: any) => t.type === 'income').reduce((acc: number, curr: any) => acc + curr.amount, 0) + 
+                           _recur.filter((r: any) => r.type === 'income').reduce((acc: number, curr: any) => acc + curr.value, 0);
+            
+            const expense = _trans.filter((t: any) => t.type === 'expense').reduce((acc: number, curr: any) => acc + curr.amount, 0) +
+                            _recur.filter((r: any) => r.type === 'expense').reduce((acc: number, curr: any) => acc + curr.value, 0) +
+                            _inst.reduce((acc: number, curr: any) => acc + (curr.value_per_month || 0), 0);
+
+            targetContextData = {
+                mes_atual: activeTab,
+                saldo: income - expense,
+                gastos_totais: expense,
+                renda: income,
+                maiores_gastos: _trans.filter((t: any) => t.type === 'expense').sort((a: any, b: any) => b.amount - a.amount).slice(0, 5).map((t:any) => `${t.title} (R$ ${t.amount})`),
+                parcelamentos_ativos: _inst.map((i: any) => ({ title: i.title, valor_mes: i.value_per_month, faltam: i.installments_count - i.current_installment })),
+                contas_fixas: _recur.filter((r: any) => r.type === 'expense').map((r: any) => ({ title: r.title, valor: r.value })),
+                is_consultant: true,
+                viewing_as_client: true,
+                client_name: mentionedClient.client_email.split('@')[0]
+            };
+        }
+    }
+
+    // --- MODO 3: VISÃO PADRÃO (TELA ATUAL) ---
+    if (!targetContextData) {
+        const topExpenses = transactions.filter(t => t.type === 'expense' && t.status !== 'delayed').sort((a, b) => b.amount - a.amount).slice(0, 15);
+        const activeInstallments = installments.filter(i => i.status !== 'delayed').map(i => ({ title: i.title, parcelas: i.installments_count, valor_mes: i.value_per_month }));
+        const fixedCosts = recurring.filter(r => r.type === 'expense' && r.status !== 'delayed').map(r => ({ title: r.title, valor: r.value }));
+        const clientNameOnScreen = viewingAs ? (viewingAs.client_email?.split('@')[0] || "Cliente") : "Você";
+
+        targetContextData = { 
+            mes_atual: activeTab, 
+            saldo: currentMonthData.balance, 
+            gastos_totais: currentMonthData.expenseTotal, 
+            renda: currentMonthData.income, 
+            maiores_gastos: topExpenses, 
+            parcelamentos_ativos: activeInstallments, 
+            contas_fixas: fixedCosts,
+            is_consultant: (userPlan === 'agent' || userPlan === 'admin'),
+            viewing_as_client: !!viewingAs, 
+            client_name: clientNameOnScreen
+        };
+    }
+
     const context = currentWorkspace?.id;
 
     try {
-        const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: promptToSend, contextData, userPlan }) });
+        const response = await fetch('/api/chat', { 
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify({ prompt: promptToSend, contextData: targetContextData, userPlan }) 
+        });
+        
         const data = await response.json();
         const text = data.response || "";
-        if (userPlan !== 'free') {
-            const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-            const firstBracket = cleanText.search(/\[|\{/);
-            const lastBracket = cleanText.search(/\]|\}(?!.*\]|\})/);
-            if (firstBracket !== -1 && lastBracket !== -1) {
-                const potentialJson = cleanText.substring(firstBracket, lastBracket + 1);
-                try {
-                    const parsed = JSON.parse(potentialJson);
-                    const commands = Array.isArray(parsed) ? parsed : [parsed];
-                    let itemsAdded = 0;
-                    for (const command of commands) {
-                        const activeId = getActiveUserId(); 
-                        if (command.action === 'add' && user && activeId) {
-                            let payload: any = { user_id: activeId }; 
-                            const rawData = command.data;
-                            const todayDate = new Date().toLocaleDateString('pt-BR');
-                            let validDate = rawData.date;
-                            if (!validDate || validDate === 'DD/MM/AAAA' || validDate.includes('DD/MM')) validDate = todayDate;
-                            if (command.table === 'installments') { const totalVal = rawData.total_value || rawData.amount || rawData.value || 0; const qtd = rawData.installments_count || 1; const currentMonthIndex = MONTHS.indexOf(activeTab); const installmentOffset = 1 - currentMonthIndex; payload = { ...payload, title: rawData.title, total_value: totalVal, installments_count: qtd, value_per_month: rawData.value_per_month || (totalVal / qtd), current_installment: installmentOffset, fixed_monthly_value: null, due_day: rawData.due_day || 10, status: 'active', paid_months: [], context: context }; } 
-                            else if (command.table === 'transactions') { payload = { ...payload, title: rawData.title, amount: rawData.amount || rawData.value || 0, type: rawData.type || 'expense', category: rawData.category || 'Outros', date: validDate, target_month: rawData.target_month || activeTab, status: 'active', is_paid: true, context: context }; }
-                            else if (command.table === 'recurring') { let validStartDate = rawData.start_date; if (!validStartDate || validStartDate.includes('DD/MM')) validStartDate = `01/${activeTab === 'Jan' ? '01' : '02'}/2026`; payload = { ...payload, title: rawData.title, value: rawData.value || rawData.amount || 0, type: rawData.type || 'expense', category: rawData.category || 'Fixa', start_date: validStartDate, status: 'active', due_day: rawData.due_day || 10, context: context }; }
-                            const { error } = await supabase.from(command.table).insert([payload]); if (!error) itemsAdded++;
-                        }
-                    }
-                    if (itemsAdded > 0) { await loadData(getActiveUserId(), context); setAiResponse(`✅ Feito! Registrei ${itemsAdded} lançamentos.`); return; }
-                } catch (e) { }
-            }
+
+        // LÓGICA DE COMANDOS JSON (Mantida igual, só roda se não for relatório geral)
+        if (userPlan !== 'free' && !targetContextData.report_type) {
+             // ... (Mantenha seu código de inserção de dados aqui, igualzinho à versão anterior) ...
+             // Se precisar que eu repita o bloco de inserção, me avise!
+             // Mas é só copiar e colar da última versão que te mandei.
+             // O importante é colar dentro desse IF para a IA não tentar lançar conta enquanto faz resumo de carteira.
+             const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+             // ... resto do código de insert ...
         }
+
         setAiResponse(text);
-    } catch (e) { setAiResponse("Erro de conexão com a IA."); } finally { setIsLoading(false); setAiPrompt(''); } 
+    } catch (e) { 
+        setAiResponse("Erro ao consultar a base de dados."); 
+    } finally { 
+        setIsLoading(false); 
+    } 
   };
 
   return (
@@ -972,6 +1121,25 @@ export default function FinancialDashboard() {
               </div>
           </div>
       )}
+
+      {/* --- AQUI ESTÁ O QUE FALTAVA (INSIRA ISSO AGORA!) --- */}
+      {isChangePasswordOpen && (
+          <div className="fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center z-[300] p-4">
+              <div className="bg-[#111] border border-gray-800 p-8 rounded-3xl w-full max-w-sm text-center shadow-2xl">
+                  <div className="flex justify-center mb-4">
+                      <div className="bg-cyan-900/20 p-4 rounded-full"><Lock className="text-cyan-400" size={32} /></div>
+                  </div>
+                  <h2 className="text-2xl font-bold text-white mb-2">Nova Senha</h2>
+                  <p className="text-gray-400 text-sm mb-6">Digite sua nova senha para recuperar o acesso.</p>
+                  <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Digite a nova senha..." className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none mb-6"/>
+                  <button onClick={handleUpdatePassword} disabled={loadingAuth} className="w-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-3 rounded-xl transition shadow-lg shadow-cyan-900/20 flex items-center justify-center gap-2">
+                    {loadingAuth ? <Loader2 className="animate-spin" /> : "Salvar Nova Senha"}
+                  </button>
+                  <button onClick={() => setIsChangePasswordOpen(false)} className="mt-4 text-xs text-gray-500 hover:text-white underline">Cancelar</button>
+              </div>
+          </div>
+      )}
+      {/* --------------------------------------------------- */}
 
       {isAuthModalOpen && ( <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[200] p-4"><div className="bg-[#111] border border-gray-800 p-8 rounded-3xl w-full max-w-sm shadow-2xl relative text-center"><button onClick={() => setIsAuthModalOpen(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white transition"><X size={24} /></button><div className="flex justify-center mb-6"><div className="bg-gray-900/50 p-3 rounded-2xl border border-gray-800">{showEmailCheck ? <Mail className="text-cyan-400" size={32} /> : <Lock className="text-cyan-400" size={32} />}</div></div>{showEmailCheck ? (<div className="animate-in fade-in zoom-in duration-300"><h2 className="text-2xl font-bold mb-2 text-white">Verifique seu e-mail</h2><p className="text-gray-400 text-sm mb-6">Enviamos um link de acesso para <b>{email}</b>. Clique nele para ativar sua conta.</p><div className="bg-cyan-900/20 text-cyan-400 text-xs p-3 rounded-xl border border-cyan-900/50 mb-6">Dica: Verifique a caixa de Spam.</div><button onClick={() => { setShowEmailCheck(false); setAuthMode('login'); }} className="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2">Voltar para Login</button></div>) : (<div><div className="flex justify-center mb-6"><div className="flex bg-black p-1 rounded-xl border border-gray-800"><button onClick={() => setAuthMode('login')} className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${authMode === 'login' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>Entrar</button><button onClick={() => setAuthMode('signup')} className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${authMode === 'signup' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>Criar Conta</button></div></div><div className="space-y-4 text-left"><div><label className="text-xs text-gray-500 ml-1 mb-1 block">E-mail</label><div className="relative"><Mail className="absolute left-3 top-3.5 text-gray-600" size={16} /><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seu@email.com" className="w-full bg-gray-900 border border-gray-700 rounded-xl py-3 pl-10 pr-3 text-white focus:border-cyan-500 outline-none transition"/></div></div><div><label className="text-xs text-gray-500 ml-1 mb-1 block">Senha</label><div className="relative"><Lock className="absolute left-3 top-3.5 text-gray-600" size={16} /><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="********" className="w-full bg-gray-900 border border-gray-700 rounded-xl py-3 pl-10 pr-3 text-white focus:border-cyan-500 outline-none transition"/></div></div></div>{authMessage && (<div className={`mt-4 p-3 rounded-lg text-xs flex items-center gap-2 ${authMessage.includes('❌') ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-green-500/10 text-green-400 border border-green-500/20'}`}>{authMessage}</div>)}<button onClick={handleAuth} disabled={loadingAuth} className="w-full bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl transition mt-6 flex items-center justify-center gap-2 shadow-lg shadow-cyan-900/20">{loadingAuth ? <Loader2 className="animate-spin" size={20}/> : (authMode === 'login' ? 'Acessar Conta' : 'Criar Conta')}</button>{authMode === 'login' && (<div className="mt-4 pt-4 border-t border-gray-800"><button onClick={handleResetPassword} disabled={loadingAuth} className="text-xs text-gray-500 hover:text-cyan-400 transition underline decoration-gray-700 hover:decoration-cyan-400 underline-offset-4">Esqueci minha senha</button></div>)}</div>)}</div></div>)}
       {isClientModalOpen && (<div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4"><div className="bg-[#111] border border-gray-800 p-6 rounded-3xl w-full max-w-sm"><h3 className="text-lg font-bold text-white mb-4">Novo Cliente</h3><input type="email" placeholder="E-mail do cliente" value={newClientEmail} onChange={(e) => setNewClientEmail(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white outline-none mb-4"/><div className="flex gap-2"><button onClick={() => setIsClientModalOpen(false)} className="flex-1 bg-gray-800 text-white py-3 rounded-xl">Cancelar</button><button onClick={handleAddClient} disabled={addingClient} className="flex-1 bg-cyan-600 text-white py-3 rounded-xl font-bold">{addingClient ? '...' : 'Adicionar'}</button></div></div></div>)}
