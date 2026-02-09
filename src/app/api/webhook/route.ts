@@ -2,32 +2,25 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 
-// --- 1. CONFIGURAÇÃO SEGURA (PROTEÇÃO CONTRA ERRO DE BUILD) ---
-// Pegamos as chaves com um valor padrão vazio ("") caso não existam no momento do build
+// --- CONFIGURAÇÃO SEGURA ---
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
-// Só criamos o cliente do Supabase SE as chaves existirem.
-// Se não existirem (ex: durante o build), a variável fica como 'null' e não quebra o deploy.
 const supabase = (supabaseUrl && supabaseServiceKey) 
   ? createClient(supabaseUrl, supabaseServiceKey) 
   : null;
 
 const stripeSecret = process.env.STRIPE_SECRET_KEY || "";
-// Mesma coisa para o Stripe: só inicializa se tiver a chave
 const stripe = stripeSecret 
-  ? new Stripe(stripeSecret, { apiVersion: '2026-01-28.clover' }) // Ajuste a versão se o VS Code sugerir outra
+  ? new Stripe(stripeSecret, { apiVersion: '2026-01-28.clover' }) // Versão estável
   : null;
 
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET || "";
 
-// --- 2. O ROBÔ QUE RECEBE O PAGAMENTO ---
 export async function POST(req: Request) {
-  // Verificação de segurança em tempo de execução:
-  // Se o site estiver no ar e as chaves ainda estiverem faltando, avisamos no log e paramos aqui.
   if (!supabase || !stripe || !endpointSecret) {
-    console.error("❌ ERRO CRÍTICO: Chaves de API (Stripe ou Supabase) não configuradas no servidor.");
-    return NextResponse.json({ error: "Server Misconfiguration: Missing Keys" }, { status: 500 });
+    console.error("❌ ERRO CRÍTICO: Chaves de API ausentes.");
+    return NextResponse.json({ error: "Server Misconfiguration" }, { status: 500 });
   }
 
   const body = await req.text();
@@ -36,35 +29,35 @@ export async function POST(req: Request) {
   let event;
 
   try {
-    // Verifica a assinatura para garantir que veio do Stripe mesmo
     event = stripe.webhooks.constructEvent(body, sig, endpointSecret);
   } catch (err: any) {
-    console.error(`⚠️ Erro de assinatura do Webhook: ${err.message}`);
+    console.error(`⚠️ Erro Webhook: ${err.message}`);
     return NextResponse.json({ error: `Webhook Error: ${err.message}` }, { status: 400 });
   }
 
-  // --- 3. LÓGICA DE LIBERAÇÃO ---
+  // --- LÓGICA DE LIBERAÇÃO INTELIGENTE ---
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session;
-    const userId = session.client_reference_id; // Aqui está o ID que enviamos no checkout
+    const userId = session.client_reference_id;
+    
+    // 🧠 AQUI O PUL O DO GATO: Lemos o metadado que enviamos no Checkout
+    const planType = session.metadata?.planType || 'premium'; // Fallback para premium se falhar
 
     if (userId) {
-      console.log(`💰 Pagamento confirmado para o usuário: ${userId}. Liberando Premium...`);
+      console.log(`💰 Pagamento confirmado! Usuário: ${userId}. Plano: ${planType}`);
 
-      // Atualiza o plano no Supabase usando a chave de Admin
+      // Atualiza o plano exato (start, premium, pro, agent)
       const { error } = await supabase
         .from('profiles')
-        .update({ plan_tier: 'premium' })
+        .update({ plan_tier: planType }) 
         .eq('id', userId);
 
       if (error) {
-        console.error('❌ Erro ao atualizar o banco de dados:', error);
-        return NextResponse.json({ error: 'Erro ao atualizar perfil' }, { status: 500 });
+        console.error('❌ Erro ao atualizar Supabase:', error);
+        return NextResponse.json({ error: 'Database Error' }, { status: 500 });
       } else {
-        console.log(`✅ Sucesso! O usuário ${userId} agora é Premium 👑.`);
+        console.log(`✅ Sucesso! Usuário ${userId} atualizado para ${planType}.`);
       }
-    } else {
-      console.warn("⚠️ Pagamento recebido, mas sem ID de usuário (client_reference_id).");
     }
   }
 

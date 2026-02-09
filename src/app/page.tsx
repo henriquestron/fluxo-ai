@@ -7,7 +7,7 @@ import {
     LogOut, User, Eye, EyeOff, CheckSquare, Square, ArrowRight, Crown, ShieldCheck,
     Mail, Loader2, Lock, BarChart3, Search, Target, Upload, FileText, ExternalLink,
     Users, ChevronDown, UserPlus, Briefcase, HelpCircle, Star, Zap, Shield, Palette,
-    Layout, MousePointerClick, FolderPlus, Layers, FileSpreadsheet,
+    Layout, MousePointerClick, FolderPlus, Layers, FileSpreadsheet, Wallet, Landmark,Rocket,
     // NOVOS ÍCONES PARA O SELETOR 👇
     ShoppingCart, Home, Car, Utensils, GraduationCap, HeartPulse, Plane, Gamepad2, Smartphone
 } from 'lucide-react';
@@ -19,6 +19,8 @@ import BentoView from '@/components/dashboard/BentoView';
 import { Toaster, toast } from 'sonner';
 import ProfileModal from '@/components/dashboard/ProfileModal';
 import ExportModal from '@/components/dashboard/ExportModal';
+import CreditCardModal from '@/components/dashboard/CreditCardModal'; // <--- IMPORTAÇÃO NOVA
+import HistoryModal from '@/components/dashboard/HistoryModal'; // <--- Adicione lá em cima
 
 // COMPONENTES
 import StandardView from '@/components/dashboard/StandardView';
@@ -27,17 +29,33 @@ import CustomizationModal from '@/components/dashboard/CustomizationModal';
 import ZenView from '@/components/dashboard/ZenView';
 import CalendarView from '@/components/dashboard/CalendarView';
 
-// MAPA DE ÍCONES (Para o Seletor do Formulário)
+// MAPA DE ÍCONES
 const ICON_MAP: any = {
     'shopping-cart': ShoppingCart, 'home': Home, 'car': Car, 'utensils': Utensils,
     'zap': Zap, 'graduation-cap': GraduationCap, 'heart-pulse': HeartPulse,
     'plane': Plane, 'gamepad-2': Gamepad2, 'smartphone': Smartphone, 'dollar-sign': DollarSign
 };
 
+// LISTA DE BANCOS/CONTAS 🏦
+const ACCOUNTS = [
+    { id: 'nubank', label: 'Nubank', color: 'bg-[#820AD1]', text: 'text-white' },
+    { id: 'inter', label: 'Inter', color: 'bg-[#FF7A00]', text: 'text-white' },
+    { id: 'bb', label: 'BB', color: 'bg-[#F8D117]', text: 'text-blue-900' },
+    { id: 'itau', label: 'Itaú', color: 'bg-[#EC7000]', text: 'text-white' },
+    { id: 'santander', label: 'Santander', color: 'bg-[#CC0000]', text: 'text-white' },
+    { id: 'caixa', label: 'Caixa', color: 'bg-[#005CA9]', text: 'text-white' },
+    { id: 'bradesco', label: 'Bradesco', color: 'bg-[#CC092F]', text: 'text-white' },
+    { id: 'c6', label: 'C6 Bank', color: 'bg-[#222]', text: 'text-white' },
+    { id: 'money', label: 'Dinheiro', color: 'bg-emerald-600', text: 'text-white' },
+    { id: 'outros', label: 'Outros', color: 'bg-gray-700', text: 'text-gray-300' },
+];
+
+// ⚠️ ATUALIZADO: IDs dos Planos Mensais
 const STRIPE_PRICES = {
-    PREMIUM: 'price_1SwQtoBVKV78UpHa2QmMCB6v',
-    PRO: 'price_1SwlpKBVKV78UpHa8vfm11Uo',
-    AGENT: 'price_1SwQumBVKV78UpHaxUSMAGhW'
+    START: 'price_1SyvGvBVKV78UpHayU9XXe2Q',
+    PREMIUM: 'price_1SyvHkBVKV78UpHaHryy3YYP',
+    PRO: 'price_1SyvIYBVKV78UpHahHXN0APT',
+    AGENT: 'price_1SwQumBVKV78UpHaxUSMAGhW'  // Consultor
 };
 
 const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -63,6 +81,7 @@ export default function FinancialDashboard() {
 
     // --- MODAIS ---
     const [isFormOpen, setIsFormOpen] = useState(false);
+    const [isCreditCardModalOpen, setIsCreditCardModalOpen] = useState(false); // <--- ESTADO NOVO AQUI
     const [isAIOpen, setIsAIOpen] = useState(false);
     const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
     const [isPricingOpen, setIsPricingOpen] = useState(false);
@@ -71,6 +90,10 @@ export default function FinancialDashboard() {
     const [isCustomizationOpen, setIsCustomizationOpen] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+    const [isHistoryOpen, setIsHistoryOpen] = useState(false); // <--- Adicione junto com os outros states
+    // ... outros estados ...
+    const [addCounter, setAddCounter] = useState(0); // Conta quantos itens o usuário adicionou na sessão
+    const [isNudgeOpen, setIsNudgeOpen] = useState(false); // Controla o modal de "Cutucão"
 
     // --- AUTH & USER DATA ---
     const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
@@ -98,7 +121,7 @@ export default function FinancialDashboard() {
     const [formMode, setFormMode] = useState<'income' | 'expense' | 'installment' | 'fixed_expense'>('income');
     const [editingId, setEditingId] = useState<number | null>(null);
     const initialFormState = {
-        title: '', amount: '', installments: '', dueDay: '', category: 'Outros', targetMonth: currentSystemMonthName, isFixedIncome: false, fixedMonthlyValue: '', receiptUrl: '', icon: ''
+        title: '', amount: '', installments: '', dueDay: '', category: 'Outros', targetMonth: currentSystemMonthName, isFixedIncome: false, fixedMonthlyValue: '', receiptUrl: '', icon: '', paymentMethod: 'outros'
     };
     const [formData, setFormData] = useState(initialFormState);
     const [uploadingFile, setUploadingFile] = useState(false);
@@ -354,7 +377,7 @@ export default function FinancialDashboard() {
 
     const openPricingModal = () => { if (!user) { setIsAuthModalOpen(true); setAuthMessage("✨ Crie uma conta grátis."); return; } setIsPricingOpen(true); };
 
-    const handleCheckout = async (planType: 'PREMIUM' | 'PRO' | 'AGENT') => {
+    const handleCheckout = async (planType: 'START' | 'PREMIUM' | 'PRO' | 'AGENT') => {
         const btn = document.getElementById(`checkout-btn-${planType}`);
         if (btn) btn.innerText = "Processando...";
         const priceId = STRIPE_PRICES[planType];
@@ -433,7 +456,7 @@ export default function FinancialDashboard() {
 
     const handleEdit = (item: any, mode: any) => {
         setFormMode(mode); setEditingId(item.id); const currentReceipt = getReceiptForMonth(item, activeTab);
-        setFormData({ title: item.title, amount: item.amount || item.value || item.total_value || '', installments: item.installments_count || '', dueDay: item.due_day || '', category: item.category || 'Outros', targetMonth: item.target_month || activeTab, isFixedIncome: mode === 'income' && item.category === 'Salário', fixedMonthlyValue: item.fixed_monthly_value || '', receiptUrl: currentReceipt || '', icon: item.icon || '' });
+        setFormData({ title: item.title, amount: item.amount || item.value || item.total_value || '', installments: item.installments_count || '', dueDay: item.due_day || '', category: item.category || 'Outros', targetMonth: item.target_month || activeTab, isFixedIncome: mode === 'income' && item.category === 'Salário', fixedMonthlyValue: item.fixed_monthly_value || '', receiptUrl: currentReceipt || '', icon: item.icon || '', paymentMethod: item.payment_method || 'outros' });
         setIsFormOpen(true);
     };
 
@@ -442,6 +465,13 @@ export default function FinancialDashboard() {
     const handleFileUpload = async (e: any) => {
         const file = e.target.files[0];
         if (!file || !user) return;
+        // BLOQUEIO: Free e Start não podem fazer upload
+        if (userPlan === 'free' || userPlan === 'start') {
+            toast.error("Recurso Exclusivo Aliado Plus", { 
+                description: "Faça o upgrade (R$ 29,90) para salvar comprovantes na nuvem." 
+            });
+            return;
+        }
         setUploadingFile(true);
         try {
             const fileExt = file.name.split('.').pop(); const fileName = `${user.id}/${Date.now()}.${fileExt}`;
@@ -452,9 +482,7 @@ export default function FinancialDashboard() {
 
     const handleRemoveReceipt = (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); if (confirm("Tem certeza?")) setFormData({ ...formData, receiptUrl: '' }); };
 
-    // --- FUNÇÃO DE SALVAR CORRIGIDA E MELHORADA 🚀 ---
     const handleSubmit = async () => {
-        // 1. Verificação de Plano Free
         const totalItems = transactions.length + installments.length + recurring.length;
         const FREE_LIMIT = 50;
         if (userPlan === 'free' && totalItems >= FREE_LIMIT && !editingId) {
@@ -463,21 +491,18 @@ export default function FinancialDashboard() {
             return;
         }
 
-        // 2. Validação Inteligente 🧠 (Permite Total OU Parcela)
         const hasValue = formData.amount || (formMode === 'installment' && formData.fixedMonthlyValue);
         if (!formData.title || !hasValue) {
             toast.error("Preencha a descrição e o valor.");
             return;
         }
 
-        // 3. Preparação dos Dados
         const amountVal = formData.amount ? parseFloat(formData.amount.toString()) : 0;
         const fixedInstallmentVal = formData.fixedMonthlyValue ? parseFloat(formData.fixedMonthlyValue.toString()) : null;
-        const monthMap: Record<string, string> = { 'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04', 'Mai': '05', 'Jun': '06', 'Jul': '07', 'Ago': '08', 'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12' };
+        const monthMap: Record<string, string> = { 'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04', 'Mai': '05', 'Jun': '06', 'Jul': '/07', 'Ago': '08', 'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12' };
         const dateString = `01/${monthMap[formData.targetMonth]}/2026`;
         const context = currentWorkspace?.id;
 
-        // 4. Lógica do Comprovante (Mantida)
         let finalReceiptData: string | null = formData.receiptUrl;
         if ((formMode === 'installment' || formMode === 'fixed_expense') && editingId) {
             const originalItem = [...installments, ...recurring].find(i => i.id === editingId);
@@ -497,7 +522,8 @@ export default function FinancialDashboard() {
             user_id: activeId,
             receipt_url: finalReceiptData,
             context: context,
-            icon: formData.icon
+            icon: formData.icon,
+            payment_method: formData.paymentMethod || 'outros' // ADICIONADO AQUI!
         };
 
         const getPayload = () => {
@@ -509,24 +535,15 @@ export default function FinancialDashboard() {
             if (formMode === 'expense') {
                 return { table: 'transactions', data: { ...baseData, title: formData.title, amount: amountVal, type: 'expense', date: dateString, category: formData.category, target_month: formData.targetMonth, status: 'active' } };
             }
-            // --- LÓGICA DE PARCELAMENTO CORRIGIDA (Multiplicação Inteligente) 🧠 ---
             if (formMode === 'installment') {
                 const qtd = parseInt(formData.installments.toString()) || 1;
-                
-                // Variáveis capturadas acima
-                // amountVal = Valor Total digitado
-                // fixedInstallmentVal = Valor da Parcela digitado
-                
                 let finalTotal = 0;
                 let finalMonthly = 0;
 
-                // CENÁRIO A: Usuário digitou o Valor da Parcela (Prioridade!)
                 if (fixedInstallmentVal && fixedInstallmentVal > 0) {
                     finalMonthly = fixedInstallmentVal;
-                    // Se não tiver total, calcula: parcela * qtd
                     finalTotal = amountVal > 0 ? amountVal : (fixedInstallmentVal * qtd); 
                 } 
-                // CENÁRIO B: Usuário só digitou o Total
                 else {
                     finalTotal = amountVal;
                     finalMonthly = amountVal / qtd;
@@ -555,28 +572,40 @@ export default function FinancialDashboard() {
                     } 
                 };
             }
-            // Fixed Expense
             return { table: 'recurring', data: { ...baseData, title: formData.title, value: amountVal, due_day: parseInt(formData.dueDay.toString()) || 10, category: 'Fixa', type: 'expense', status: 'active', start_date: dateString } };
         };
 
         const { table, data } = getPayload();
         if (table === 'error') return;
 
-        // 5. Envio ao Supabase
         if (user && activeId) {
             if (editingId) await supabase.from(table).update(data).eq('id', editingId);
             else await supabase.from(table).insert([data]);
             loadData(activeId, context);
         } else {
-            // Modo Local
             const newItem = { ...data, id: editingId || Date.now(), is_paid: false };
             if (table === 'transactions') { const list = editingId ? transactions.map(t => t.id === editingId ? newItem : t) : [newItem, ...transactions]; saveDataLocal(list, installments, recurring); }
             else if (table === 'installments') { const list = editingId ? installments.map(i => i.id === editingId ? newItem : i) : [...installments, newItem]; saveDataLocal(transactions, list, recurring); }
             else { const list = editingId ? recurring.map(r => r.id === editingId ? newItem : r) : [...recurring, newItem]; saveDataLocal(transactions, installments, list); }
         }
 
-        setFormData({ ...initialFormState, targetMonth: activeTab });
-        setEditingId(null);
+        // ... (código de salvar local ou supabase) ...
+
+        // --- LÓGICA DE GROWTH / NUDGE ---
+        // Se o usuário não é Plus/Pro/Agent, vamos "cutucar" ele a cada X lançamentos
+        if (!editingId && (userPlan === 'free' || userPlan === 'start')) {
+            const newCount = addCounter + 1;
+            setAddCounter(newCount);
+            
+            // A cada 3 lançamentos manuais, mostra a vantagem da automação
+            if (newCount % 3 === 0) {
+                setTimeout(() => setIsNudgeOpen(true), 500); // Pequeno delay para não ser brusco
+            }
+        }
+        // -------------------------------
+
+        setFormData({ ...initialFormState, targetMonth: activeTab }); 
+        setEditingId(null); 
         setIsFormOpen(false);
     };
 
@@ -640,7 +669,7 @@ export default function FinancialDashboard() {
     if (currentIndex > 0) { const prevData = getMonthData(MONTHS[currentIndex - 1]); if (prevData.balance > 0) previousSurplus = prevData.balance; }
     const displayBalance = currentMonthData.balance + previousSurplus;
 
-    const askGemini = async (overridePrompt?: string) => {
+   const askGemini = async (overridePrompt?: string) => {
         const promptToSend = overridePrompt || aiPrompt;
         if (!promptToSend) return;
 
@@ -714,19 +743,29 @@ export default function FinancialDashboard() {
             const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: promptToSend, contextData: targetContextData, userPlan }) });
             const data = await response.json();
             const text = data.response || "";
+            
+            // Tenta processar comandos JSON se a resposta contiver um
             if (!targetContextData.report_type) {
                 const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
                 const firstBracket = cleanText.search(/\[|\{/);
                 const lastBracket = cleanText.search(/\]|\}(?!.*\]|\})/);
+                
                 if (firstBracket !== -1 && lastBracket !== -1) {
                     const potentialJson = cleanText.substring(firstBracket, lastBracket + 1);
                     try {
                         const parsed = JSON.parse(potentialJson);
                         const commands = Array.isArray(parsed) ? parsed : [parsed];
-                        if (userPlan === 'free' && commands.some((c: any) => c.action === 'add')) {
-                            setAiResponse(`🔒 **Funcionalidade Bloqueada**\n\nNo plano Lite, não tenho permissão para lançar contas automaticamente.\n\nPor favor, faça o upgrade.`);
-                            setIsLoading(false); return;
+                        
+                        // --- BLOQUEIO PARA PLANOS FREE E START ---
+                        // Se tentar executar uma ação 'add' (adicionar conta), bloqueia.
+                        if ((userPlan === 'free' || userPlan === 'start') && commands.some((c: any) => c.action === 'add')) {
+                            const planName = userPlan === 'free' ? 'Lite' : 'Start';
+                            setAiResponse(`🔒 **Funcionalidade Exclusiva Plus**\n\nNo plano ${planName}, eu posso tirar dúvidas, mas **não tenho permissão para lançar contas** automaticamente.\n\nPara automação total, mude para o Aliado Plus.`);
+                            setIsLoading(false); 
+                            return;
                         }
+                        // ----------------------------------------
+
                         let itemsAdded = 0;
                         for (const command of commands) {
                             const activeId = getActiveUserId();
@@ -737,6 +776,7 @@ export default function FinancialDashboard() {
                                 let validDate = rawData.date;
                                 if (!validDate || validDate === 'DD/MM/AAAA' || validDate.includes('DD/MM')) validDate = todayDate;
                                 const aiIcon = rawData.icon || null;
+                                
                                 if (command.table === 'installments') {
                                     const totalVal = rawData.total_value || rawData.amount || rawData.value || 0;
                                     const qtd = rawData.installments_count || 1;
@@ -809,11 +849,44 @@ export default function FinancialDashboard() {
                 </div>
 
                 <div className="flex flex-wrap justify-center xl:justify-end gap-3 w-full xl:w-auto items-center">
-                    <button id="btn-export" onClick={() => { if (userPlan === 'free') { toast.error("Recurso Premium", { description: "A exportação de relatórios profissionais é exclusiva para assinantes." }); openPricingModal(); return; } setIsExportModalOpen(true); }} className={`h-12 w-12 flex items-center justify-center rounded-xl transition shadow-lg border relative ${userPlan === 'free' ? 'bg-gray-900 text-gray-500 border-gray-800 hover:bg-gray-800' : 'bg-gray-900 text-emerald-500 border-emerald-900/30 hover:bg-emerald-900/20'}`} title={userPlan === 'free' ? "Exportar Excel (Bloqueado)" : "Exportar Relatório Excel"}>
-                        <FileSpreadsheet size={20} />
-                        {userPlan === 'free' && (<div className="absolute -top-1 -right-1 bg-gray-800 rounded-full p-0.5 border border-gray-700"><Lock size={10} className="text-amber-500" /></div>)}
-                    </button>
+                    {/* BOTÃO HISTÓRICO (ITEM 5) */}
+                <button 
+                    onClick={() => setIsHistoryOpen(true)} 
+                    className="h-12 w-12 flex items-center justify-center rounded-xl bg-gray-900 text-cyan-500 border border-cyan-900/30 hover:bg-cyan-900/20 hover:text-cyan-300 transition shadow-lg"
+                    title="Ver Gráfico Anual"
+                >
+                    <BarChart3 size={20} />
+                </button>
+                  <button 
+                        id="btn-export" 
+                        onClick={() => { 
+                            console.log("👉 Botão Exportar Clicado!");
+                            console.log("👤 Plano Atual:", userPlan);
 
+                            // BLOQUEIO: Free E Start não podem exportar
+                            if (userPlan === 'free' || userPlan === 'start') { 
+                                console.log("⛔ Bloqueado pelo plano.");
+                                toast.error("Recurso Premium (Plus)", { 
+                                    description: "Faça o upgrade para Plus ou Pro para exportar relatórios." 
+                                }); 
+                                openPricingModal(); 
+                                return; 
+                            } 
+                            
+                            console.log("✅ Permitido! Abrindo modal...");
+                            setIsExportModalOpen(true); 
+                        }} 
+                        className={`h-12 w-12 flex items-center justify-center rounded-xl transition shadow-lg border relative ${(userPlan === 'free' || userPlan === 'start') ? 'bg-gray-900 text-gray-500 border-gray-800 hover:bg-gray-800' : 'bg-gray-900 text-emerald-500 border-emerald-900/30 hover:bg-emerald-900/20'}`}
+                        title="Exportar Relatório Excel"
+                    >
+                        <FileSpreadsheet size={20} />
+                        {/* Cadeado para Free e Start */}
+                        {(userPlan === 'free' || userPlan === 'start') && (
+                            <div className="absolute -top-1 -right-1 bg-gray-800 rounded-full p-0.5 border border-gray-700">
+                                <Lock size={10} className="text-amber-500" />
+                            </div>
+                        )}
+                    </button>
                     {user ? (
                         <div className="relative">
                             <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className={`h-12 bg-gray-900 border border-gray-800 text-gray-400 px-6 rounded-xl hover:bg-gray-800 hover:text-white flex items-center justify-center gap-2 whitespace-nowrap transition ${isUserMenuOpen ? 'border-gray-600 text-white' : ''}`}>
@@ -855,6 +928,27 @@ export default function FinancialDashboard() {
                         {userPlan === 'premium' || userPlan === 'agent' || userPlan === 'pro' ? 'Agente IA' : 'IA Lite'}
                     </button>
 
+                    {/* BOTÃO FATURA RÁPIDA (ITEM NOVO) */}
+                   {/* BOTÃO FATURA RÁPIDA */}
+                    <button 
+                        onClick={() => {
+                            // BLOQUEIO: Só Plus para cima usa a ferramenta rápida
+                            if (userPlan === 'free' || userPlan === 'start') { 
+                                toast.error("Recurso de Produtividade (Plus)", { 
+                                    description: "No plano Start, os lançamentos são manuais (um a um). Assine o Plus para lançar faturas em lote!" 
+                                });
+                                openPricingModal();
+                                return;
+                            }
+                            setIsCreditCardModalOpen(true);
+                        }} 
+                        className={`h-12 px-6 rounded-xl font-bold transition flex items-center justify-center gap-2 shadow-lg whitespace-nowrap ${(userPlan === 'free' || userPlan === 'start') ? 'bg-gray-800 text-gray-500 border border-gray-700 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-500 text-white shadow-purple-900/20'}`}
+                        title="Lançamento Rápido de Fatura"
+                    >
+                        <CreditCard size={18} /> 
+                        Fatura {(userPlan === 'free' || userPlan === 'start') && <Lock size={12} className="ml-1"/>}
+                    </button>
+
                     <button id="btn-novo" onClick={openNewTransactionModal} className="h-12 bg-white text-black px-6 rounded-xl font-bold hover:bg-gray-200 transition flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(255,255,255,0.1)] whitespace-nowrap"><Plus size={18} /> Novo</button>
                     <button onClick={runTour} className="h-12 w-12 flex items-center justify-center bg-gray-900 text-gray-400 hover:text-white rounded-xl border border-gray-800" title="Ajuda / Tour"><HelpCircle size={18} /></button>
                 </div>
@@ -868,6 +962,25 @@ export default function FinancialDashboard() {
             {currentLayout === 'trader' && (<TraderView transactions={transactions} installments={installments} recurring={recurring} activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab} currentMonthData={currentMonthData} previousSurplus={previousSurplus} displayBalance={displayBalance} onTogglePaid={togglePaid} onToggleDelay={toggleDelay} onDelete={handleDelete} />)}
             {currentLayout === 'calendar' && (<CalendarView transactions={transactions} installments={installments} recurring={recurring} activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab} />)}
             <ExportModal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} user={user} userPlan={userPlan} clients={clients} activeTab={activeTab} />
+            
+            {/* MODAL DE CARTÃO DE CRÉDITO */}
+            {/* MODAL DE CARTÃO DE CRÉDITO (ATUALIZADO) */}
+            <CreditCardModal 
+                isOpen={isCreditCardModalOpen} 
+                onClose={() => setIsCreditCardModalOpen(false)} 
+                user={user}
+                activeTab={activeTab}
+                contextId={currentWorkspace?.id}  // <--- ESSA LINHA É A CHAVE! 🔑
+                onSuccess={() => loadData(getActiveUserId(), currentWorkspace?.id)}
+            />
+            {/* MODAL DE HISTÓRICO (ITEM 5) */}
+        <HistoryModal 
+            isOpen={isHistoryOpen} 
+            onClose={() => setIsHistoryOpen(false)} 
+            transactions={transactions}
+            installments={installments}
+            recurring={recurring}
+        />
             {currentLayout === 'zen' && (<ZenView displayBalance={displayBalance} currentMonthData={currentMonthData} activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab} />)}
             {currentLayout === 'timeline' && (<TimelineView transactions={transactions} activeTab={activeTab} />)}
             {currentLayout === 'bento' && (<BentoView currentMonthData={currentMonthData} transactions={transactions} installments={installments} recurring={recurring} onOpenCalendar={() => setCurrentLayout('calendar')} onOpenRollover={() => setIsRolloverModalOpen(true)} />)}
@@ -906,6 +1019,7 @@ export default function FinancialDashboard() {
 
                             <input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none" placeholder="Descrição" />
 
+                            {/* --- SELETOR DE ÍCONES --- */}
                             <div className="my-4">
                                 <label className="text-gray-500 text-xs uppercase font-bold mb-2 block ml-1">Escolha um Ícone</label>
                                 <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
@@ -920,7 +1034,33 @@ export default function FinancialDashboard() {
                                 </div>
                             </div>
 
-                            {/* --- ORDEM DOS CAMPOS ALTERADA (PEDIDO DO USUÁRIO) --- */}
+                            {/* --- NOVO: SELETOR DE BANCO/CARTÃO (ITEM 2) 👇 --- */}
+                            <div className="mb-4">
+                                <label className="text-gray-500 text-xs uppercase font-bold mb-2 block ml-1 flex items-center gap-2">
+                                    <Landmark size={12}/> Conta / Cartão
+                                </label>
+                                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                                    {ACCOUNTS.map(acc => (
+                                        <button 
+                                            key={acc.id}
+                                            onClick={() => setFormData({ ...formData, paymentMethod: acc.id })}
+                                            className={`
+                                                flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition border
+                                                ${formData.paymentMethod === acc.id 
+                                                    ? `${acc.color} ${acc.text} border-transparent shadow-md scale-105` 
+                                                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}
+                                            `}
+                                        >
+                                            {acc.id === 'nubank' && <img src="https://upload.wikimedia.org/wikipedia/commons/f/f7/Nubank_logo_2021.svg" className="w-4 h-4 invert opacity-90"/>}
+                                            {acc.label}
+                                            {formData.paymentMethod === acc.id && <Check size={12}/>}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            {/* --------------------------------------------------- */}
+
+                            {/* --- ORDEM DOS CAMPOS ALTERADA (PEDIDO ANTERIOR) --- */}
                             
                             {/* 1. VALOR TOTAL DA DÍVIDA (AGORA NO TOPO E OPCIONAL) */}
                             <div className="mb-2">
@@ -983,15 +1123,63 @@ export default function FinancialDashboard() {
                 </div>
             )}
 
+          {/* MODAL DE PREÇOS ATUALIZADO */}
             {isPricingOpen && (
                 <div className="fixed inset-0 bg-black/95 backdrop-blur-xl flex items-center justify-center z-[200] p-4 overflow-y-auto">
-                    <div className="w-full max-w-5xl">
+                    <div className="w-full max-w-6xl">
                         <div className="flex justify-end mb-4"><button onClick={() => setIsPricingOpen(false)} className="text-gray-400 hover:text-white"><X size={32} /></button></div>
-                        <div className="text-center mb-10"><h2 className="text-3xl md:text-5xl font-black text-white mb-4 tracking-tight">Escolha seu Nível.</h2><p className="text-gray-400">Do controle básico à automação total com IA.</p></div>
+                        <div className="text-center mb-10">
+                            <h2 className="text-3xl md:text-5xl font-black text-white mb-4 tracking-tight">Evolua seu Controle.</h2>
+                            <p className="text-gray-400">Escolha a potência da sua ferramenta.</p>
+                        </div>
+                        
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div className="bg-[#111] border border-gray-800 rounded-3xl p-8 flex flex-col relative opacity-80 hover:opacity-100 transition"><h3 className="text-xl font-bold text-gray-400 mb-2">Inicial</h3><div className="text-4xl font-black text-white mb-6">Grátis</div><ul className="space-y-4 mb-8 flex-1"><li className="flex gap-3 text-sm text-gray-400"><CheckCircle2 size={18} /> <span>Até 50 lançamentos/mês</span></li><li className="flex gap-3 text-sm text-gray-400"><CheckCircle2 size={18} /> <span>Dashboard Básico</span></li><li className="flex gap-3 text-sm text-gray-600"><X size={18} /> <span>Sem Inteligência Artificial</span></li><li className="flex gap-3 text-sm text-gray-600"><X size={18} /> <span>Sem Upload de Comprovantes</span></li></ul><button className="w-full bg-gray-800 text-white font-bold py-4 rounded-xl cursor-default opacity-50">Seu Plano Atual</button></div>
-                            <div className="bg-[#0f1219] border border-amber-500/30 rounded-3xl p-8 flex flex-col relative transform hover:scale-105 transition shadow-2xl shadow-amber-900/20"><div className="absolute top-0 right-0 bg-amber-500 text-black text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-xl">MAIS POPULAR</div><h3 className="text-xl font-bold text-amber-500 mb-2">Aliado Plus +</h3><div className="text-4xl font-black text-white mb-1">R$ 29,90</div><div className="text-xs text-gray-500 mb-6 uppercase tracking-wide">Pagamento Único</div><ul className="space-y-4 mb-8 flex-1"><li className="flex gap-3 text-sm text-gray-200"><Zap className="text-amber-500" size={18} /> <span><b>Ilimitado:</b> Lance sem travas</span></li><li className="flex gap-3 text-sm text-gray-200"><Sparkles className="text-purple-400" size={18} /> <span><b>Agente IA:</b> Diagnósticos e Dicas</span></li><li className="flex gap-3 text-sm text-gray-200"><FileText className="text-emerald-400" size={18} /> <span><b>Arquivo:</b> Guarde seus Recibos</span></li><li className="flex gap-3 text-sm text-gray-200"><Star className="text-cyan-400" size={18} /> <span>Acesso Vitalício</span></li></ul><button id="checkout-btn-PREMIUM" onClick={() => handleCheckout('PREMIUM')} className="w-full bg-gradient-to-r from-amber-500 to-orange-600 text-white font-bold py-4 rounded-xl hover:shadow-lg hover:shadow-amber-500/20 transition">Escolher Plus</button></div>
-                            <div className="bg-[#0a0a0a] border border-purple-500/50 rounded-3xl p-8 flex flex-col relative overflow-hidden group"><div className="absolute inset-0 bg-gradient-to-br from-purple-900/10 to-cyan-900/10 opacity-0 group-hover:opacity-100 transition duration-500"></div><h3 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-400 mb-2">Aliado PRO</h3><div className="text-4xl font-black text-white mb-1">R$ 59,90</div><div className="text-xs text-gray-500 mb-6 uppercase tracking-wide">Pagamento Único</div><ul className="space-y-4 mb-8 flex-1 relative z-10"><li className="flex gap-3 text-sm text-white"><Crown className="text-purple-400" size={18} /> <span><b>Tudo do Plus incluso</b></span></li><li className="flex gap-3 text-sm text-gray-300"><Palette className="text-pink-400" size={18} /> <span><b>Temas:</b> Personalize as cores</span></li><li className="flex gap-3 text-sm text-gray-300"><Layout className="text-blue-400" size={18} /> <span><b>Layouts:</b> Trader, Calendar, Zen</span></li><li className="flex gap-3 text-sm text-gray-300"><MousePointerClick className="text-green-400" size={18} /> <span><b>Ícones Customizáveis</b></span></li></ul><button id="checkout-btn-PRO" onClick={() => handleCheckout('PRO')} className="w-full bg-gray-800 border border-purple-500/50 text-white font-bold py-4 rounded-xl hover:bg-purple-900/20 hover:border-purple-400 transition relative z-10">Virar PRO</button></div>
+                            
+                            {/* PLANO START - "O Manual Ilimitado" */}
+                            <div className="bg-[#111] border border-gray-800 rounded-3xl p-8 flex flex-col relative hover:border-gray-600 transition group">
+                                <h3 className="text-xl font-bold text-gray-300 mb-2 flex items-center gap-2"><Rocket size={20}/> Aliado Start</h3>
+                                <div className="text-4xl font-black text-white mb-1">R$ 10,00<span className="text-lg font-medium text-gray-500">/mês</span></div>
+                                <div className="text-xs text-gray-500 mb-6">Para quem gosta de registrar tudo manualmente.</div>
+                                <ul className="space-y-4 mb-8 flex-1">
+                                    <li className="flex gap-3 text-sm text-white"><CheckCircle2 size={18} className="text-emerald-500"/> <span><b>Lançamentos Ilimitados</b></span></li>
+                                    <li className="flex gap-3 text-sm text-gray-400"><X size={18} className="text-gray-600"/> <span>Fatura Rápida (Bloqueado)</span></li>
+                                    <li className="flex gap-3 text-sm text-gray-400"><X size={18} className="text-gray-600"/> <span>Exportação Excel (Bloqueado)</span></li>
+                                    <li className="flex gap-3 text-sm text-gray-400"><X size={18} className="text-gray-600"/> <span>Upload de Arquivos</span></li>
+                                    <li className="flex gap-3 text-sm text-gray-400"><Sparkles size={18} className="text-gray-600"/> <span>IA Apenas Consultiva</span></li>
+                                </ul>
+                                <button id="checkout-btn-START" onClick={() => handleCheckout('START')} className="w-full bg-gray-800 text-white font-bold py-4 rounded-xl hover:bg-gray-700 border border-gray-700 transition">Assinar Start</button>
+                            </div>
+
+                            {/* PLANO PLUS - "A Máquina de Produtividade" */}
+                            <div className="bg-[#0f1219] border border-amber-500/30 rounded-3xl p-8 flex flex-col relative transform md:scale-105 transition shadow-2xl shadow-amber-900/20 z-10">
+                                <div className="absolute top-0 right-0 bg-amber-500 text-black text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-xl">MELHOR CUSTO-BENEFÍCIO</div>
+                                <h3 className="text-xl font-bold text-amber-500 mb-2 flex items-center gap-2"><Zap size={20}/> Aliado Plus</h3>
+                                <div className="text-4xl font-black text-white mb-1">R$ 29,90<span className="text-lg font-medium text-gray-500">/mês</span></div>
+                                <div className="text-xs text-gray-500 mb-6">Automação, rapidez e arquivos.</div>
+                                <ul className="space-y-4 mb-8 flex-1">
+                                    <li className="flex gap-3 text-sm text-white"><CheckCircle2 size={18} className="text-amber-500"/> <span><b>Lançamentos Ilimitados</b></span></li>
+                                    <li className="flex gap-3 text-sm text-white"><CreditCard size={18} className="text-purple-400"/> <span><b>Fatura Rápida em Lote</b></span></li>
+                                    <li className="flex gap-3 text-sm text-white"><FileSpreadsheet size={18} className="text-green-400"/> <span><b>Exportação Excel Pro</b></span></li>
+                                    <li className="flex gap-3 text-sm text-gray-200"><FileText size={18} className="text-emerald-400"/> <span>Upload de Comprovantes</span></li>
+                                    <li className="flex gap-3 text-sm text-gray-200"><Sparkles size={18} className="text-purple-400"/> <span>IA que Lança Contas</span></li>
+                                </ul>
+                                <button id="checkout-btn-PREMIUM" onClick={() => handleCheckout('PREMIUM')} className="w-full bg-gradient-to-r from-amber-500 to-orange-600 text-white font-bold py-4 rounded-xl hover:shadow-lg hover:shadow-amber-500/20 transition">Quero Produtividade</button>
+                            </div>
+
+                            {/* PLANO PRO - "O Visual e a Inteligência" */}
+                            <div className="bg-[#0a0a0a] border border-purple-500/50 rounded-3xl p-8 flex flex-col relative overflow-hidden group">
+                                <div className="absolute inset-0 bg-gradient-to-br from-purple-900/10 to-cyan-900/10 opacity-0 group-hover:opacity-100 transition duration-500"></div>
+                                <h3 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-400 mb-2 flex items-center gap-2"><Crown size={20} className="text-purple-400"/> Aliado Pro</h3>
+                                <div className="text-4xl font-black text-white mb-1">R$ 59,90<span className="text-lg font-medium text-gray-500">/mês</span></div>
+                                <div className="text-xs text-gray-500 mb-6">Poder total e personalização.</div>
+                                <ul className="space-y-4 mb-8 flex-1 relative z-10">
+                                    <li className="flex gap-3 text-sm text-white"><CheckCircle2 size={18} className="text-purple-400"/> <span><b>Tudo do Plus incluso</b></span></li>
+                                    <li className="flex gap-3 text-sm text-gray-300"><Palette size={18} className="text-pink-400"/> <span><b>Temas & Cores Exclusivos</b></span></li>
+                                    <li className="flex gap-3 text-sm text-gray-300"><Layout size={18} className="text-blue-400"/> <span><b>Layouts (Trader, Zen, Calendar)</b></span></li>
+                                    <li className="flex gap-3 text-sm text-gray-300"><Sparkles size={18} className="text-cyan-400"/> <span><b>IA Avançada (GPT-4)</b></span></li>
+                                </ul>
+                                <button id="checkout-btn-PRO" onClick={() => handleCheckout('PRO')} className="w-full bg-gray-800 border border-purple-500/50 text-white font-bold py-4 rounded-xl hover:bg-purple-900/20 hover:border-purple-400 transition relative z-10">Virar Pro</button>
+                            </div>
                         </div>
                         <div className="mt-12 text-center border-t border-gray-800 pt-8"><p className="text-gray-500 text-sm mb-4">Você é Contador ou Consultor Financeiro?</p><button onClick={() => handleCheckout('AGENT')} className="text-purple-400 text-sm hover:text-purple-300 underline decoration-purple-500/30 underline-offset-4">Conheça o Plano para Profissionais</button></div>
                     </div>
@@ -1041,6 +1229,45 @@ export default function FinancialDashboard() {
                         </div>
                     </div>
                     <Toaster richColors position="top-center" theme={currentTheme === 'light' ? 'light' : 'dark'} />
+                </div>
+            )}
+            {/* MODAL DE NUDGE (MARKETING INTELIGENTE) */}
+            {isNudgeOpen && (
+                <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[250] p-6 animate-in fade-in duration-300">
+                    <div className="bg-[#111] border border-gray-800 p-8 rounded-3xl w-full max-w-sm relative shadow-2xl overflow-hidden">
+                        {/* Efeito de Fundo */}
+                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-amber-500"></div>
+                        <div className="absolute -top-10 -right-10 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl"></div>
+
+                        <button onClick={() => setIsNudgeOpen(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white transition"><X size={20} /></button>
+                        
+                        <div className="mb-6">
+                            <div className="w-12 h-12 bg-gray-900 rounded-2xl flex items-center justify-center mb-4 border border-gray-800">
+                                <Sparkles className="text-amber-500" size={24} />
+                            </div>
+                            <h3 className="text-xl font-bold text-white mb-2">Cansado de digitar?</h3>
+                            <p className="text-gray-400 text-sm leading-relaxed">
+                                Você já fez <b>{addCounter} lançamentos manuais</b> agora. 
+                                <br/><br/>
+                                No <strong>Aliado Plus</strong>, a IA lê o comprovante e preenche tudo para você em segundos. ⚡
+                            </p>
+                        </div>
+
+                        <div className="space-y-3">
+                            <button 
+                                onClick={() => { setIsNudgeOpen(false); openPricingModal(); }} 
+                                className="w-full bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-bold py-3 rounded-xl transition shadow-lg shadow-amber-900/20 flex items-center justify-center gap-2"
+                            >
+                                <Zap size={18} fill="currentColor" /> Quero Automatizar
+                            </button>
+                            <button 
+                                onClick={() => setIsNudgeOpen(false)} 
+                                className="w-full text-gray-500 hover:text-gray-300 text-xs py-2 transition"
+                            >
+                                Continuar digitando manualmente
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
             {isRolloverModalOpen && (<div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[200] p-6"><div className="bg-[#111] border border-gray-700 p-8 rounded-3xl w-full max-w-lg shadow-2xl relative"><h2 className="text-2xl font-bold mb-2 text-white flex items-center gap-2"><AlertCircle className="text-orange-500" /> Contas em Aberto</h2><p className="text-gray-400 text-sm mb-6">Existem contas de meses passados que você não marcou como pagas.</p><div className="max-h-[300px] overflow-y-auto space-y-2 mb-6 pr-2">{pastDueItems.map((item, idx) => (<div key={idx} className="flex justify-between items-center p-3 bg-gray-900 rounded-lg border border-gray-800"><div><p className="text-white font-medium text-sm">{item.title}</p><p className="text-xs text-gray-500">{item.month}</p></div><div className="flex items-center gap-3"><span className="text-red-400 font-mono">R$ {item.amount || item.value || item.value_per_month}</span><button onClick={() => toggleDelay(item.origin, item)} className="text-xs bg-orange-500/20 text-orange-400 px-2 py-1 rounded border border-orange-500/50 hover:bg-orange-500 hover:text-white transition">Mover p/ Stand-by</button></div></div>))}</div><div className="flex justify-end gap-3"><button onClick={() => setIsRolloverModalOpen(false)} className="bg-white text-black px-6 py-2 rounded-full font-bold hover:bg-gray-200 transition">OK</button></div></div></div>)}

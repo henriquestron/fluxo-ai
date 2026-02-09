@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
-    DollarSign, TrendingDown, CreditCard, AlertCircle, Check, Eye, EyeOff, 
-    Clock, Pencil, Trash2, ExternalLink, List, LayoutGrid, CheckSquare, 
-    Square, AlertTriangle, TrendingUp,
-    // ÍCONES PARA PERSONALIZAÇÃO
+    TrendingUp, TrendingDown, CheckCircle2, AlertCircle, 
+    MoreHorizontal, Wallet, CreditCard, DollarSign,
     ShoppingCart, Home, Car, Utensils, Zap, GraduationCap, 
-    HeartPulse, Plane, Gamepad2, Smartphone
+    HeartPulse, Plane, Gamepad2, Smartphone, Check, X, Clock,
+    FileText, Trash2, Pencil, List, CheckSquare, Square, AlertTriangle, ExternalLink,
+    ChevronDown, ChevronUp // Novos ícones para o Accordion
 } from 'lucide-react';
 
 // --- MAPA DE ÍCONES ---
@@ -15,9 +15,92 @@ const ICON_MAP: any = {
     'plane': Plane, 'gamepad-2': Gamepad2, 'smartphone': Smartphone, 'dollar-sign': DollarSign
 };
 
-// --- COMPONENTE CARD INTERNO ---
+// --- ESTILOS DOS BANCOS ---
+const BANK_STYLES: any = {
+    'nubank': { 
+        label: 'Nubank', 
+        color: 'bg-[#820AD1]', 
+        bg: 'bg-[#820AD1]/10', 
+        border: 'border-[#820AD1]/30', 
+        text: 'text-[#a958e8]', 
+        icon: 'https://upload.wikimedia.org/wikipedia/commons/f/f7/Nubank_logo_2021.svg' 
+    },
+    'inter': { 
+        label: 'Inter', 
+        color: 'bg-[#FF7A00]', 
+        bg: 'bg-[#FF7A00]/10', 
+        border: 'border-[#FF7A00]/30', 
+        text: 'text-[#ff9638]', 
+        icon: 'https://upload.wikimedia.org/wikipedia/commons/0/01/Inter_RGB_300_dpi.png' 
+    },
+    'bb': { 
+        label: 'BB', 
+        color: 'bg-[#F8D117]', 
+        bg: 'bg-[#F8D117]/10', 
+        border: 'border-[#F8D117]/30', 
+        text: 'text-[#fae064]', 
+        icon: 'https://upload.wikimedia.org/wikipedia/commons/1/1a/Funda%C3%A7%C3%A3o_Banco_do_Brasil_-_logo_2.svg' 
+    },
+    'itau': { 
+        label: 'Itaú', 
+        color: 'bg-[#EC7000]', 
+        bg: 'bg-[#EC7000]/10', 
+        border: 'border-[#EC7000]/30', 
+        text: 'text-[#ff9233]', 
+        icon: 'https://upload.wikimedia.org/wikipedia/commons/1/19/Ita%C3%BA_Unibanco_logo_2023.svg' 
+    },
+    'santander': { 
+        label: 'Santander', 
+        color: 'bg-[#CC0000]', 
+        bg: 'bg-[#CC0000]/10', 
+        border: 'border-[#CC0000]/30', 
+        text: 'text-[#ff4d4d]', 
+        icon: 'https://upload.wikimedia.org/wikipedia/commons/b/b8/Banco_Santander_Logotipo.svg' 
+    },
+    'caixa': { 
+        label: 'Caixa', 
+        color: 'bg-[#005CA9]', 
+        bg: 'bg-[#005CA9]/10', 
+        border: 'border-[#005CA9]/30', 
+        text: 'text-[#4ea4eb]', 
+        icon: 'https://upload.wikimedia.org/wikipedia/commons/3/3c/Caixa_Econ%C3%B4mica_Federal_logo_1997.svg' 
+    },
+    'bradesco': { 
+        label: 'Bradesco', 
+        color: 'bg-[#CC092F]', 
+        bg: 'bg-[#CC092F]/10', 
+        border: 'border-[#CC092F]/30', 
+        text: 'text-[#ff4d6f]', 
+        icon: 'https://upload.wikimedia.org/wikipedia/commons/c/c3/Banco_Bradesco_logo.svg' 
+    },
+    'c6': { 
+        label: 'C6 Bank', 
+        color: 'bg-[#222]', 
+        bg: 'bg-gray-800', 
+        border: 'border-gray-600', 
+        text: 'text-gray-300', 
+        icon: 'https://upload.wikimedia.org/wikipedia/commons/7/77/Logo_C6_Bank.svg' 
+    },
+    'money': { 
+        label: 'Dinheiro', 
+        color: 'bg-emerald-600', 
+        bg: 'bg-emerald-900/10', 
+        border: 'border-emerald-500/30', 
+        text: 'text-emerald-400', 
+        icon: null // Dinheiro usa ícone padrão do sistema
+    },
+    'outros': { 
+        label: 'Outros', 
+        color: 'bg-gray-700', 
+        bg: 'bg-gray-800/50', 
+        border: 'border-gray-700', 
+        text: 'text-gray-400', 
+        icon: null 
+    },
+};
+
+// --- COMPONENTE CARD ---
 const Card = ({ title, value, icon: Icon, type, extraLabel, subValueLabel, elementId }: any) => {
-    // Define as cores baseado no tipo
     let bgClass = "bg-[#0f1219] border-gray-800 hover:border-cyan-500/30";
     let textClass = "text-white";
     let iconBgClass = "bg-cyan-500/10 text-cyan-400";
@@ -28,7 +111,7 @@ const Card = ({ title, value, icon: Icon, type, extraLabel, subValueLabel, eleme
         textClass = "text-red-500";
         iconBgClass = "bg-red-500/10 text-red-400";
         glowClass = "from-red-600/10";
-    } else if (type === 'warning') { // Stand-by
+    } else if (type === 'warning') { 
         bgClass = "bg-orange-950/20 border-orange-900/50 hover:border-orange-500/50";
         textClass = "text-orange-200";
         iconBgClass = "bg-orange-500/10 text-orange-400";
@@ -65,18 +148,18 @@ interface StandardViewProps {
     recurring: any[];
     activeTab: string;
     months: string[];
-    setActiveTab: (month: string) => void;
+    setActiveTab: (tab: string) => void;
     currentMonthData: any;
     previousSurplus: number;
     displayBalance: number;
     viewingAs: any;
-    onTogglePaid: (table: string, id: number, status: boolean) => void;
+    onTogglePaid: (table: string, id: number, currentStatus: boolean) => void;
     onToggleSkip: (item: any) => void;
     onToggleDelay: (table: string, item: any) => void;
     onDelete: (table: string, id: number) => void;
-    onEdit: (item: any, mode: any) => void;
+    onEdit: (item: any, mode: string) => void;
     onTogglePaidMonth: (table: string, item: any) => void;
-    getReceipt: (item: any, month: string) => string | null;
+    getReceipt: (item: any, month: string) => any;
 }
 
 export default function StandardView({
@@ -85,60 +168,54 @@ export default function StandardView({
     onTogglePaid, onToggleSkip, onToggleDelay, onDelete, onEdit, onTogglePaidMonth, getReceipt
 }: StandardViewProps) {
 
-    // Helper para Renderizar Ícones Personalizados
+    // Estado para controlar quais bancos estão abertos (Accordion)
+    // Começa vazio ou com todos fechados. O usuário clica para ver detalhes.
+    const [openBanks, setOpenBanks] = useState<string[]>([]);
+
+    const toggleBank = (bankKey: string) => {
+        if (openBanks.includes(bankKey)) {
+            setOpenBanks(openBanks.filter(key => key !== bankKey));
+        } else {
+            setOpenBanks([...openBanks, bankKey]);
+        }
+    };
+
+    // --- Lógica de Filtros ---
+    const monthIndex = months.indexOf(activeTab);
+    const monthMap: Record<string, string> = { 'Jan': '/01', 'Fev': '/02', 'Mar': '/03', 'Abr': '/04', 'Mai': '/05', 'Jun': '/06', 'Jul': '/07', 'Ago': '/08', 'Set': '/09', 'Out': '/10', 'Nov': '/11', 'Dez': '/12' };
+    const dateFilter = monthMap[activeTab];
+
+    const monthTransactions = transactions.filter(t => t.date?.includes(dateFilter) && t.status !== 'delayed');
+    
+    const activeRecurring = recurring.filter(r => {
+        if (r.status === 'delayed') return false;
+        if (!r.start_date) return true;
+        const startMonthIndex = parseInt(r.start_date.split('/')[1]) - 1;
+        return monthIndex >= startMonthIndex;
+    });
+
+    const groupedInstallments = installments.reduce((acc: any, curr: any) => {
+        if (curr.status === 'delayed') return acc;
+        const offset = monthIndex;
+        const actualInstallment = curr.current_installment + offset;
+        if (actualInstallment < 1 || actualInstallment > curr.installments_count) return acc;
+        const bank = curr.payment_method || 'outros';
+        if (!acc[bank]) acc[bank] = { items: [], total: 0 };
+        acc[bank].items.push({ ...curr, actualInstallment });
+        acc[bank].total += (curr.value_per_month || 0);
+        return acc;
+    }, {});
+    const sortedBanks = Object.keys(groupedInstallments).sort((a, b) => groupedInstallments[b].total - groupedInstallments[a].total);
+
     const renderIconItem = (iconName: string) => {
         const IconComp = ICON_MAP[iconName] || DollarSign;
         return <IconComp size={16} className="text-cyan-500"/>;
     };
 
-    const renderTransactions = () => { 
-        const monthMap: Record<string, string> = { 'Jan': '/01', 'Fev': '/02', 'Mar': '/03', 'Abr': '/04', 'Mai': '/05', 'Jun': '/06', 'Jul': '/07', 'Ago': '/08', 'Set': '/09', 'Out': '/10', 'Nov': '/11', 'Dez': '/12' }; 
-        const filter = monthMap[activeTab]; 
-        const normalItems = transactions.filter(t => t.date?.includes(filter) && t.status !== 'delayed'); 
-        const fixedItems = recurring.map(r => { const startMonthIndex = r.start_date ? parseInt(r.start_date.split('/')[1]) - 1 : 0; const currentMonthIndex = months.indexOf(activeTab); if (currentMonthIndex < startMonthIndex) return null; return { ...r, isFixed: true, isSkipped: r.skipped_months?.includes(activeTab), date: 'Fixo Mensal', amount: r.value }; }).filter(Boolean); 
-        const allItems = [...fixedItems, ...normalItems.map(t => ({...t, isFixed: false, isSkipped: false}))]; 
-        
-        if (allItems.length === 0) return <p className="text-gray-500 text-center py-8 italic text-sm border border-dashed border-gray-800 rounded-xl">Nenhuma movimentação para {viewingAs ? 'este cliente' : 'você'} em {activeTab}.</p>; 
-        
-        return allItems.map((item: any, index: number) => { 
-            if (item.status === 'delayed') return null; 
-            const isDimmed = item.isSkipped || item.is_paid; 
-            const currentReceipt = getReceipt(item, activeTab);
-            const rowId = index === 0 ? 'action-group-0' : undefined;
-
-            return ( 
-                <div key={`${item.isFixed ? 'fix' : 'var'}-${item.id}`} className={`flex justify-between items-center p-4 border rounded-xl group transition ${isDimmed ? 'bg-[#0f1219]/50 border-gray-800/50 opacity-60' : 'bg-[#0f1219] border-gray-800 hover:border-gray-700'}`}> 
-                    <div className="flex items-center gap-4"> 
-                        {!item.isFixed && (<button onClick={() => onTogglePaid('transactions', item.id, item.is_paid)} title="Marcar como Pago/Pendente" className={`rounded-full p-1.5 border transition ${item.is_paid ? 'bg-emerald-500/20 border-emerald-500 text-emerald-500' : 'border-gray-600 text-transparent hover:border-emerald-500'}`}><Check size={12} /></button>)} 
-                        {item.isFixed && (<button onClick={() => onToggleSkip(item)} title={item.isSkipped ? "Restaurar neste mês" : "Ocultar deste mês (sem excluir regra)"} className={`rounded-full p-1.5 border transition ${item.isSkipped ? 'bg-gray-800 border-gray-700 text-gray-500' : 'border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/10'}`}>{item.isSkipped ? <EyeOff size={12}/> : <Eye size={12}/>}</button>)} 
-                        
-                        {/* ÍCONE PERSONALIZADO AQUI */}
-                        <div className={`p-2 rounded-lg bg-gray-800/50 border border-gray-700 ${item.isFixed ? 'text-blue-400' : 'text-gray-400'}`}>
-                            {renderIconItem(item.icon)}
-                        </div>
-
-                        <div> 
-                            <p className={`font-semibold text-sm ${isDimmed ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title} {item.isFixed && <span className="text-[9px] bg-blue-900/30 text-blue-400 px-1.5 py-0.5 rounded ml-1 uppercase tracking-wide">Fixo</span>}</p> 
-                            <div className="flex items-center gap-2"><p className="text-xs text-gray-500">{item.isSkipped ? 'PULADO' : item.date}</p>{currentReceipt && (<a href={currentReceipt} target="_blank" rel="noopener noreferrer" title="Ver comprovante" className="text-cyan-500 hover:text-cyan-400 flex items-center text-[10px] gap-1 bg-cyan-900/20 px-1.5 rounded transition"><ExternalLink size={10}/> Ver Comprovante</a>)}</div> 
-                        </div> 
-                    </div> 
-                    <div className="flex items-center gap-3"> 
-                        <span className={`font-mono font-medium ${item.type === 'income' ? 'text-emerald-400' : 'text-red-400'}`}>{item.type === 'expense' ? '-' : '+'} {item.amount.toFixed(2)}</span> 
-                        <div id={rowId} className="flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition"> 
-                            {!item.isFixed && item.type === 'expense' && (<button onClick={() => onToggleDelay(item.isFixed ? 'recurring' : 'transactions', item)} title="Congelar/Stand-by" className="p-1.5 rounded bg-orange-500/10 text-orange-500 hover:bg-orange-500 hover:text-white"><Clock size={14}/></button>)} 
-                            <button onClick={() => onEdit(item, item.isFixed ? (item.type === 'income' ? 'income' : 'fixed_expense') : (item.type === 'income' ? 'income' : 'expense'))} title="Editar" className="p-1.5 rounded hover:bg-blue-500/10 text-blue-500"><Pencil size={14}/></button> 
-                            <button onClick={() => onDelete(item.isFixed ? 'recurring' : 'transactions', item.id)} title="Excluir" className="p-1.5 rounded hover:bg-red-500/10 text-red-500"><Trash2 size={14}/></button> 
-                        </div> 
-                    </div> 
-                </div> 
-            ); 
-        }); 
-    };
-
     const renderDelayed = () => { 
-        const delayedTrans = transactions.filter(t => t.status === 'delayed').map(t => ({ ...t, _source: 'trans' })); 
-        const delayedInst = installments.filter(i => i.status === 'delayed').map(i => ({ ...i, _source: 'inst' })); 
-        const delayedRecur = recurring.filter(r => r.status === 'delayed').map(r => ({ ...r, _source: 'recur' })); 
+        const delayedTrans = transactions.filter(t => t.status === 'delayed').map(t => ({ ...t, _source: 'trans', _amount: t.amount })); 
+        const delayedInst = installments.filter(i => i.status === 'delayed').map(i => ({ ...i, _source: 'inst', _amount: i.value_per_month })); 
+        const delayedRecur = recurring.filter(r => r.status === 'delayed').map(r => ({ ...r, _source: 'recur', _amount: r.value })); 
         const delayedItems = [...delayedTrans, ...delayedInst, ...delayedRecur]; 
         
         if (delayedItems.length === 0) return null; 
@@ -146,171 +223,266 @@ export default function StandardView({
         return (
             <div className="mt-8 border border-red-900/30 bg-red-950/10 rounded-2xl p-6">
                 <h3 className="text-red-400 font-bold flex items-center gap-2 mb-4"><AlertTriangle size={18}/> Em Stand-by (Congelados)</h3>
-                <div className="space-y-2">
+                <div className="space-y-2 max-h-[200px] overflow-y-auto scrollbar-thin scrollbar-thumb-red-900 scrollbar-track-transparent pr-2">
                     {delayedItems.map((item: any) => (
                         <div key={`del-${item._source}-${item.id}`} className="flex justify-between items-center p-3 bg-red-900/10 rounded-lg border border-red-900/20">
                             <span className="text-red-200 text-sm">{item.title}</span>
                             <div className="flex items-center gap-3">
-                                <span className="font-mono text-red-400 font-bold">R$ {(item.amount || item.value || item.value_per_month).toFixed(2)}</span>
+                                <span className="font-mono text-red-400 font-bold">R$ {item._amount.toFixed(2)}</span>
                                 <button onClick={() => onToggleDelay(item._source === 'trans' ? 'transactions' : item._source === 'inst' ? 'installments' : 'recurring', item)} title="Restaurar" className="text-xs bg-red-500 text-white px-2 py-1 rounded hover:bg-red-400">Restaurar</button>
                             </div>
                         </div>
                     ))}
                 </div>
-                <p className="text-xs text-red-500/50 mt-3 text-center">Estes valores não afetam seu saldo atual.</p>
             </div>
         ) 
     };
 
     const hasDelayed = currentMonthData.delayedTotal > 0;
-    // CORREÇÃO: Grid class agora lida com 4 colunas de forma estável
     const gridClass = hasDelayed ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-4" : "grid-cols-1 md:grid-cols-3";
 
     return (
         <div className="animate-in fade-in zoom-in duration-500">
-            {/* CARDS DE RESUMO */}
-            <div className={`grid gap-4 mb-12 ${gridClass}`}>
-                <Card 
-                    elementId="card-saldo" 
-                    title={`Saldo ${viewingAs ? 'do Cliente' : 'Pessoal'} (${activeTab})`} 
-                    value={displayBalance} 
-                    icon={DollarSign} 
-                    type={displayBalance >= 0 ? 'income' : 'negative'} 
-                    extraLabel={previousSurplus > 0 ? `+ R$ ${previousSurplus.toFixed(2)} (Sobra)` : null} 
-                />
-                <Card 
-                    title="Saídas Totais" 
-                    value={currentMonthData.expenseTotal} 
-                    icon={TrendingDown} 
-                    type="expense" 
-                    subValueLabel={currentMonthData.accumulatedDebt > 0 ? (<span className="text-red-400 font-bold flex items-center gap-1"><AlertCircle size={12}/> + R$ {currentMonthData.accumulatedDebt.toFixed(2)} Pendente</span>) : null} 
-                />
-                <Card 
-                    title="Entradas" 
-                    value={currentMonthData.income} 
-                    icon={TrendingUp} // Ícone corrigido para TrendingUp
-                    type="income" 
-                />
-                {/* CARD STAND-BY (VOLTOU AO ORIGINAL MAS USANDO O COMPONENTE CARD) */}
-                {hasDelayed && (
-                    <Card 
-                        title="Em Stand-by"
-                        value={currentMonthData.delayedTotal}
-                        icon={Clock}
-                        type="warning" // Cor Laranja
-                        subValueLabel="Valores Adiados"
-                    />
-                )}
+            {/* ... SELETOR DE MÊS ... */}
+            <div className="flex justify-between items-center mb-6 overflow-x-auto pb-2 scrollbar-hide">
+                <div className="flex bg-gray-900/80 p-1.5 rounded-2xl border border-gray-800 shadow-xl backdrop-blur-md">
+                    {months.map(m => (
+                        <button key={m} onClick={() => setActiveTab(m)} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all duration-300 relative ${activeTab === m ? 'text-black shadow-lg scale-105' : 'text-gray-500 hover:text-gray-300'}`}>
+                            {activeTab === m && (<div className="absolute inset-0 bg-gradient-to-tr from-cyan-400 to-blue-500 rounded-xl" />)}
+                            <span className="relative z-10">{m}</span>
+                        </button>
+                    ))}
+                </div>
+                {viewingAs && (<div className="hidden md:flex items-center gap-2 bg-purple-900/20 border border-purple-500/30 px-4 py-2 rounded-xl"><div className="w-2 h-2 rounded-full bg-purple-500 animate-pulse"></div><span className="text-purple-300 text-xs font-bold uppercase tracking-wider">Visualizando Cliente</span></div>)}
             </div>
 
-            {/* ÁREA PRINCIPAL */}
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-                {/* COLUNA ESQUERDA */}
-                <div className="xl:col-span-1 space-y-6">
-                    <h2 className="text-xl font-bold flex items-center gap-2 text-gray-200"><List size={20} className="text-cyan-500"/> Extrato</h2>
-                    <div className="space-y-3">{renderTransactions()}</div>
+            {/* ... CARDS DO TOPO ... */}
+            <div className={`grid gap-4 mb-8 ${gridClass}`}>
+                <Card elementId="card-saldo" title="Saldo Previsto" value={displayBalance} icon={Wallet} type={displayBalance >= 0 ? 'income' : 'negative'} extraLabel={previousSurplus > 0 ? `+ R$ ${previousSurplus.toFixed(2)} (Mês Passado)` : null} />
+                <Card title="Entradas" value={currentMonthData.income} icon={TrendingUp} type="income" />
+                <Card title="Saídas Totais" value={currentMonthData.expenseTotal} icon={TrendingDown} type="expense" subValueLabel={currentMonthData.accumulatedDebt > 0 ? (<span className="text-red-400 font-bold flex items-center gap-1"><AlertCircle size={12}/> + R$ {currentMonthData.accumulatedDebt.toFixed(2)} Pendente</span>) : null} />
+                {hasDelayed && (<Card title="Em Stand-by" value={currentMonthData.delayedTotal} icon={Clock} type="warning" subValueLabel="Valores Adiados" />)}
+            </div>
+
+            {/* --- LAYOUT COMPACTO 3 COLUNAS --- */}
+            {/* Adicionei 'h-fit' e alinhamento para o topo */}
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
+                
+                {/* COLUNA 1: EXTRATO (COM ROLAGEM) */}
+                <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                        <h3 className="text-xl font-bold text-white flex items-center gap-2"><div className="w-1 h-6 bg-cyan-500 rounded-full"></div> Extrato do Mês</h3>
+                        <span className="text-xs text-gray-500 font-mono">{monthTransactions.length} itens</span>
+                    </div>
+
+                    {/* AQUI: max-h-[600px] + overflow-y-auto cria a barra de rolagem interna */}
+                    <div className="bg-[#0f0f10] border border-gray-800/50 rounded-3xl overflow-hidden max-h-[600px] flex flex-col">
+                        <div className="overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent">
+                            {monthTransactions.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center h-[200px] text-gray-600 gap-3">
+                                    <div className="bg-gray-800/50 p-4 rounded-full"><List size={32} opacity={0.5}/></div>
+                                    <p className="text-sm">Nenhuma movimentação avulsa.</p>
+                                </div>
+                            ) : (
+                                <div className="divide-y divide-gray-800/50">
+                                    {monthTransactions.map(item => {
+                                        const Icon = item.icon && ICON_MAP[item.icon] ? ICON_MAP[item.icon] : (item.type === 'income' ? TrendingUp : TrendingDown);
+                                        return (
+                                            <div key={item.id} className="group p-4 hover:bg-white/[0.02] transition flex items-center justify-between">
+                                                <div className="flex items-center gap-4">
+                                                    <div onClick={() => onTogglePaid('transactions', item.id, item.is_paid)} className={`cursor-pointer w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${item.is_paid ? 'bg-emerald-500/20 text-emerald-500' : 'bg-gray-800 text-gray-500 group-hover:bg-gray-700'}`}>
+                                                        {item.is_paid ? <CheckCircle2 size={18} /> : <Icon size={18} />}
+                                                    </div>
+                                                    <div>
+                                                        <p className={`font-bold text-sm ${item.is_paid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
+                                                        <p className="text-xs text-gray-500 flex items-center gap-1">{item.category} • {item.date}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className={`font-mono font-bold text-sm ${item.type === 'income' ? 'text-emerald-400' : 'text-gray-300'}`}>
+                                                        {item.type === 'income' ? '+' : '-'} R$ {item.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                    </p>
+                                                    <div className="flex justify-end gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button onClick={() => onToggleDelay('transactions', item)} title="Congelar" className="text-gray-500 hover:text-orange-400"><Clock size={14} /></button>
+                                                        <button onClick={() => onEdit(item, item.type)} className="text-gray-500 hover:text-cyan-400"><Pencil size={14} /></button>
+                                                        <button onClick={() => onDelete('transactions', item.id)} className="text-gray-500 hover:text-red-400"><Trash2 size={14} /></button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    </div>
                     {renderDelayed()}
                 </div>
 
-                {/* COLUNA DIREITA */}
-                <div className="xl:col-span-2 bg-[#0f1219] border border-gray-800 rounded-3xl p-6 md:p-8">
-                    <div className="flex justify-between items-center mb-6">
-                        <h2 className="text-xl font-bold flex items-center gap-2"><LayoutGrid size={20} className="text-cyan-500"/> Financiamentos & Contas</h2>
-                        <div className="flex bg-black p-1 rounded-xl border border-gray-800 overflow-x-auto w-full md:w-auto scrollbar-hide">
-                            {months.map((month) => (
-                                <button key={month} onClick={() => setActiveTab(month)} className={`px-6 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${activeTab === month ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>{month}</button>
-                            ))}
-                        </div>
-                    </div>
-                    
-                    {/* LISTA MOBILE */}
-                    <div className="block md:hidden space-y-3">
-                        {[...installments, ...recurring.filter(r => r.type === 'expense')].map(item => { 
-                            const isInstallment = item.installments_count !== undefined; 
-                            const currentInst = isInstallment ? item.current_installment + months.indexOf(activeTab) : null; 
-                            if (item.status === 'delayed') return null; 
-                            if (isInstallment && (currentInst < 1 || currentInst > item.installments_count)) return null; 
-                            if (!isInstallment && (item.skipped_months?.includes(activeTab))) return null; 
-                            if (!isInstallment) { const startMonthIndex = item.start_date ? parseInt(item.start_date.split('/')[1]) - 1 : 0; if (months.indexOf(activeTab) < startMonthIndex) return null; } 
-                            const isPaid = item.paid_months?.includes(activeTab); 
-                            const prefix = isInstallment ? 'mob-inst' : 'mob-rec'; 
-                            const currentReceipt = getReceipt(item, activeTab); 
-                            return ( 
-                                <div key={`${prefix}-${item.id}`} className={`p-4 rounded-xl border ${isPaid ? 'bg-emerald-950/20 border-emerald-900/30' : 'bg-gray-900 border-gray-800'}`}> 
-                                    <div className="flex justify-between mb-2">
-                                        <span className="font-bold text-white flex items-center gap-2">
-                                            {renderIconItem(item.icon)} {item.title}
-                                        </span>
-                                        <span className="font-mono text-gray-300">R$ {(item.value || item.value_per_month).toFixed(2)}</span>
-                                    </div> 
-                                    <div className="flex justify-between items-center text-xs text-gray-500 mb-4"><span>{isInstallment ? `Parcela ${currentInst}/${item.installments_count}` : 'Recorrente'}</span><span className={`px-2 py-0.5 rounded ${isInstallment ? 'bg-purple-500/10 text-purple-400' : 'bg-blue-500/10 text-blue-400'}`}>{isInstallment ? 'Parcelado' : 'Fixo'}</span></div> 
-                                    <div className="flex justify-between items-center border-t border-gray-800 pt-3"> 
-                                        <button onClick={() => onTogglePaidMonth(isInstallment ? 'installments' : 'recurring', item)} title="Marcar como Pago" className={`flex items-center gap-2 text-sm font-medium ${isPaid ? 'text-emerald-400' : 'text-gray-400'}`}>{isPaid ? <CheckSquare size={18}/> : <Square size={18}/>} {isPaid ? 'Pago' : 'Marcar'}</button> 
-                                        <div className="flex gap-4">
-                                            {currentReceipt && (<a href={currentReceipt} target="_blank" rel="noopener noreferrer" title="Ver Comprovante" className="text-cyan-500"><ExternalLink size={18}/></a>)}
-                                            <button onClick={() => onToggleDelay(isInstallment ? 'installments' : 'recurring', item)} title="Congelar/Adiar" className="text-orange-400"><Clock size={18}/></button>
-                                            <button onClick={() => onEdit(item, isInstallment ? 'installment' : 'fixed_expense')} title="Editar" className="text-blue-400"><Pencil size={18}/></button>
-                                            <button onClick={() => onDelete(isInstallment ? 'installments' : 'recurring', item.id)} title="Excluir" className="text-red-400"><Trash2 size={18}/></button>
-                                        </div> 
-                                    </div> 
-                                </div> 
-                            ); 
-                        })}
+                {/* COLUNA 2: BANCOS (COM ACCORDION / SANFONA) */}
+                <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                        <h3 className="text-xl font-bold text-white flex items-center gap-2"><div className="w-1 h-6 bg-purple-500 rounded-full"></div> Cartões & Faturas</h3>
                     </div>
 
-                    {/* TABELA DESKTOP */}
-                    <div className="hidden md:block overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead><tr className="text-gray-500 text-xs uppercase tracking-wider border-b border-gray-800"><th className="pb-4 pl-2 font-medium">Descrição</th><th className="pb-4 font-medium">Tipo</th><th className="pb-4 font-medium">Status</th><th className="pb-4 pr-2 text-right font-medium">Valor</th><th className="pb-4 w-24 text-right">Pago?</th><th className="pb-4 w-24"></th></tr></thead>
-                            <tbody className="text-sm">
-                                {installments.map((inst) => {
-                                    if (inst.status === 'delayed') return null;
-                                    const currentInst = inst.current_installment + months.indexOf(activeTab);
-                                    if (currentInst < 1 || currentInst > inst.installments_count) return null;
-                                    const isPaid = inst.paid_months?.includes(activeTab);
-                                    const currentReceipt = getReceipt(inst, activeTab);
-                                    return (
-                                        <tr key={`desk-inst-${inst.id}`} className={`border-b border-gray-800/50 group transition ${isPaid ? 'bg-emerald-950/10' : 'hover:bg-gray-800/30'}`}>
-                                            <td className="py-4 pl-2 font-medium text-white flex items-center gap-2">{renderIconItem(inst.icon)} {inst.title}</td>
-                                            <td className="py-4 text-gray-500"><span className="bg-purple-500/10 text-purple-400 px-2 py-1 rounded text-xs">Parcelado</span></td>
-                                            <td className="py-4 text-gray-400"><span className="bg-gray-800 text-xs px-2 py-1 rounded text-gray-300 border border-gray-700">{currentInst}/{inst.installments_count}</span></td>
-                                            <td className="py-4 pr-2 text-right font-mono text-gray-200">R$ {inst.value_per_month.toFixed(2)}</td>
-                                            <td className="py-4 text-right"><button onClick={() => onTogglePaidMonth('installments', inst)} title="Marcar Parcela como Paga" className={`transition ${isPaid ? 'text-emerald-400 hover:text-emerald-300' : 'text-gray-600 hover:text-white'}`}>{isPaid ? <CheckSquare size={20}/> : <Square size={20}/>}</button></td>
-                                            <td className="py-4 text-right flex gap-3 justify-end">
-                                                {currentReceipt && (<a href={currentReceipt} target="_blank" rel="noopener noreferrer" title="Ver Comprovante" className="text-cyan-500 hover:text-white transition"><ExternalLink size={16}/></a>)}
-                                                <button onClick={() => onToggleDelay('installments', inst)} title="Congelar/Adiar" className="text-gray-600 hover:text-orange-500 opacity-0 group-hover:opacity-100 transition"><Clock size={16}/></button>
-                                                <button onClick={() => onEdit(inst, 'installment')} title="Editar" className="text-gray-600 hover:text-blue-400 opacity-0 group-hover:opacity-100 transition"><Pencil size={16}/></button>
-                                                <button onClick={() => onDelete('installments', inst.id)} title="Excluir" className="text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition"><Trash2 size={16}/></button>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                                {recurring.filter(r => r.type === 'expense').map((rec) => {
-                                     if (rec.status === 'delayed' || rec.skipped_months?.includes(activeTab)) return null;
-                                     const startMonthIndex = rec.start_date ? parseInt(rec.start_date.split('/')[1]) - 1 : 0;
-                                     if (months.indexOf(activeTab) < startMonthIndex) return null;
-                                     const isPaid = rec.paid_months?.includes(activeTab);
-                                     const currentReceipt = getReceipt(rec, activeTab);
-                                     return (
-                                        <tr key={`desk-rec-${rec.id}`} className={`border-b border-gray-800/50 group transition ${isPaid ? 'bg-emerald-950/10' : 'hover:bg-gray-800/30'}`}>
-                                            <td className="py-4 pl-2 font-medium text-white flex items-center gap-2">{renderIconItem(rec.icon)} {rec.title}</td>
-                                            <td className="py-4 text-gray-500"><span className="bg-blue-500/10 text-blue-400 px-2 py-1 rounded text-xs">Fixo</span></td>
-                                            <td className="py-4 text-gray-400 text-xs">Mensal</td>
-                                            <td className="py-4 pr-2 text-right font-mono text-gray-200">R$ {rec.value.toFixed(2)}</td>
-                                            <td className="py-4 text-right"><button onClick={() => onTogglePaidMonth('recurring', rec)} title="Marcar como Pago" className={`transition ${isPaid ? 'text-emerald-400 hover:text-emerald-300' : 'text-gray-600 hover:text-white'}`}>{isPaid ? <CheckSquare size={20}/> : <Square size={20}/>}</button></td>
-                                            <td className="py-4 text-right flex gap-3 justify-end">
-                                                {currentReceipt && (<a href={currentReceipt} target="_blank" rel="noopener noreferrer" title="Ver Comprovante" className="text-cyan-500 hover:text-white transition"><ExternalLink size={16}/></a>)}
-                                                <button onClick={() => onToggleDelay('recurring', rec)} title="Congelar/Adiar" className="text-gray-600 hover:text-orange-500 opacity-0 group-hover:opacity-100 transition"><Clock size={16}/></button>
-                                                <button onClick={() => onEdit(rec, 'fixed_expense')} title="Editar" className="text-gray-600 hover:text-blue-400 opacity-0 group-hover:opacity-100 transition"><Pencil size={16}/></button>
-                                                <button onClick={() => onDelete('recurring', rec.id)} title="Excluir" className="text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition"><Trash2 size={16}/></button>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
+                    {/* Também limitamos a altura para não estourar se tiver muitos bancos */}
+                    <div className="space-y-3 max-h-[700px] overflow-y-auto scrollbar-thin scrollbar-thumb-purple-900/30 scrollbar-track-transparent pr-1">
+                        {sortedBanks.length === 0 ? (
+                            <div className="bg-[#0f0f10] border border-gray-800/50 rounded-3xl p-8 flex flex-col items-center justify-center text-center text-gray-600 gap-3 min-h-[200px]">
+                                <CreditCard size={32} opacity={0.5}/>
+                                <p className="text-sm">Sem faturas para este mês.</p>
+                            </div>
+                        ) : (
+                            sortedBanks.map(bankKey => {
+                                const group = groupedInstallments[bankKey];
+                                const style = BANK_STYLES[bankKey] || BANK_STYLES['outros'];
+                                const isOpen = openBanks.includes(bankKey); // Verifica se está aberto
+
+                                return (
+                                    <div key={bankKey} className={`rounded-2xl border overflow-hidden transition-all duration-300 ${style.bg} ${style.border} ${isOpen ? 'shadow-lg shadow-black/40' : 'opacity-90 hover:opacity-100'}`}>
+                                        {/* CABEÇALHO DO BANCO (CLICÁVEL) */}
+                                        <div 
+                                            onClick={() => toggleBank(bankKey)} 
+                                            className="p-4 flex justify-between items-center cursor-pointer select-none hover:bg-white/5 active:bg-white/10 transition"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                {style.icon ? (
+                                                     <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center p-1.5 shadow-sm">
+                                                         <img src={style.icon} className="w-full h-full object-contain" style={{ filter: bankKey === 'nubank' ? 'none' : '' }} />
+                                                     </div>
+                                                ) : (
+                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center bg-black/20 ${style.text}`}><CreditCard size={16}/></div>
+                                                )}
+                                                <div>
+                                                    <h4 className={`font-bold text-sm ${style.text}`}>{style.label}</h4>
+                                                    <p className="text-[10px] text-gray-400/80 uppercase tracking-wider font-bold">
+                                                        {isOpen ? `Fatura de ${activeTab}` : `${group.items.length} compras`}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="text-right flex items-center gap-3">
+                                                <div>
+                                                    <p className="text-[10px] text-gray-400">Total da Fatura</p>
+                                                    <p className="text-white font-bold font-mono">R$ {group.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                                </div>
+                                                {isOpen ? <ChevronUp size={18} className="text-gray-500"/> : <ChevronDown size={18} className="text-gray-500"/>}
+                                            </div>
+                                        </div>
+
+                                        {/* LISTA DE ITENS (SÓ APARECE SE isOpen FOR TRUE) */}
+                                        {isOpen && (
+                                            <div className="divide-y divide-gray-700/20 bg-black/20 animate-in slide-in-from-top-2 duration-200">
+                                                {group.items.map((item: any) => {
+                                                     const isPaid = item.paid_months?.includes(activeTab);
+                                                     const Icon = item.icon && ICON_MAP[item.icon] ? ICON_MAP[item.icon] : ShoppingCart;
+
+                                                     return (
+                                                         <div key={item.id} className="group p-3 flex items-center justify-between hover:bg-white/5 transition">
+                                                             <div className="flex items-center gap-3">
+                                                                 <div onClick={() => onTogglePaidMonth('installments', item)} className={`cursor-pointer w-8 h-8 rounded-lg flex items-center justify-center transition-all ${isPaid ? 'bg-emerald-500/20 text-emerald-500' : 'bg-gray-800/50 text-gray-500 hover:text-white'}`}>
+                                                                     {isPaid ? <Check size={14} /> : <span className="text-[10px] font-bold">{item.actualInstallment}x</span>}
+                                                                 </div>
+                                                                 <div className="overflow-hidden">
+                                                                     <p className={`text-sm font-medium truncate max-w-[140px] ${isPaid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
+                                                                     <p className="text-[10px] text-gray-500 flex items-center gap-1">
+                                                                        <Icon size={10}/> {item.actualInstallment}/{item.installments_count}
+                                                                     </p>
+                                                                 </div>
+                                                             </div>
+                                                             <div className="text-right">
+                                                                 <p className={`font-mono text-sm font-medium ${isPaid ? 'text-gray-600' : 'text-gray-300'}`}>
+                                                                     R$ {item.value_per_month.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                                 </p>
+                                                                 <div className="flex justify-end gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                     <button onClick={() => onToggleDelay('installments', item)} className="text-gray-500 hover:text-orange-400" title="Stand-by"><Clock size={12} /></button>
+                                                                     <button onClick={() => onEdit(item, 'installment')} className="text-gray-500 hover:text-cyan-400" title="Editar"><Pencil size={12} /></button>
+                                                                     <button onClick={() => onDelete('installments', item.id)} className="text-gray-500 hover:text-red-400" title="Excluir"><Trash2 size={12} /></button>
+                                                                     {getReceipt(item, activeTab) && (
+                                                                         <a href={getReceipt(item, activeTab)} target="_blank" className="text-emerald-500 hover:text-emerald-300" title="Ver Recibo"><FileText size={12} /></a>
+                                                                     )}
+                                                                 </div>
+                                                             </div>
+                                                         </div>
+                                                     );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })
+                        )}
                     </div>
                 </div>
+
+                {/* COLUNA 3: RECORRENTES (COM ROLAGEM) */}
+                <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                        <h3 className="text-xl font-bold text-white flex items-center gap-2"><div className="w-1 h-6 bg-emerald-500 rounded-full"></div> Recorrentes</h3>
+                    </div>
+
+                    <div className="bg-[#0f0f10] border border-gray-800/50 rounded-3xl overflow-hidden max-h-[600px] flex flex-col">
+                        <div className="overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent">
+                            {/* 1. RECEITAS FIXAS */}
+                            <div className="bg-emerald-900/10 border-b border-emerald-500/20 p-3">
+                                <p className="text-[10px] uppercase font-bold text-emerald-500 tracking-wider mb-2 ml-1">Renda Fixa</p>
+                                {activeRecurring.filter(r => r.type === 'income').length === 0 ? (
+                                    <p className="text-xs text-gray-600 italic ml-1">Nenhuma renda fixa.</p>
+                                ) : (
+                                    activeRecurring.filter(r => r.type === 'income').map(item => {
+                                        const isSkipped = item.skipped_months?.includes(activeTab);
+                                        return (
+                                            <div key={item.id} className={`flex items-center justify-between p-2 rounded-lg mb-1 ${isSkipped ? 'opacity-50' : ''}`}>
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center"><DollarSign size={14}/></div>
+                                                    <span className="text-sm font-bold text-gray-200">{item.title}</span>
+                                                </div>
+                                                <span className="text-emerald-400 font-mono font-bold text-sm">R$ {item.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                            </div>
+                                        )
+                                    })
+                                )}
+                            </div>
+
+                            {/* 2. DESPESAS FIXAS */}
+                            <div className="p-2">
+                                <p className="text-[10px] uppercase font-bold text-gray-500 tracking-wider mb-2 mt-2 ml-2">Contas a Pagar</p>
+                                {activeRecurring.filter(r => r.type === 'expense').length === 0 ? (
+                                    <div className="text-center py-8 text-gray-600 text-sm">Tudo limpo!</div>
+                                ) : (
+                                    activeRecurring.filter(r => r.type === 'expense').map(item => {
+                                        const isPaid = item.paid_months?.includes(activeTab);
+                                        const isSkipped = item.skipped_months?.includes(activeTab);
+                                        const Icon = item.icon && ICON_MAP[item.icon] ? ICON_MAP[item.icon] : Home;
+
+                                        return (
+                                            <div key={item.id} className={`group p-3 rounded-xl border mb-2 transition flex items-center justify-between ${isSkipped ? 'border-dashed border-gray-800 opacity-50 bg-transparent' : isPaid ? 'bg-gray-900/50 border-gray-800' : 'bg-gray-800/30 border-gray-700 hover:border-gray-600'}`}>
+                                                <div className="flex items-center gap-3">
+                                                    <div onClick={() => onTogglePaidMonth('recurring', item)} className={`cursor-pointer w-10 h-10 rounded-xl flex items-center justify-center transition-all ${isPaid ? 'bg-emerald-500/20 text-emerald-500' : 'bg-black text-gray-400 group-hover:text-white'}`}>
+                                                        {isPaid ? <CheckCircle2 size={18} /> : <Icon size={18} />}
+                                                    </div>
+                                                    <div>
+                                                        <p className={`font-bold text-sm ${isPaid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
+                                                        <p className="text-[10px] text-gray-500 flex items-center gap-1">Vence dia {item.due_day} {isSkipped && <span className="text-orange-500 font-bold ml-1">(Pular)</span>}</p>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="text-right">
+                                                    <p className={`font-mono font-bold text-sm ${isPaid ? 'text-gray-600' : 'text-gray-300'}`}>R$ {item.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                                    <div className="flex justify-end gap-2 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button onClick={() => onToggleDelay('recurring', item)} title="Stand-by" className="text-gray-500 hover:text-orange-400"><Clock size={12} /></button>
+                                                        <button onClick={() => onEdit(item, 'fixed_expense')} className="text-gray-500 hover:text-cyan-400"><Pencil size={12} /></button>
+                                                        <button onClick={() => onDelete('recurring', item.id)} className="text-gray-500 hover:text-red-400"><Trash2 size={12} /></button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
     );
