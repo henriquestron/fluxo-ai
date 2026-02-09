@@ -1,15 +1,17 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     CreditCard, TrendingDown, DollarSign, Plus, X, List, LayoutGrid, Sparkles, Send,
     Trash2, AlertCircle, CheckCircle2, Pencil, Clock, AlertTriangle, Check, LogIn,
     LogOut, User, Eye, EyeOff, CheckSquare, Square, ArrowRight, Crown, ShieldCheck,
     Mail, Loader2, Lock, BarChart3, Search, Target, Upload, FileText, ExternalLink,
     Users, ChevronDown, UserPlus, Briefcase, HelpCircle, Star, Zap, Shield, Palette,
-    Layout, MousePointerClick, FolderPlus, Layers, FileSpreadsheet, Wallet, Landmark,Rocket,
+    Layout, MousePointerClick, FolderPlus, Layers, FileSpreadsheet, Wallet, Landmark,Rocket,Paperclip,
+    
     // NOVOS ÍCONES PARA O SELETOR 👇
     ShoppingCart, Home, Car, Utensils, GraduationCap, HeartPulse, Plane, Gamepad2, Smartphone
+    
 } from 'lucide-react';
 import { supabase } from '@/supabase';
 import { driver } from "driver.js";
@@ -94,6 +96,15 @@ export default function FinancialDashboard() {
     // ... outros estados ...
     const [addCounter, setAddCounter] = useState(0); // Conta quantos itens o usuário adicionou na sessão
     const [isNudgeOpen, setIsNudgeOpen] = useState(false); // Controla o modal de "Cutucão"
+    // ... outros states ...
+    const [aiInput, setAiInput] = useState('');
+    // NOVO: Estado para guardar o arquivo (Base64) antes de enviar
+    const [attachment, setAttachment] = useState<{ base64: string, type: 'image' | 'pdf' } | null>(null);
+    // NOVO: Referência para o input de arquivo oculto
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    // ... outros states ...
+    const [isAiLoading, setIsAiLoading] = useState(false); // Estado de carregamento da IA
+    const [chatHistory, setChatHistory] = useState<any[]>([]); // Histórico da conversa
 
     // --- AUTH & USER DATA ---
     const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
@@ -127,7 +138,7 @@ export default function FinancialDashboard() {
     const [uploadingFile, setUploadingFile] = useState(false);
 
     // --- AI ---
-    const [aiPrompt, setAiPrompt] = useState('');
+
     const [aiResponse, setAiResponse] = useState<any>('');
     const [isLoading, setIsLoading] = useState(false);
 
@@ -242,6 +253,67 @@ export default function FinancialDashboard() {
                 loadData(userId, newW.id);
             }
         }
+    };
+    // Função para ler o arquivo e converter para Base64
+    // Função para ler, redimensionar e converter o arquivo
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // Se for PDF, não comprimimos (apenas valida tamanho bruto)
+        if (file.type === 'application/pdf') {
+            if (file.size > 2 * 1024 * 1024) { // Limite 2MB para PDF
+                toast.error("PDF muito grande. Máximo 2MB.");
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                setAttachment({ base64: event.target?.result as string, type: 'pdf' });
+            };
+            reader.readAsDataURL(file);
+            return;
+        }
+
+        // Se for IMAGEM, vamos redimensionar
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const img = new Image();
+            img.src = event.target?.result as string;
+            
+            img.onload = () => {
+                // Cria um canvas para redimensionar
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+                
+                // Define tamanho máximo (Ex: 1024px) - Mantém a proporção
+                const MAX_SIZE = 1024;
+                if (width > height) {
+                    if (width > MAX_SIZE) {
+                        height *= MAX_SIZE / width;
+                        width = MAX_SIZE;
+                    }
+                } else {
+                    if (height > MAX_SIZE) {
+                        width *= MAX_SIZE / height;
+                        height = MAX_SIZE;
+                    }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                
+                const ctx = canvas.getContext('2d');
+                ctx?.drawImage(img, 0, 0, width, height);
+                
+                // Converte para Base64 com qualidade reduzida (0.7 = 70%)
+                // Isso reduz uma foto de 4MB para ~200KB sem perder legibilidade para a IA
+                const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+                
+                setAttachment({ base64: compressedBase64, type: 'image' });
+            };
+        };
+        reader.readAsDataURL(file);
     };
 
     const handleCreateProfile = async () => {
@@ -669,139 +741,98 @@ export default function FinancialDashboard() {
     if (currentIndex > 0) { const prevData = getMonthData(MONTHS[currentIndex - 1]); if (prevData.balance > 0) previousSurplus = prevData.balance; }
     const displayBalance = currentMonthData.balance + previousSurplus;
 
-   const askGemini = async (overridePrompt?: string) => {
-        const promptToSend = overridePrompt || aiPrompt;
-        if (!promptToSend) return;
-
-        setIsLoading(true); setAiResponse(''); setAiPrompt('');
-
-        const promptLower = promptToSend.toLowerCase();
-        let targetContextData = null;
+  // Função para chamar a IA (Agora aceita arquivos!)
+   // Função para chamar a IA (Agora aceita arquivos!)
+    const askGemini = async (text: string, fileBase64: string | null = null) => {
+        setIsAiLoading(true);
         
-        // MODO 1: PORTFOLIO
-        const isPortfolioRequest = ['todos', 'geral', 'carteira', 'resumo dos clientes', 'visão geral'].some(k => promptLower.includes(k));
-        if ((userPlan === 'agent' || userPlan === 'admin') && clients.length > 0 && isPortfolioRequest) {
-            setAiResponse(`📊 Compilando relatório da carteira (${clients.length} clientes)...`);
-            const clientIds = clients.map(c => c.client_id);
-            const { data: allTrans } = await supabase.from('transactions').select('user_id, amount, type').in('user_id', clientIds).eq('status', 'active');
-            const { data: allInst } = await supabase.from('installments').select('user_id, value_per_month').in('user_id', clientIds).eq('status', 'active');
-            const { data: allRecur } = await supabase.from('recurring').select('user_id, value, type').in('user_id', clientIds).eq('status', 'active');
-            
-            const portfolioSummary = clients.map(client => {
-                const cId = client.client_id;
-                const cName = client.client_email.split('@')[0];
-                const cTrans = allTrans?.filter(t => t.user_id === cId) || [];
-                const cInst = allInst?.filter(i => i.user_id === cId) || [];
-                const cRecur = allRecur?.filter(r => r.user_id === cId) || [];
-                const income = cTrans.filter(t => t.type === 'income').reduce((acc, curr) => acc + curr.amount, 0) + cRecur.filter(r => r.type === 'income').reduce((acc, curr) => acc + curr.value, 0);
-                const expense = cTrans.filter(t => t.type === 'expense').reduce((acc, curr) => acc + curr.amount, 0) + cRecur.filter(r => r.type === 'expense').reduce((acc, curr) => acc + curr.value, 0) + cInst.reduce((acc, curr) => acc + curr.value_per_month, 0);
-                return { cliente: cName, renda: income, gastos: expense, saldo: income - expense, status: (income - expense) < 0 ? 'CRÍTICO 🚨' : 'SAUDÁVEL ✅' };
-            });
-            targetContextData = { report_type: 'PORTFOLIO_ANALYSIS', resumo_carteira: portfolioSummary, is_consultant: true, client_name: "Toda a Carteira" };
-        }
+        // Adiciona mensagem do usuário no chat
+        const userMsg = { role: 'user', content: text, type: 'text' };
+        setChatHistory(prev => [...prev, userMsg]);
 
-        // MODO 2: DETETIVE
-        if (!targetContextData && (userPlan === 'agent' || userPlan === 'admin') && clients.length > 0) {
-            const mentionedClient = clients.find(c => {
-                const emailPrefix = c.client_email.split('@')[0].toLowerCase();
-                const nameParts = emailPrefix.split(/[._-]/);
-                return nameParts.some((part: string) => part.length > 3 && promptLower.includes(part));
-            });
-            if (mentionedClient) {
-                setAiResponse(`🔍 Consultando: ${mentionedClient.client_email}...`);
-                const targetId = mentionedClient.client_id;
-                const { data: trans } = await supabase.from('transactions').select('*').eq('user_id', targetId).eq('status', 'active');
-                const { data: inst } = await supabase.from('installments').select('*').eq('user_id', targetId).eq('status', 'active');
-                const { data: recur } = await supabase.from('recurring').select('*').eq('user_id', targetId).eq('status', 'active');
-                const _trans = trans || []; const _inst = inst || []; const _recur = recur || [];
-                const income = _trans.filter((t: any) => t.type === 'income').reduce((acc: number, curr: any) => acc + curr.amount, 0) + _recur.filter((r: any) => r.type === 'income').reduce((acc: number, curr: any) => acc + curr.value, 0);
-                const expense = _trans.filter((t: any) => t.type === 'expense').reduce((acc: number, curr: any) => acc + curr.amount, 0) + _recur.filter((r: any) => r.type === 'expense').reduce((acc: number, curr: any) => acc + curr.value, 0) + _inst.reduce((acc: number, curr: any) => acc + (curr.value_per_month || 0), 0);
-                targetContextData = {
-                    mes_atual: activeTab, saldo: income - expense, gastos_totais: expense, renda: income,
-                    maiores_gastos: _trans.filter((t: any) => t.type === 'expense').sort((a: any, b: any) => b.amount - a.amount).slice(0, 5).map((t: any) => `${t.title} (R$ ${t.amount})`),
-                    parcelamentos_ativos: _inst.map((i: any) => ({ title: i.title, valor_mes: i.value_per_month, faltam: i.installments_count - i.current_installment })),
-                    contas_fixas: _recur.filter((r: any) => r.type === 'expense').map((r: any) => ({ title: r.title, valor: r.value })),
-                    is_consultant: true, viewing_as_client: true, client_name: mentionedClient.client_email.split('@')[0]
-                };
-            }
-        }
-
-        // MODO 3: VISÃO PADRÃO
-        if (!targetContextData) {
-            const topExpenses = transactions.filter(t => t.type === 'expense' && t.status !== 'delayed').sort((a, b) => b.amount - a.amount).slice(0, 15);
-            const activeInstallments = installments.filter(i => i.status !== 'delayed').map(i => ({ title: i.title, parcelas: i.installments_count, valor_mes: i.value_per_month }));
-            const fixedCosts = recurring.filter(r => r.type === 'expense' && r.status !== 'delayed').map(r => ({ title: r.title, valor: r.value }));
-            const clientNameOnScreen = viewingAs ? (viewingAs.client_email?.split('@')[0] || "Cliente") : "Você";
-            targetContextData = {
-                mes_atual: activeTab, saldo: currentMonthData.balance, gastos_totais: currentMonthData.expenseTotal, renda: currentMonthData.income,
-                maiores_gastos: topExpenses, parcelamentos_ativos: activeInstallments, contas_fixas: fixedCosts, is_consultant: (userPlan === 'agent' || userPlan === 'admin'), viewing_as_client: !!viewingAs, client_name: clientNameOnScreen
-            };
-        }
-
-        const context = currentWorkspace?.id;
         try {
-            const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: promptToSend, contextData: targetContextData, userPlan }) });
-            const data = await response.json();
-            const text = data.response || "";
-            
-            // Tenta processar comandos JSON se a resposta contiver um
-            if (!targetContextData.report_type) {
-                const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-                const firstBracket = cleanText.search(/\[|\{/);
-                const lastBracket = cleanText.search(/\]|\}(?!.*\]|\})/);
-                
-                if (firstBracket !== -1 && lastBracket !== -1) {
-                    const potentialJson = cleanText.substring(firstBracket, lastBracket + 1);
-                    try {
-                        const parsed = JSON.parse(potentialJson);
-                        const commands = Array.isArray(parsed) ? parsed : [parsed];
-                        
-                        // --- BLOQUEIO PARA PLANOS FREE E START ---
-                        // Se tentar executar uma ação 'add' (adicionar conta), bloqueia.
-                        if ((userPlan === 'free' || userPlan === 'start') && commands.some((c: any) => c.action === 'add')) {
-                            const planName = userPlan === 'free' ? 'Lite' : 'Start';
-                            setAiResponse(`🔒 **Funcionalidade Exclusiva Plus**\n\nNo plano ${planName}, eu posso tirar dúvidas, mas **não tenho permissão para lançar contas** automaticamente.\n\nPara automação total, mude para o Aliado Plus.`);
-                            setIsLoading(false); 
-                            return;
-                        }
-                        // ----------------------------------------
+            // Prepara o contexto financeiro (USANDO AS VARIÁVEIS CERTAS DO SEU CÓDIGO)
+            const contextData = {
+                saldo_atual: displayBalance, // Corrigido: totalBalance -> displayBalance
+                receita_mensal: currentMonthData.income, // Corrigido: totalIncome -> currentMonthData.income
+                despesa_mensal: currentMonthData.expenseTotal, // Corrigido: totalExpense -> currentMonthData.expenseTotal
+                transacoes_recentes: transactions.slice(0, 10),
+                contas_fixas: recurring,
+                parcelamentos_ativos: installments,
+                mes_visualizado: activeTab,
+                user_plan: userPlan,
+                // Dados para modo consultor
+                is_consultant: userPlan === 'agent',
+                viewing_as_client: viewingAs?.client_id !== user?.id, // Corrigido: selectedClientId -> viewingAs
+                client_name: viewingAs ? viewingAs.client_email : "Você"
+            };
 
-                        let itemsAdded = 0;
-                        for (const command of commands) {
-                            const activeId = getActiveUserId();
-                            if (command.action === 'add' && user && activeId) {
-                                let payload: any = { user_id: activeId, context: context };
-                                const rawData = command.data;
-                                const todayDate = new Date().toLocaleDateString('pt-BR');
-                                let validDate = rawData.date;
-                                if (!validDate || validDate === 'DD/MM/AAAA' || validDate.includes('DD/MM')) validDate = todayDate;
-                                const aiIcon = rawData.icon || null;
+            // Prepara imagens (se houver)
+            const images = fileBase64 ? [{ base64: fileBase64, mimeType: 'image/jpeg' }] : [];
+
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    prompt: text,
+                    contextData,
+                    userPlan,
+                    images 
+                })
+            });
+
+            const data = await response.json();
+            
+            if (data.error) throw new Error(data.error);
+
+            // --- PROCESSADOR DE AÇÕES (AUTO-MAGIC) ---
+            let aiResponseText = data.response;
+            
+            // CORREÇÃO REGEX: Mudamos de /s (dotAll) para [\s\S]* (funciona em qualquer versão)
+            const jsonMatch = aiResponseText.match(/\[[\s\S]*\]/);
+            
+            if (jsonMatch) {
+                try {
+                    const commands = JSON.parse(jsonMatch[0]);
+                    
+                    if (Array.isArray(commands)) {
+                        let actionsPerformed = 0;
+                        const activeId = getActiveUserId(); // Corrigido: selectedClientId -> função existente
+
+                        for (const cmd of commands) {
+                            if (cmd.action === 'add') {
+                                const { error } = await supabase
+                                    .from(cmd.table)
+                                    .insert([{
+                                        ...cmd.data,
+                                        user_id: activeId, // Usa o ID do usuário ativo
+                                        context: currentWorkspace?.id // Adiciona ao workspace atual
+                                    }]);
                                 
-                                if (command.table === 'installments') {
-                                    const totalVal = rawData.total_value || rawData.amount || rawData.value || 0;
-                                    const qtd = rawData.installments_count || 1;
-                                    const currentMonthIndex = MONTHS.indexOf(activeTab);
-                                    const installmentOffset = 1 - currentMonthIndex;
-                                    payload = { ...payload, title: rawData.title, total_value: totalVal, installments_count: qtd, value_per_month: rawData.value_per_month || (totalVal / qtd), current_installment: installmentOffset, fixed_monthly_value: null, due_day: rawData.due_day || 10, status: 'active', paid_months: [], icon: aiIcon };
-                                }
-                                else if (command.table === 'transactions') {
-                                    payload = { ...payload, title: rawData.title, amount: rawData.amount || rawData.value || 0, type: rawData.type || 'expense', category: rawData.category || 'Outros', date: validDate, target_month: rawData.target_month || activeTab, status: 'active', is_paid: true, icon: aiIcon };
-                                }
-                                else if (command.table === 'recurring') {
-                                    let validStartDate = rawData.start_date;
-                                    if (!validStartDate || validStartDate.includes('DD/MM')) validStartDate = `01/${activeTab === 'Jan' ? '01' : '02'}/2026`;
-                                    payload = { ...payload, title: rawData.title, value: rawData.value || rawData.amount || 0, type: rawData.type || 'expense', category: rawData.category || 'Fixa', start_date: validStartDate, status: 'active', due_day: rawData.due_day || 10, icon: aiIcon };
-                                }
-                                const { error } = await supabase.from(command.table).insert([payload]);
-                                if (!error) itemsAdded++;
+                                if (!error) actionsPerformed++;
                             }
                         }
-                        if (itemsAdded > 0) { await loadData(getActiveUserId(), context); setAiResponse(`✅ Feito! Registrei ${itemsAdded} lançamentos.`); setIsLoading(false); return; }
-                    } catch (e) { }
+
+                        if (actionsPerformed > 0) {
+                            aiResponseText = `✅ Feito! Adicionei ${actionsPerformed} item(s) para você automaticamente. Atualize a página para ver.`;
+                            // CORREÇÃO: fetchData -> loadData
+                            if (user && activeId) loadData(activeId, currentWorkspace?.id);
+                        }
+                    }
+                } catch (e) {
+                    console.error("Erro ao processar JSON da IA", e);
                 }
             }
-            setAiResponse(text);
-        } catch (e) { setAiResponse("Erro ao consultar a base de dados."); } finally { setIsLoading(false); }
+
+            // Adiciona resposta da IA no chat
+            setChatHistory(prev => [...prev, { role: 'assistant', content: aiResponseText, type: 'text' }]);
+
+        } catch (error: any) {
+            console.error(error);
+            setChatHistory(prev => [...prev, { role: 'assistant', content: "Desculpe, tive um erro ao processar. Tente novamente.", type: 'error' }]);
+        } finally {
+            setIsAiLoading(false);
+        }
     };
 
     return (
@@ -1203,9 +1234,11 @@ export default function FinancialDashboard() {
 
             {isAuthModalOpen && (<div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[200] p-4"><div className="bg-[#111] border border-gray-800 p-8 rounded-3xl w-full max-w-sm shadow-2xl relative text-center"><button onClick={() => setIsAuthModalOpen(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white transition"><X size={24} /></button><div className="flex justify-center mb-6"><div className="bg-gray-900/50 p-3 rounded-2xl border border-gray-800">{showEmailCheck ? <Mail className="text-cyan-400" size={32} /> : <Lock className="text-cyan-400" size={32} />}</div></div>{showEmailCheck ? (<div className="animate-in fade-in zoom-in duration-300"><h2 className="text-2xl font-bold mb-2 text-white">Verifique seu e-mail</h2><p className="text-gray-400 text-sm mb-6">Enviamos um link de acesso para <b>{email}</b>. Clique nele para ativar sua conta.</p><div className="bg-cyan-900/20 text-cyan-400 text-xs p-3 rounded-xl border border-cyan-900/50 mb-6">Dica: Verifique a caixa de Spam.</div><button onClick={() => { setShowEmailCheck(false); setAuthMode('login'); }} className="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2">Voltar para Login</button></div>) : (<div><div className="flex justify-center mb-6"><div className="flex bg-black p-1 rounded-xl border border-gray-800"><button onClick={() => setAuthMode('login')} className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${authMode === 'login' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>Entrar</button><button onClick={() => setAuthMode('signup')} className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${authMode === 'signup' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>Criar Conta</button></div></div><div className="space-y-4 text-left"><div><label className="text-xs text-gray-500 ml-1 mb-1 block">E-mail</label><div className="relative"><Mail className="absolute left-3 top-3.5 text-gray-600" size={16} /><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seu@email.com" className="w-full bg-gray-900 border border-gray-700 rounded-xl py-3 pl-10 pr-3 text-white focus:border-cyan-500 outline-none transition" /></div></div><div><label className="text-xs text-gray-500 ml-1 mb-1 block">Senha</label><div className="relative"><Lock className="absolute left-3 top-3.5 text-gray-600" size={16} /><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="********" className="w-full bg-gray-900 border border-gray-700 rounded-xl py-3 pl-10 pr-3 text-white focus:border-cyan-500 outline-none transition" /></div></div></div>{authMessage && (<div className={`mt-4 p-3 rounded-lg text-xs flex items-center gap-2 ${authMessage.includes('❌') ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-green-500/10 text-green-400 border border-green-500/20'}`}>{authMessage}</div>)}<button onClick={handleAuth} disabled={loadingAuth} className="w-full bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl transition mt-6 flex items-center justify-center gap-2 shadow-lg shadow-cyan-900/20">{loadingAuth ? <Loader2 className="animate-spin" size={20} /> : (authMode === 'login' ? 'Acessar Conta' : 'Criar Conta')}</button>{authMode === 'login' && (<div className="mt-4 pt-4 border-t border-gray-800"><button onClick={handleResetPassword} disabled={loadingAuth} className="text-xs text-gray-500 hover:text-cyan-400 transition underline decoration-gray-700 hover:decoration-cyan-400 underline-offset-4">Esqueci minha senha</button></div>)}</div>)}</div></div>)}
             {isClientModalOpen && (<div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4"><div className="bg-[#111] border border-gray-800 p-6 rounded-3xl w-full max-w-sm"><h3 className="text-lg font-bold text-white mb-4">Novo Cliente</h3><input type="email" placeholder="E-mail do cliente" value={newClientEmail} onChange={(e) => setNewClientEmail(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white outline-none mb-4" /><div className="flex gap-2"><button onClick={() => setIsClientModalOpen(false)} className="flex-1 bg-gray-800 text-white py-3 rounded-xl">Cancelar</button><button onClick={handleAddClient} disabled={addingClient} className="flex-1 bg-cyan-600 text-white py-3 rounded-xl font-bold">{addingClient ? '...' : 'Adicionar'}</button></div></div></div>)}
-            {isAIOpen && (
+           {isAIOpen && (
                 <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[200] p-4 animate-in fade-in duration-300">
                     <div className="bg-[#0f0f13] border border-gray-700 w-full max-w-2xl h-[600px] rounded-3xl shadow-2xl flex flex-col relative overflow-hidden">
+                        
+                        {/* HEADER */}
                         <div className="p-6 border-b border-gray-800 bg-[#111] flex justify-between items-center z-10">
                             <div className="flex items-center gap-3">
                                 <div className={`p-2 rounded-lg ${userPlan === 'free' ? 'bg-gray-800 text-gray-400' : 'bg-purple-600/20 text-purple-400'}`}><Sparkles size={24} /></div>
@@ -1213,24 +1246,146 @@ export default function FinancialDashboard() {
                             </div>
                             <button onClick={() => setIsAIOpen(false)} className="text-gray-500 hover:text-white transition bg-gray-800/50 p-2 rounded-full hover:bg-gray-700"><X size={20} /></button>
                         </div>
+
+                        {/* ÁREA DE MENSAGENS (ATUALIZADA) */}
                         <div className="flex-1 p-6 overflow-y-auto space-y-4 scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent">
-                            {aiResponse ? (typeof aiResponse === 'string' ? <div className="bg-gray-800/40 p-6 rounded-2xl rounded-tl-none border border-gray-700/50 text-gray-200 leading-relaxed whitespace-pre-line shadow-inner animate-in slide-in-from-left-2 duration-300">{aiResponse}</div> : aiResponse) : (<div className="h-full flex flex-col items-center justify-center text-center opacity-40"><Sparkles size={48} className="mb-4 text-purple-500" /><p className="text-gray-400 font-medium">"Como posso te ajudar hoje?"</p><p className="text-xs text-gray-600 mt-2 max-w-xs">{userPlan === 'free' ? "Posso tirar dúvidas sobre economia, investimentos e organização financeira." : "Posso analisar seus dados, encontrar padrões de gastos e sugerir melhorias."}</p></div>)}
-                            {isLoading && (<div className="flex items-center gap-2 text-purple-400 text-sm bg-purple-900/10 p-3 rounded-xl w-fit animate-pulse"><Loader2 size={16} className="animate-spin" /> Analisando...</div>)}
+                            
+                            {/* ESTADO VAZIO (BOAS VINDAS) - Só aparece se não tiver histórico */}
+                            {chatHistory.length === 0 && !isAiLoading && (
+                                <div className="h-full flex flex-col items-center justify-center text-center opacity-40 animate-in zoom-in duration-500">
+                                    <Sparkles size={48} className="mb-4 text-purple-500" />
+                                    <p className="text-gray-400 font-medium">"Como posso te ajudar hoje?"</p>
+                                    <p className="text-xs text-gray-600 mt-2 max-w-xs">
+                                        {userPlan === 'free' ? "Posso tirar dúvidas sobre economia e investimentos." : "Posso analisar comprovantes, lançar contas e prever riscos."}
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* HISTÓRICO DE MENSAGENS REAIS */}
+                            {chatHistory.map((msg, idx) => (
+                                <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-300`}>
+                                    <div className={`max-w-[85%] p-4 rounded-2xl text-sm leading-relaxed whitespace-pre-line shadow-sm ${
+                                        msg.role === 'user' 
+                                            ? 'bg-purple-600 text-white rounded-br-none' 
+                                            : (msg.type === 'error' ? 'bg-red-900/20 text-red-200 border border-red-800 rounded-tl-none' : 'bg-gray-800 border border-gray-700 text-gray-200 rounded-tl-none')
+                                    }`}>
+                                        {/* Se for mensagem do usuário com imagem, mostra miniatura visual */}
+                                        {msg.content === 'Analisar comprovante...' && (
+                                            <div className="flex items-center gap-2 mb-2 text-purple-200 bg-purple-700/50 p-2 rounded-lg text-xs">
+                                                <FileText size={14}/> Comprovante enviado
+                                            </div>
+                                        )}
+                                        {msg.content}
+                                    </div>
+                                </div>
+                            ))}
+
+                            {/* 👇 A BOLHA DE CARREGAMENTO (TYPING...) 👇 */}
+                            {isAiLoading && (
+                                <div className="flex justify-start animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                    <div className="bg-gray-800 border border-gray-700 text-gray-200 rounded-2xl rounded-tl-none p-4 shadow-sm flex items-center gap-3">
+                                        {/* Ícone girando */}
+                                        <Loader2 size={18} className="animate-spin text-purple-500" />
+                                        {/* Texto piscando suavemente */}
+                                        <span className="text-sm font-medium animate-pulse">
+                                            Analisando dados...
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
                         </div>
+
+                        {/* SUGESTÕES RÁPIDAS (PROMPTS) */}
                         <div className="px-6 py-2 border-t border-gray-800 bg-[#111]">
-                            {userPlan !== 'free' ? (<div className="flex gap-3 overflow-x-auto scrollbar-hide pb-2"><button onClick={() => askGemini("Faça um diagnóstico de risco completo...")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 hover:text-white rounded-full text-xs font-bold text-cyan-400 border border-cyan-900/30 flex items-center gap-2 transition active:scale-95"><BarChart3 size={14} /> Diagnóstico</button><button onClick={() => askGemini("Analise meus maiores gastos...")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 hover:text-white rounded-full text-xs font-bold text-purple-400 border border-purple-900/30 flex items-center gap-2 transition active:scale-95"><Search size={14} /> Detetive</button><button onClick={() => askGemini("Me dê um plano de resgate...")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 hover:text-white rounded-full text-xs font-bold text-emerald-400 border border-emerald-900/30 flex items-center gap-2 transition active:scale-95"><Target size={14} /> Plano de Resgate</button></div>) : (<div className="flex flex-col gap-2"><div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 opacity-70"><button onClick={() => askGemini("O que é Reserva de Emergência?")} className="whitespace-nowrap px-3 py-1.5 bg-gray-800/50 hover:bg-gray-700 rounded-full text-[10px] text-gray-300 border border-gray-700 transition">💡 O que é Reserva?</button><button onClick={() => askGemini("Dicas simples para economizar no mercado")} className="whitespace-nowrap px-3 py-1.5 bg-gray-800/50 hover:bg-gray-700 rounded-full text-[10px] text-gray-300 border border-gray-700 transition">🛒 Dicas de Mercado</button><button onClick={() => askGemini("Como começar a investir com pouco?")} className="whitespace-nowrap px-3 py-1.5 bg-gray-800/50 hover:bg-gray-700 rounded-full text-[10px] text-gray-300 border border-gray-700 transition">💰 Investir com Pouco</button></div><div className="flex justify-between items-center bg-gradient-to-r from-amber-900/20 to-orange-900/20 p-2 rounded-lg border border-amber-900/30"><span className="text-[10px] text-amber-500 font-bold flex items-center gap-1 ml-1"><Lock size={10} /> Desbloqueie análises da sua conta</span><button onClick={() => { setIsAIOpen(false); openPricingModal(); }} className="text-[10px] bg-amber-600 hover:bg-amber-500 text-white px-3 py-1 rounded shadow-lg transition">Virar Premium</button></div></div>)}
+                            {userPlan !== 'free' ? (
+                                <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-2">
+                                    <button onClick={() => askGemini("Faça um diagnóstico de risco completo...")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 hover:text-white rounded-full text-xs font-bold text-cyan-400 border border-cyan-900/30 flex items-center gap-2 transition active:scale-95"><BarChart3 size={14} /> Diagnóstico</button>
+                                    <button onClick={() => askGemini("Analise meus maiores gastos...")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 hover:text-white rounded-full text-xs font-bold text-purple-400 border border-purple-900/30 flex items-center gap-2 transition active:scale-95"><Search size={14} /> Detetive</button>
+                                    <button onClick={() => askGemini("Me dê um plano de resgate...")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 hover:text-white rounded-full text-xs font-bold text-emerald-400 border border-emerald-900/30 flex items-center gap-2 transition active:scale-95"><Target size={14} /> Plano de Resgate</button>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col gap-2">
+                                    <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 opacity-70">
+                                        <button onClick={() => askGemini("O que é Reserva de Emergência?")} className="whitespace-nowrap px-3 py-1.5 bg-gray-800/50 hover:bg-gray-700 rounded-full text-[10px] text-gray-300 border border-gray-700 transition">💡 O que é Reserva?</button>
+                                        <button onClick={() => askGemini("Dicas simples para economizar no mercado")} className="whitespace-nowrap px-3 py-1.5 bg-gray-800/50 hover:bg-gray-700 rounded-full text-[10px] text-gray-300 border border-gray-700 transition">🛒 Dicas de Mercado</button>
+                                        <button onClick={() => askGemini("Como começar a investir com pouco?")} className="whitespace-nowrap px-3 py-1.5 bg-gray-800/50 hover:bg-gray-700 rounded-full text-[10px] text-gray-300 border border-gray-700 transition">💰 Investir com Pouco</button>
+                                    </div>
+                                    <div className="flex justify-between items-center bg-gradient-to-r from-amber-900/20 to-orange-900/20 p-2 rounded-lg border border-amber-900/30">
+                                        <span className="text-[10px] text-amber-500 font-bold flex items-center gap-1 ml-1"><Lock size={10} /> Desbloqueie análises da sua conta</span>
+                                        <button onClick={() => { setIsAIOpen(false); openPricingModal(); }} className="text-[10px] bg-amber-600 hover:bg-amber-500 text-white px-3 py-1 rounded shadow-lg transition">Virar Premium</button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
-                        <div className="p-4 bg-[#111] flex gap-2 pt-2">
-                            <div className="relative flex-1">
-                                <input type="text" value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && askGemini()} disabled={isLoading} placeholder={userPlan === 'free' ? "Tire uma dúvida sobre finanças..." : "Pergunte ou lance um gasto..."} className="w-full bg-gray-900 border border-gray-700 rounded-xl py-4 pl-4 pr-10 text-white outline-none focus:border-purple-500 focus:bg-gray-800 transition disabled:opacity-50" />
-                                {userPlan === 'free' && <Lock size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-600" />}
+
+                        {/* ÁREA DE INPUT DO CHAT (JÁ ATUALIZADA) */}
+                        <div className="p-4 border-t border-gray-800 bg-[#111]">
+                            
+                            {/* 1. PREVIEW DO ANEXO */}
+                            {attachment && (
+                                <div className="mb-3 flex items-start animate-in slide-in-from-bottom-2">
+                                    <div className="relative group">
+                                        {attachment.type === 'image' ? (
+                                            <img src={attachment.base64} alt="Preview" className="h-16 w-16 object-cover rounded-xl border border-gray-700 shadow-lg" />
+                                        ) : (
+                                            <div className="h-16 w-16 bg-gray-800 rounded-xl border border-gray-700 flex items-center justify-center text-red-400"><FileText size={24} /></div>
+                                        )}
+                                        <button onClick={() => { setAttachment(null); if(fileInputRef.current) fileInputRef.current.value = ''; }} className="absolute -top-2 -right-2 bg-gray-900 border border-gray-600 text-gray-400 hover:text-white rounded-full p-1 shadow-md transition"><X size={12} /></button>
+                                    </div>
+                                    <div className="ml-3 mt-1">
+                                        <p className="text-xs text-emerald-500 font-bold flex items-center gap-1"><CheckCircle2 size={12}/> Arquivo pronto</p>
+                                        <p className="text-[10px] text-gray-500 max-w-[200px] leading-tight mt-0.5">A IA vai ler os dados deste comprovante.</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* 2. BARRA DE DIGITAÇÃO */}
+                            <div className="flex gap-2 items-end">
+                                <input type="file" ref={fileInputRef} className="hidden" accept="image/*,application/pdf" onChange={handleFileSelect} />
+                                <button onClick={() => fileInputRef.current?.click()} className={`p-3 rounded-xl border transition mb-[2px] ${attachment ? 'bg-emerald-900/20 text-emerald-500 border-emerald-500/50' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white hover:bg-gray-700'}`} title="Anexar Comprovante (Foto ou PDF)"><Paperclip size={20} /></button>
+
+                                <div className="flex-1 relative">
+                                    <textarea
+                                        value={aiInput}
+                                        onChange={(e) => setAiInput(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && !e.shiftKey) {
+                                                e.preventDefault();
+                                                if (aiInput.trim() || attachment) {
+                                                    askGemini(aiInput, attachment?.base64 || null);
+                                                    setAiInput('');
+                                                    setAttachment(null);
+                                                    if(fileInputRef.current) fileInputRef.current.value = '';
+                                                }
+                                            }
+                                        }}
+                                        placeholder={attachment ? "Descreva o gasto (opcional)..." : "Digite ou envie um comprovante..."}
+                                        className="w-full bg-gray-900 text-white placeholder-gray-500 border border-gray-800 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 resize-none h-12 max-h-32 scrollbar-hide"
+                                        style={{ minHeight: '48px' }}
+                                    />
+                                </div>
+
+                                <button
+                                    onClick={() => {
+                                        if (aiInput.trim() || attachment) {
+                                            askGemini(aiInput, attachment?.base64 || null);
+                                            setAiInput('');
+                                            setAttachment(null);
+                                            if(fileInputRef.current) fileInputRef.current.value = '';
+                                        }
+                                    }}
+                                    disabled={isAiLoading || (!aiInput.trim() && !attachment)}
+                                    className="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white p-3 rounded-xl transition shadow-lg shadow-purple-900/20 mb-[2px]"
+                                >
+                                    {isAiLoading ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
+                                </button>
                             </div>
-                            <button onClick={() => askGemini()} disabled={!aiPrompt.trim() || isLoading} className="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white p-4 rounded-xl shadow-lg shadow-purple-900/20 transition active:scale-95"><Send size={24} /></button>
                         </div>
                     </div>
                     <Toaster richColors position="top-center" theme={currentTheme === 'light' ? 'light' : 'dark'} />
                 </div>
             )}
+            
             {/* MODAL DE NUDGE (MARKETING INTELIGENTE) */}
             {isNudgeOpen && (
                 <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[250] p-6 animate-in fade-in duration-300">
