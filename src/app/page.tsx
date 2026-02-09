@@ -496,6 +496,39 @@ export default function FinancialDashboard() {
         }
     };
 
+    // --- FUNÇÕES DO ROLLOVER (ITEM 7 REFINADO) ---
+    
+    // 1. Marcar TUDO como pago (Esqueci de dar baixa)
+    const handleMarkAllAsPaid = async () => {
+        if (!confirm(`Confirmar pagamento de ${pastDueItems.length} contas atrasadas?`)) return;
+        
+        const activeId = getActiveUserId();
+        if (!activeId) return;
+
+        const toastId = toast.loading("Atualizando contas...");
+
+        for (const item of pastDueItems) {
+            if (item.origin === 'transactions') {
+                await supabase.from('transactions').update({ is_paid: true }).eq('id', item.id);
+            } else if (item.origin === 'installments' || item.origin === 'recurring') {
+                // Adiciona o mês pendente na lista de pagos
+                await togglePaidMonth(item.origin, item); 
+            }
+        }
+
+        toast.dismiss(toastId);
+        toast.success("Tudo em dia! Você é incrível. 🚀");
+        setPastDueItems([]); // Limpa a lista visualmente
+        setIsRolloverModalOpen(false);
+        loadData(activeId, currentWorkspace?.id);
+    };
+
+    // 2. Calcular o Total Atrasado
+    const totalPastDue = pastDueItems.reduce((acc, item) => {
+        const val = item.amount || item.value || item.value_per_month || 0;
+        return acc + val;
+    }, 0);
+
     const toggleDelay = async (table: string, item: any) => {
         const newStatus = item.status === 'delayed' ? 'active' : 'delayed'; const activeId = getActiveUserId();
         if (user && activeId) { await supabase.from(table).update({ status: newStatus }).eq('id', item.id); loadData(activeId, currentWorkspace?.id); }
@@ -990,7 +1023,23 @@ export default function FinancialDashboard() {
             )}
 
             <ProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} user={user} />
-            {currentLayout === 'trader' && (<TraderView transactions={transactions} installments={installments} recurring={recurring} activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab} currentMonthData={currentMonthData} previousSurplus={previousSurplus} displayBalance={displayBalance} onTogglePaid={togglePaid} onToggleDelay={toggleDelay} onDelete={handleDelete} />)}
+{currentLayout === 'trader' && (
+                <TraderView 
+                    transactions={transactions} 
+                    installments={installments} 
+                    recurring={recurring} 
+                    activeTab={activeTab} 
+                    months={MONTHS} 
+                    setActiveTab={setActiveTab} 
+                    currentMonthData={currentMonthData} 
+                    previousSurplus={previousSurplus} 
+                    displayBalance={displayBalance} 
+                    onTogglePaid={togglePaid} 
+                    onToggleDelay={toggleDelay} 
+                    onDelete={handleDelete}
+                    onTogglePaidMonth={togglePaidMonth} // <--- ADICIONE ESTA LINHA
+                />
+            )}            
             {currentLayout === 'calendar' && (<CalendarView transactions={transactions} installments={installments} recurring={recurring} activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab} />)}
             <ExportModal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} user={user} userPlan={userPlan} clients={clients} activeTab={activeTab} />
             
@@ -1013,8 +1062,25 @@ export default function FinancialDashboard() {
             recurring={recurring}
         />
             {currentLayout === 'zen' && (<ZenView displayBalance={displayBalance} currentMonthData={currentMonthData} activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab} />)}
-            {currentLayout === 'timeline' && (<TimelineView transactions={transactions} activeTab={activeTab} />)}
-            {currentLayout === 'bento' && (<BentoView currentMonthData={currentMonthData} transactions={transactions} installments={installments} recurring={recurring} onOpenCalendar={() => setCurrentLayout('calendar')} onOpenRollover={() => setIsRolloverModalOpen(true)} />)}
+                    
+{currentLayout === 'timeline' && (
+                <TimelineView 
+                    transactions={transactions} 
+                    installments={installments}   // <--- NOVO
+                    recurring={recurring}         // <--- NOVO
+                    activeTab={activeTab} 
+                />
+            )}           {currentLayout === 'bento' && (
+                <BentoView 
+                    currentMonthData={currentMonthData} 
+                    transactions={transactions} 
+                    installments={installments} 
+                    recurring={recurring}
+                    // NOVAS PROPS (Ações Reais)
+                    onOpenCalendar={() => setCurrentLayout('calendar')} 
+                    onOpenRollover={() => setIsRolloverModalOpen(true)}
+                />
+            )}
             <CustomizationModal isOpen={isCustomizationOpen} onClose={() => setIsCustomizationOpen(false)} currentLayout={currentLayout} currentTheme={currentTheme} onSelectLayout={(l) => handleSavePreferences('layout', l)} onSelectTheme={(t) => handleSavePreferences('theme', t)} userPlan={userPlan} />
 
             {isNewProfileModalOpen && (
@@ -1425,7 +1491,88 @@ export default function FinancialDashboard() {
                     </div>
                 </div>
             )}
-            {isRolloverModalOpen && (<div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[200] p-6"><div className="bg-[#111] border border-gray-700 p-8 rounded-3xl w-full max-w-lg shadow-2xl relative"><h2 className="text-2xl font-bold mb-2 text-white flex items-center gap-2"><AlertCircle className="text-orange-500" /> Contas em Aberto</h2><p className="text-gray-400 text-sm mb-6">Existem contas de meses passados que você não marcou como pagas.</p><div className="max-h-[300px] overflow-y-auto space-y-2 mb-6 pr-2">{pastDueItems.map((item, idx) => (<div key={idx} className="flex justify-between items-center p-3 bg-gray-900 rounded-lg border border-gray-800"><div><p className="text-white font-medium text-sm">{item.title}</p><p className="text-xs text-gray-500">{item.month}</p></div><div className="flex items-center gap-3"><span className="text-red-400 font-mono">R$ {item.amount || item.value || item.value_per_month}</span><button onClick={() => toggleDelay(item.origin, item)} className="text-xs bg-orange-500/20 text-orange-400 px-2 py-1 rounded border border-orange-500/50 hover:bg-orange-500 hover:text-white transition">Mover p/ Stand-by</button></div></div>))}</div><div className="flex justify-end gap-3"><button onClick={() => setIsRolloverModalOpen(false)} className="bg-white text-black px-6 py-2 rounded-full font-bold hover:bg-gray-200 transition">OK</button></div></div></div>)}
-        </div>
+{/* MODAL DE ROLLOVER (CONTAS ATRASADAS) - ITEM 7 REFINADO */}
+            {isRolloverModalOpen && (
+                <div className="fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center z-[300] p-6 animate-in zoom-in duration-300">
+                    <div className="bg-[#111] border border-red-900/30 p-8 rounded-3xl w-full max-w-lg shadow-2xl relative overflow-hidden">
+                        
+                        {/* Luz de fundo vermelha para dar alerta */}
+                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-600 to-orange-600"></div>
+                        <div className="absolute -top-20 -right-20 w-64 h-64 bg-red-600/10 rounded-full blur-3xl pointer-events-none"></div>
+
+                        <div className="relative z-10">
+                            <div className="flex items-start justify-between mb-6">
+                                <div>
+                                    <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                                        <AlertTriangle className="text-red-500" size={24} /> 
+                                        Pendências
+                                    </h2>
+                                    <p className="text-gray-400 text-sm mt-1">
+                                        Você tem contas de meses passados em aberto.
+                                    </p>
+                                </div>
+                                <div className="text-right">
+                                    <span className="text-xs text-gray-500 uppercase font-bold block">Total Atrasado</span>
+                                    <span className="text-2xl font-mono font-black text-red-400">
+                                        {totalPastDue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Lista de Contas */}
+                            <div className="max-h-[250px] overflow-y-auto space-y-2 mb-6 pr-2 scrollbar-thin scrollbar-thumb-gray-800">
+                                {pastDueItems.map((item, idx) => (
+                                    <div key={idx} className="flex justify-between items-center p-3 bg-gray-900/50 hover:bg-gray-900 rounded-xl border border-gray-800 transition group">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-1 h-8 bg-red-500/50 rounded-full"></div>
+                                            <div>
+                                                <p className="text-white font-bold text-sm">{item.title}</p>
+                                                <p className="text-xs text-gray-500 flex items-center gap-1">
+                                                    <Clock size={10}/> {item.month} • {item.origin === 'installments' ? 'Parcela' : (item.origin === 'recurring' ? 'Fixa' : 'Gasto')}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-white font-mono text-sm">
+                                                {(item.amount || item.value || item.value_per_month).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                            </span>
+                                            {/* Botão Individual de Adiar */}
+                                            <button 
+                                                onClick={() => toggleDelay(item.origin, item)} 
+                                                className="text-xs bg-gray-800 text-gray-400 p-2 rounded-lg hover:bg-orange-900/20 hover:text-orange-400 border border-transparent hover:border-orange-500/30 transition"
+                                                title="Mover para Stand-by (Ignorar por enquanto)"
+                                            >
+                                                <LogOut size={14}/>
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Ações em Lote */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <button 
+                                    onClick={handleMarkAllAsPaid} 
+                                    className="bg-emerald-600 hover:bg-emerald-500 text-white py-3 px-4 rounded-xl font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20"
+                                >
+                                    <CheckSquare size={18}/> Já Paguei Tudo
+                                    <span className="text-[10px] font-normal opacity-80">(Esqueci de dar baixa)</span>
+                                </button>
+
+                                <button 
+                                    onClick={() => setIsRolloverModalOpen(false)} 
+                                    className="bg-gray-800 hover:bg-gray-700 text-white py-3 px-4 rounded-xl font-bold transition flex items-center justify-center gap-2 border border-gray-700"
+                                >
+                                    <Clock size={18}/> Ver Depois
+                                </button>
+                            </div>
+                            
+                            <p className="text-center text-[10px] text-gray-600 mt-4">
+                                Dica: Contas em "Stand-by" não somam no saldo nem nas dívidas.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}        </div>
     );
 }
