@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Check, Trash2, X } from 'lucide-react';
+import { Bell, Check, Trash2 } from 'lucide-react'; // Removi o X que não estava usando
 import { supabase } from '@/supabase';
 
 export default function NotificationBell({ userId }: { userId: string }) {
@@ -7,7 +7,7 @@ export default function NotificationBell({ userId }: { userId: string }) {
     const [isOpen, setIsOpen] = useState(false);
     const [unreadCount, setUnreadCount] = useState(0);
 
-    // Carrega notificações
+    // Carrega notificações iniciais
     const fetchNotifs = async () => {
         const { data } = await supabase
             .from('notifications')
@@ -30,11 +30,20 @@ export default function NotificationBell({ userId }: { userId: string }) {
             .channel('realtime-notifs')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` }, 
             (payload) => {
-                setNotifications(prev => [payload.new, ...prev]);
+                // CORREÇÃO AQUI: Verifica se já existe antes de adicionar
+                setNotifications(prev => {
+                    const exists = prev.some(n => n.id === payload.new.id);
+                    if (exists) return prev; // Se já tem, ignora
+
+                    // Se não tem, adiciona e toca som
+                    const audio = new Audio('/notification.mp3'); 
+                    audio.play().catch(() => {});
+                    
+                    return [payload.new, ...prev];
+                });
+
+                // Atualiza contador apenas se for nova
                 setUnreadCount(prev => prev + 1);
-                // Toca um somzinho se quiser
-                const audio = new Audio('/notification.mp3'); 
-                audio.play().catch(() => {});
             })
             .subscribe();
 
@@ -42,9 +51,17 @@ export default function NotificationBell({ userId }: { userId: string }) {
     }, [userId]);
 
     const markAsRead = async (id: number) => {
+        // Atualiza no banco
         await supabase.from('notifications').update({ is_read: true }).eq('id', id);
+        
+        // Atualiza localmente
         setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
-        setUnreadCount(prev => Math.max(0, prev - 1));
+        
+        // Recalcula o contador baseado no estado atualizado
+        setUnreadCount(prev => {
+            const currentUnread = notifications.find(n => n.id === id && !n.is_read);
+            return currentUnread ? Math.max(0, prev - 1) : prev;
+        });
     };
 
     const clearAll = async () => {
@@ -92,7 +109,7 @@ export default function NotificationBell({ userId }: { userId: string }) {
                                             <p className="text-[10px] text-gray-700 mt-1">{new Date(n.created_at).toLocaleTimeString().slice(0,5)}</p>
                                         </div>
                                         {!n.is_read && (
-                                            <button onClick={() => markAsRead(n.id)} className="text-gray-600 hover:text-emerald-500 h-fit">
+                                            <button onClick={() => markAsRead(n.id)} className="text-gray-600 hover:text-emerald-500 h-fit" title="Marcar como lida">
                                                 <Check size={14}/>
                                             </button>
                                         )}

@@ -154,9 +154,16 @@ export default function FinancialDashboard() {
     };
 
     // --- TUTORIAL / TOUR GUIADO ---
+    // --- TUTORIAL / TOUR GUIADO (ATUALIZADO) ---
     const runTour = () => {
         const driver = (window as any).driver?.js?.driver;
         if (!driver) return;
+
+        // Define a explicação do menu baseada no plano
+        const isPro = ['premium', 'pro', 'agent'].includes(userPlan);
+        const menuDescription = isPro
+            ? 'Acesse seu Perfil, Gerencie sua Assinatura e Personalize o visual (Temas) do sistema por aqui.'
+            : 'Acesse seu Perfil e configurações. Assinantes Plus e Pro desbloqueiam Temas e Gerenciamento aqui.';
 
         const agentSteps = [
             { element: '#agent-bar', popover: { title: '🕵️ Painel do Consultor', description: 'Esta barra roxa é sua central de comando. Só você vê isso.', side: "bottom", align: 'start' } },
@@ -169,10 +176,21 @@ export default function FinancialDashboard() {
         const standardSteps = [
             { element: '#logo-area', popover: { title: 'Olá! Sou seu Aliado 🛡️', description: 'Vou te ajudar a dominar suas finanças.' } },
             ...(document.getElementById('btn-login') ? [{ element: '#btn-login', popover: { title: 'Salve na Nuvem ☁️', description: 'Crie sua conta para acessar em qualquer lugar.' } }] : []),
+            
             { element: '#btn-novo', popover: { title: 'Lançar Contas', description: 'Clique aqui para adicionar gastos, salários ou parcelas.' } },
+            
+            // NOVOS PASSOS ADICIONADOS 👇
+            { element: '#btn-history', popover: { title: 'Raio-X Anual 📅', description: 'Veja sua evolução financeira mês a mês neste gráfico detalhado.' } },
+            
             { element: '#btn-export', popover: { title: '📊 Relatórios em Excel', description: 'Exporte seus dados para planilhas profissionais.', side: "bottom", align: 'end' } },
+            
             { element: '#card-saldo', popover: { title: 'Seu Termômetro 🌡️', description: 'Aqui fica o saldo final. Verde é lucro, Vermelho é alerta!' } },
-            { element: '#btn-ai', popover: { title: 'Cérebro Financeiro 🧠', description: 'Fale com a IA para analisar gastos ou pedir dicas.' } }
+            
+            { element: '#btn-ai', popover: { title: 'Cérebro Financeiro 🧠', description: 'Fale com a IA para analisar gastos, pedir dicas ou lançar por áudio.' } },
+            
+            // NOVOS PASSOS ADICIONADOS 👇
+            { element: '#btn-notifications', popover: { title: 'Central de Alertas 🔔', description: 'Avisos de contas vencendo hoje e dicas do sistema aparecem aqui.' } },
+            { element: '#btn-menu', popover: { title: 'Menu Principal ☰', description: menuDescription, side: "left" } }
         ];
 
         const firstActionGroup = document.getElementById('action-group-0');
@@ -358,11 +376,11 @@ export default function FinancialDashboard() {
     // --- LÓGICA DE NOTIFICAÇÃO AUTOMÁTICA ---
     // --- LÓGICA DE NOTIFICAÇÃO AUTOMÁTICA ---
     // --- LÓGICA DE NOTIFICAÇÃO (VERSÃO 2.0) ---
-  // --- LÓGICA DE NOTIFICAÇÃO (CORRIGIDA COM SOM ONLINE) ---
-  // --- LÓGICA DE NOTIFICAÇÃO (SEM SOM + VISUAL GARANTIDO) ---
+    // --- LÓGICA DE NOTIFICAÇÃO (CORRIGIDA COM SOM ONLINE) ---
+    // --- LÓGICA DE NOTIFICAÇÃO (SEM SOM + VISUAL GARANTIDO) ---
+    // --- LÓGICA DE NOTIFICAÇÃO (CORRIGIDA: 1 VEZ POR DIA APENAS) ---
     const checkUpcomingBills = async (userId: string) => {
         if (!userId) return;
-        
         const today = new Date();
         const dayNum = today.getDate();
         const dayStr = dayNum.toString().padStart(2, '0');
@@ -377,21 +395,23 @@ export default function FinancialDashboard() {
         ];
 
         if (billsDueToday.length > 0) {
-            // 2. Verificar se já existe notificação hoje
-            const todayStart = new Date(today.setHours(0,0,0,0)).toISOString();
-            const messageSignature = `Você tem ${billsDueToday.length} conta(s) para pagar hoje. Não esqueça!`;
+            // 2. Verificar se já existe QUALQUER notificação de cobrança hoje (independente do texto)
+            const todayStart = new Date();
+            todayStart.setHours(0, 0, 0, 0);
+            const todayISO = todayStart.toISOString();
 
             const { data: existingNotifs } = await supabase
                 .from('notifications')
-                .select('*')
+                .select('id')
                 .eq('user_id', userId)
-                .eq('message', messageSignature)
-                .gte('created_at', todayStart);
+                .eq('title', 'Contas Vencendo Hoje! 💸') // Verifica pelo Título, que é fixo
+                .gte('created_at', todayISO);
 
+            // 3. Só cria se NÃO existir nenhuma hoje
             if (!existingNotifs || existingNotifs.length === 0) {
-                console.log("🔔 Gerando Notificação Nova!");
+                const messageSignature = `Você tem ${billsDueToday.length} conta(s) para pagar hoje. Não esqueça!`;
                 
-                // 3. Salva no Banco
+                // Salva no Banco
                 const { error } = await supabase.from('notifications').insert({
                     user_id: userId,
                     title: 'Contas Vencendo Hoje! 💸',
@@ -401,10 +421,9 @@ export default function FinancialDashboard() {
                 });
 
                 if (!error) {
-                    // 4. FORÇA VISUAL: Mostra um Toast na tela imediatamente
                     toast.warning("Atenção: Contas Vencendo Hoje!", {
                         description: messageSignature,
-                        duration: 5000, // Fica 5 segundos na tela
+                        duration: 5000,
                         icon: <AlertTriangle className="text-orange-500" />
                     });
                 }
@@ -437,7 +456,7 @@ export default function FinancialDashboard() {
         if (targetUserId) { await fetchWorkspaces(targetUserId, true); }
     };
 
-   useEffect(() => {
+    useEffect(() => {
         if (transactions.length > 0 || installments.length > 0) {
             checkForPastDueItems();
             if (user) checkUpcomingBills(user.id); // <--- ADICIONE ISSO
@@ -665,9 +684,9 @@ export default function FinancialDashboard() {
         const amountVal = formData.amount ? parseFloat(formData.amount.toString()) : 0;
         const fixedInstallmentVal = formData.fixedMonthlyValue ? parseFloat(formData.fixedMonthlyValue.toString()) : null;
         const monthMap: Record<string, string> = { 'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04', 'Mai': '05', 'Jun': '06', 'Jul': '/07', 'Ago': '08', 'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12' };
-       // ✅ COMO DEVE FICAR (Pega o dia digitado ou usa 01 se vazio)
-const dayValue = formData.dueDay ? formData.dueDay.toString().padStart(2, '0') : '01';
-const dateString = `${dayValue}/${monthMap[formData.targetMonth]}/2026`;
+        // ✅ COMO DEVE FICAR (Pega o dia digitado ou usa 01 se vazio)
+        const dayValue = formData.dueDay ? formData.dueDay.toString().padStart(2, '0') : '01';
+        const dateString = `${dayValue}/${monthMap[formData.targetMonth]}/2026`;
         const context = currentWorkspace?.id;
 
         let finalReceiptData: string | null = formData.receiptUrl;
@@ -875,7 +894,7 @@ const dateString = `${dayValue}/${monthMap[formData.targetMonth]}/2026`;
                     images
                 })
             });
-            
+
 
             const data = await response.json();
 
@@ -978,6 +997,7 @@ const dateString = `${dayValue}/${monthMap[formData.targetMonth]}/2026`;
                 <div className="flex flex-wrap justify-center xl:justify-end gap-3 w-full xl:w-auto items-center">
                     {/* BOTÃO HISTÓRICO (ITEM 5) */}
                     <button
+                        id="btn-history"
                         onClick={() => setIsHistoryOpen(true)}
                         className="h-12 w-12 flex items-center justify-center rounded-xl bg-gray-900 text-cyan-500 border border-cyan-900/30 hover:bg-cyan-900/20 hover:text-cyan-300 transition shadow-lg"
                         title="Ver Gráfico Anual"
@@ -1014,13 +1034,13 @@ const dateString = `${dayValue}/${monthMap[formData.targetMonth]}/2026`;
                             </div>
                         )}
                     </button>
-                   {user ? (
-                        <div className="flex items-center gap-3">
+                    {user ? (
+                        <div id="btn-notifications" className="flex items-center gap-3">
                             
-                            {/* 🔔 SININHO (Agora posicionado corretamente ao lado do menu) */}
+                            {/* 🔔 SININHO (Agora   posicionado corretamente ao lado do menu) */}
                             <NotificationBell userId={user.id} />
 
-                            <div className="relative">
+                            <div id="btn-menu" className="relative">
                                 <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className={`h-12 bg-gray-900 border border-gray-800 text-gray-400 px-6 rounded-xl hover:bg-gray-800 hover:text-white flex items-center justify-center gap-2 whitespace-nowrap transition ${isUserMenuOpen ? 'border-gray-600 text-white' : ''}`}>
                                     {user.user_metadata?.avatar_url ? (<img src={user.user_metadata.avatar_url} className="w-5 h-5 rounded-full object-cover border border-gray-600" />) : (<User size={18} />)} Menu
                                 </button>
