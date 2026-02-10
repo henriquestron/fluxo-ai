@@ -9,8 +9,8 @@ const INSTANCE_NAME = "MEO_ALIADO_INSTANCE";
 // --- MAPA DE TRADUÇÃO (LID -> NÚMERO REAL) ---
 // Adicione aqui os casos de teste que derem erro
 const ID_MAP: Record<string, string> = {
-    "129966213746865": "5562993882931", // Seu LID -> Seu Número (CONFIRA SE ESTÁ CERTO)
-    "76850453819597": "5562993882931"   // Outro LID que apareceu -> Seu Número
+    "129966213746865": "556293882931", // <--- TIREI O 9 DAQUI (Ficou 55 + 62 + 9388...)
+    "76850453819597": "556293882931"
 };
 
 async function sendWhatsAppMessage(phone: string, text: string) {
