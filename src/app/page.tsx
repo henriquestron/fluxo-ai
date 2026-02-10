@@ -7,11 +7,11 @@ import {
     LogOut, User, Eye, EyeOff, CheckSquare, Square, ArrowRight, Crown, ShieldCheck,
     Mail, Loader2, Lock, BarChart3, Search, Target, Upload, FileText, ExternalLink,
     Users, ChevronDown, UserPlus, Briefcase, HelpCircle, Star, Zap, Shield, Palette,
-    Layout, MousePointerClick, FolderPlus, Layers, FileSpreadsheet, Wallet, Landmark,Rocket,Paperclip,
-    
+    Layout, MousePointerClick, FolderPlus, Layers, FileSpreadsheet, Wallet, Landmark, Rocket, Paperclip,
+
     // NOVOS ÍCONES PARA O SELETOR 👇
     ShoppingCart, Home, Car, Utensils, GraduationCap, HeartPulse, Plane, Gamepad2, Smartphone
-    
+
 } from 'lucide-react';
 import { supabase } from '@/supabase';
 import { driver } from "driver.js";
@@ -23,6 +23,7 @@ import ProfileModal from '@/components/dashboard/ProfileModal';
 import ExportModal from '@/components/dashboard/ExportModal';
 import CreditCardModal from '@/components/dashboard/CreditCardModal'; // <--- IMPORTAÇÃO NOVA
 import HistoryModal from '@/components/dashboard/HistoryModal'; // <--- Adicione lá em cima
+import NotificationBell from '@/components/dashboard/NotificationBell';
 
 // COMPONENTES
 import StandardView from '@/components/dashboard/StandardView';
@@ -279,13 +280,13 @@ export default function FinancialDashboard() {
         reader.onload = (event) => {
             const img = new Image();
             img.src = event.target?.result as string;
-            
+
             img.onload = () => {
                 // Cria um canvas para redimensionar
                 const canvas = document.createElement('canvas');
                 let width = img.width;
                 let height = img.height;
-                
+
                 // Define tamanho máximo (Ex: 1024px) - Mantém a proporção
                 const MAX_SIZE = 1024;
                 if (width > height) {
@@ -302,14 +303,14 @@ export default function FinancialDashboard() {
 
                 canvas.width = width;
                 canvas.height = height;
-                
+
                 const ctx = canvas.getContext('2d');
                 ctx?.drawImage(img, 0, 0, width, height);
-                
+
                 // Converte para Base64 com qualidade reduzida (0.7 = 70%)
                 // Isso reduz uma foto de 4MB para ~200KB sem perder legibilidade para a IA
                 const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
-                
+
                 setAttachment({ base64: compressedBase64, type: 'image' });
             };
         };
@@ -354,6 +355,62 @@ export default function FinancialDashboard() {
             await supabase.from('profiles').update(updateData).eq('id', user.id);
         }
     };
+    // --- LÓGICA DE NOTIFICAÇÃO AUTOMÁTICA ---
+    // --- LÓGICA DE NOTIFICAÇÃO AUTOMÁTICA ---
+    // --- LÓGICA DE NOTIFICAÇÃO (VERSÃO 2.0) ---
+  // --- LÓGICA DE NOTIFICAÇÃO (CORRIGIDA COM SOM ONLINE) ---
+  // --- LÓGICA DE NOTIFICAÇÃO (SEM SOM + VISUAL GARANTIDO) ---
+    const checkUpcomingBills = async (userId: string) => {
+        if (!userId) return;
+        
+        const today = new Date();
+        const dayNum = today.getDate();
+        const dayStr = dayNum.toString().padStart(2, '0');
+        const monthMap: Record<number, string> = { 0: 'Jan', 1: 'Fev', 2: 'Mar', 3: 'Abr', 4: 'Mai', 5: 'Jun', 6: 'Jul', 7: 'Ago', 8: 'Set', 9: 'Out', 10: 'Nov', 11: 'Dez' };
+        const currentMonthName = monthMap[today.getMonth()];
+
+        // 1. Identificar contas vencendo HOJE
+        const billsDueToday = [
+            ...transactions.filter(t => t.type === 'expense' && !t.is_paid && t.status !== 'delayed' && t.date?.startsWith(dayStr)),
+            ...recurring.filter(r => r.type === 'expense' && r.due_day === dayNum && r.status !== 'delayed' && !r.paid_months?.includes(currentMonthName)),
+            ...installments.filter(i => i.due_day === dayNum && i.status !== 'delayed' && !i.paid_months?.includes(currentMonthName))
+        ];
+
+        if (billsDueToday.length > 0) {
+            // 2. Verificar se já existe notificação hoje
+            const todayStart = new Date(today.setHours(0,0,0,0)).toISOString();
+            const messageSignature = `Você tem ${billsDueToday.length} conta(s) para pagar hoje. Não esqueça!`;
+
+            const { data: existingNotifs } = await supabase
+                .from('notifications')
+                .select('*')
+                .eq('user_id', userId)
+                .eq('message', messageSignature)
+                .gte('created_at', todayStart);
+
+            if (!existingNotifs || existingNotifs.length === 0) {
+                console.log("🔔 Gerando Notificação Nova!");
+                
+                // 3. Salva no Banco
+                const { error } = await supabase.from('notifications').insert({
+                    user_id: userId,
+                    title: 'Contas Vencendo Hoje! 💸',
+                    message: messageSignature,
+                    type: 'warning',
+                    is_read: false
+                });
+
+                if (!error) {
+                    // 4. FORÇA VISUAL: Mostra um Toast na tela imediatamente
+                    toast.warning("Atenção: Contas Vencendo Hoje!", {
+                        description: messageSignature,
+                        duration: 5000, // Fica 5 segundos na tela
+                        icon: <AlertTriangle className="text-orange-500" />
+                    });
+                }
+            }
+        }
+    };
 
     const fetchClients = async (managerId: string) => {
         const { data } = await supabase.from('manager_clients').select('*').eq('manager_id', managerId);
@@ -380,9 +437,12 @@ export default function FinancialDashboard() {
         if (targetUserId) { await fetchWorkspaces(targetUserId, true); }
     };
 
-    useEffect(() => {
-        if (transactions.length > 0 || installments.length > 0) checkForPastDueItems();
-    }, [transactions, installments, recurring]);
+   useEffect(() => {
+        if (transactions.length > 0 || installments.length > 0) {
+            checkForPastDueItems();
+            if (user) checkUpcomingBills(user.id); // <--- ADICIONE ISSO
+        }
+    }, [transactions, installments, recurring, user]);
 
     const loadData = async (userId: string, workspaceId: string) => {
         if (!userId || !workspaceId) return;
@@ -497,11 +557,11 @@ export default function FinancialDashboard() {
     };
 
     // --- FUNÇÕES DO ROLLOVER (ITEM 7 REFINADO) ---
-    
+
     // 1. Marcar TUDO como pago (Esqueci de dar baixa)
     const handleMarkAllAsPaid = async () => {
         if (!confirm(`Confirmar pagamento de ${pastDueItems.length} contas atrasadas?`)) return;
-        
+
         const activeId = getActiveUserId();
         if (!activeId) return;
 
@@ -512,7 +572,7 @@ export default function FinancialDashboard() {
                 await supabase.from('transactions').update({ is_paid: true }).eq('id', item.id);
             } else if (item.origin === 'installments' || item.origin === 'recurring') {
                 // Adiciona o mês pendente na lista de pagos
-                await togglePaidMonth(item.origin, item); 
+                await togglePaidMonth(item.origin, item);
             }
         }
 
@@ -572,8 +632,8 @@ export default function FinancialDashboard() {
         if (!file || !user) return;
         // BLOQUEIO: Free e Start não podem fazer upload
         if (userPlan === 'free' || userPlan === 'start') {
-            toast.error("Recurso Exclusivo Aliado Plus", { 
-                description: "Faça o upgrade (R$ 29,90) para salvar comprovantes na nuvem." 
+            toast.error("Recurso Exclusivo Aliado Plus", {
+                description: "Faça o upgrade (R$ 29,90) para salvar comprovantes na nuvem."
             });
             return;
         }
@@ -605,7 +665,9 @@ export default function FinancialDashboard() {
         const amountVal = formData.amount ? parseFloat(formData.amount.toString()) : 0;
         const fixedInstallmentVal = formData.fixedMonthlyValue ? parseFloat(formData.fixedMonthlyValue.toString()) : null;
         const monthMap: Record<string, string> = { 'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04', 'Mai': '05', 'Jun': '06', 'Jul': '/07', 'Ago': '08', 'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12' };
-        const dateString = `01/${monthMap[formData.targetMonth]}/2026`;
+       // ✅ COMO DEVE FICAR (Pega o dia digitado ou usa 01 se vazio)
+const dayValue = formData.dueDay ? formData.dueDay.toString().padStart(2, '0') : '01';
+const dateString = `${dayValue}/${monthMap[formData.targetMonth]}/2026`;
         const context = currentWorkspace?.id;
 
         let finalReceiptData: string | null = formData.receiptUrl;
@@ -647,34 +709,34 @@ export default function FinancialDashboard() {
 
                 if (fixedInstallmentVal && fixedInstallmentVal > 0) {
                     finalMonthly = fixedInstallmentVal;
-                    finalTotal = amountVal > 0 ? amountVal : (fixedInstallmentVal * qtd); 
-                } 
+                    finalTotal = amountVal > 0 ? amountVal : (fixedInstallmentVal * qtd);
+                }
                 else {
                     finalTotal = amountVal;
                     finalMonthly = amountVal / qtd;
                 }
 
                 if (finalTotal === 0 && finalMonthly === 0) {
-                     toast.error("Preencha o valor da parcela ou o total!");
-                     return { table: 'error', data: {} }; 
+                    toast.error("Preencha o valor da parcela ou o total!");
+                    return { table: 'error', data: {} };
                 }
 
                 const targetMonthIndex = MONTHS.indexOf(formData.targetMonth);
                 const startOffset = 1 - targetMonthIndex;
-                
-                return { 
-                    table: 'installments', 
-                    data: { 
-                        ...baseData, 
-                        title: formData.title, 
-                        total_value: finalTotal, 
-                        installments_count: qtd, 
-                        current_installment: startOffset, 
-                        value_per_month: finalMonthly, 
-                        fixed_monthly_value: fixedInstallmentVal || null, 
-                        due_day: parseInt(formData.dueDay.toString()) || 10, 
-                        status: 'active' 
-                    } 
+
+                return {
+                    table: 'installments',
+                    data: {
+                        ...baseData,
+                        title: formData.title,
+                        total_value: finalTotal,
+                        installments_count: qtd,
+                        current_installment: startOffset,
+                        value_per_month: finalMonthly,
+                        fixed_monthly_value: fixedInstallmentVal || null,
+                        due_day: parseInt(formData.dueDay.toString()) || 10,
+                        status: 'active'
+                    }
                 };
             }
             return { table: 'recurring', data: { ...baseData, title: formData.title, value: amountVal, due_day: parseInt(formData.dueDay.toString()) || 10, category: 'Fixa', type: 'expense', status: 'active', start_date: dateString } };
@@ -701,7 +763,7 @@ export default function FinancialDashboard() {
         if (!editingId && (userPlan === 'free' || userPlan === 'start')) {
             const newCount = addCounter + 1;
             setAddCounter(newCount);
-            
+
             // A cada 3 lançamentos manuais, mostra a vantagem da automação
             if (newCount % 3 === 0) {
                 setTimeout(() => setIsNudgeOpen(true), 500); // Pequeno delay para não ser brusco
@@ -709,8 +771,8 @@ export default function FinancialDashboard() {
         }
         // -------------------------------
 
-        setFormData({ ...initialFormState, targetMonth: activeTab }); 
-        setEditingId(null); 
+        setFormData({ ...initialFormState, targetMonth: activeTab });
+        setEditingId(null);
         setIsFormOpen(false);
     };
 
@@ -774,11 +836,11 @@ export default function FinancialDashboard() {
     if (currentIndex > 0) { const prevData = getMonthData(MONTHS[currentIndex - 1]); if (prevData.balance > 0) previousSurplus = prevData.balance; }
     const displayBalance = currentMonthData.balance + previousSurplus;
 
-  // Função para chamar a IA (Agora aceita arquivos!)
-   // Função para chamar a IA (Agora aceita arquivos!)
+    // Função para chamar a IA (Agora aceita arquivos!)
+    // Função para chamar a IA (Agora aceita arquivos!)
     const askGemini = async (text: string, fileBase64: string | null = null) => {
         setIsAiLoading(true);
-        
+
         // Adiciona mensagem do usuário no chat
         const userMsg = { role: 'user', content: text, type: 'text' };
         setChatHistory(prev => [...prev, userMsg]);
@@ -810,24 +872,25 @@ export default function FinancialDashboard() {
                     prompt: text,
                     contextData,
                     userPlan,
-                    images 
+                    images
                 })
             });
+            
 
             const data = await response.json();
-            
+
             if (data.error) throw new Error(data.error);
 
             // --- PROCESSADOR DE AÇÕES (AUTO-MAGIC) ---
             let aiResponseText = data.response;
-            
+
             // CORREÇÃO REGEX: Mudamos de /s (dotAll) para [\s\S]* (funciona em qualquer versão)
             const jsonMatch = aiResponseText.match(/\[[\s\S]*\]/);
-            
+
             if (jsonMatch) {
                 try {
                     const commands = JSON.parse(jsonMatch[0]);
-                    
+
                     if (Array.isArray(commands)) {
                         let actionsPerformed = 0;
                         const activeId = getActiveUserId(); // Corrigido: selectedClientId -> função existente
@@ -841,7 +904,7 @@ export default function FinancialDashboard() {
                                         user_id: activeId, // Usa o ID do usuário ativo
                                         context: currentWorkspace?.id // Adiciona ao workspace atual
                                     }]);
-                                
+
                                 if (!error) actionsPerformed++;
                             }
                         }
@@ -914,32 +977,32 @@ export default function FinancialDashboard() {
 
                 <div className="flex flex-wrap justify-center xl:justify-end gap-3 w-full xl:w-auto items-center">
                     {/* BOTÃO HISTÓRICO (ITEM 5) */}
-                <button 
-                    onClick={() => setIsHistoryOpen(true)} 
-                    className="h-12 w-12 flex items-center justify-center rounded-xl bg-gray-900 text-cyan-500 border border-cyan-900/30 hover:bg-cyan-900/20 hover:text-cyan-300 transition shadow-lg"
-                    title="Ver Gráfico Anual"
-                >
-                    <BarChart3 size={20} />
-                </button>
-                  <button 
-                        id="btn-export" 
-                        onClick={() => { 
+                    <button
+                        onClick={() => setIsHistoryOpen(true)}
+                        className="h-12 w-12 flex items-center justify-center rounded-xl bg-gray-900 text-cyan-500 border border-cyan-900/30 hover:bg-cyan-900/20 hover:text-cyan-300 transition shadow-lg"
+                        title="Ver Gráfico Anual"
+                    >
+                        <BarChart3 size={20} />
+                    </button>
+                    <button
+                        id="btn-export"
+                        onClick={() => {
                             console.log("👉 Botão Exportar Clicado!");
                             console.log("👤 Plano Atual:", userPlan);
 
                             // BLOQUEIO: Free E Start não podem exportar
-                            if (userPlan === 'free' || userPlan === 'start') { 
+                            if (userPlan === 'free' || userPlan === 'start') {
                                 console.log("⛔ Bloqueado pelo plano.");
-                                toast.error("Recurso Premium (Plus)", { 
-                                    description: "Faça o upgrade para Plus ou Pro para exportar relatórios." 
-                                }); 
-                                openPricingModal(); 
-                                return; 
-                            } 
-                            
+                                toast.error("Recurso Premium (Plus)", {
+                                    description: "Faça o upgrade para Plus ou Pro para exportar relatórios."
+                                });
+                                openPricingModal();
+                                return;
+                            }
+
                             console.log("✅ Permitido! Abrindo modal...");
-                            setIsExportModalOpen(true); 
-                        }} 
+                            setIsExportModalOpen(true);
+                        }}
                         className={`h-12 w-12 flex items-center justify-center rounded-xl transition shadow-lg border relative ${(userPlan === 'free' || userPlan === 'start') ? 'bg-gray-900 text-gray-500 border-gray-800 hover:bg-gray-800' : 'bg-gray-900 text-emerald-500 border-emerald-900/30 hover:bg-emerald-900/20'}`}
                         title="Exportar Relatório Excel"
                     >
@@ -951,37 +1014,43 @@ export default function FinancialDashboard() {
                             </div>
                         )}
                     </button>
-                    {user ? (
-                        <div className="relative">
-                            <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className={`h-12 bg-gray-900 border border-gray-800 text-gray-400 px-6 rounded-xl hover:bg-gray-800 hover:text-white flex items-center justify-center gap-2 whitespace-nowrap transition ${isUserMenuOpen ? 'border-gray-600 text-white' : ''}`}>
-                                {user.user_metadata?.avatar_url ? (<img src={user.user_metadata.avatar_url} className="w-5 h-5 rounded-full object-cover border border-gray-600" />) : (<User size={18} />)} Menu
-                            </button>
-                            {isUserMenuOpen && (
-                                <>
-                                    <div className="fixed inset-0 z-40" onClick={() => setIsUserMenuOpen(false)}></div>
-                                    <div className="absolute top-full right-0 pt-2 w-56 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                                        <div className="bg-[#111] border border-gray-800 rounded-xl shadow-2xl overflow-hidden relative">
-                                            <div className="p-2 space-y-1">
-                                                <div className="px-3 py-3 border-b border-gray-800 mb-1">
-                                                    <div className="flex items-center gap-3">
-                                                        {user.user_metadata?.avatar_url ? (<img src={user.user_metadata.avatar_url} className="w-9 h-9 rounded-full border border-gray-600 object-cover shadow-sm" />) : (<div className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center text-gray-400 border border-gray-700"><User size={16} /></div>)}
-                                                        <div className="overflow-hidden">
-                                                            <p className="text-white text-xs font-bold truncate max-w-[120px]" title={user.user_metadata?.full_name}>{user.user_metadata?.full_name || "Usuário"}</p>
-                                                            <p className="text-gray-500 text-[10px] truncate max-w-[120px]" title={user.email}>{user.email}</p>
+                   {user ? (
+                        <div className="flex items-center gap-3">
+                            
+                            {/* 🔔 SININHO (Agora posicionado corretamente ao lado do menu) */}
+                            <NotificationBell userId={user.id} />
+
+                            <div className="relative">
+                                <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className={`h-12 bg-gray-900 border border-gray-800 text-gray-400 px-6 rounded-xl hover:bg-gray-800 hover:text-white flex items-center justify-center gap-2 whitespace-nowrap transition ${isUserMenuOpen ? 'border-gray-600 text-white' : ''}`}>
+                                    {user.user_metadata?.avatar_url ? (<img src={user.user_metadata.avatar_url} className="w-5 h-5 rounded-full object-cover border border-gray-600" />) : (<User size={18} />)} Menu
+                                </button>
+                                {isUserMenuOpen && (
+                                    <>
+                                        <div className="fixed inset-0 z-40" onClick={() => setIsUserMenuOpen(false)}></div>
+                                        <div className="absolute top-full right-0 pt-2 w-56 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                                            <div className="bg-[#111] border border-gray-800 rounded-xl shadow-2xl overflow-hidden relative">
+                                                <div className="p-2 space-y-1">
+                                                    <div className="px-3 py-3 border-b border-gray-800 mb-1">
+                                                        <div className="flex items-center gap-3">
+                                                            {user.user_metadata?.avatar_url ? (<img src={user.user_metadata.avatar_url} className="w-9 h-9 rounded-full border border-gray-600 object-cover shadow-sm" />) : (<div className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center text-gray-400 border border-gray-700"><User size={16} /></div>)}
+                                                            <div className="overflow-hidden">
+                                                                <p className="text-white text-xs font-bold truncate max-w-[120px]" title={user.user_metadata?.full_name}>{user.user_metadata?.full_name || "Usuário"}</p>
+                                                                <p className="text-gray-500 text-[10px] truncate max-w-[120px]" title={user.email}>{user.email}</p>
+                                                            </div>
                                                         </div>
                                                     </div>
+                                                    <button onClick={() => { setIsUserMenuOpen(false); setIsProfileModalOpen(true); }} className="w-full text-left px-3 py-2.5 rounded-lg text-xs flex items-center gap-2 text-gray-300 hover:bg-gray-800 hover:text-white transition font-medium"><User size={14} className="text-cyan-500" /> Meu Perfil</button>
+                                                    {userPlan !== 'free' && (<button onClick={() => { setIsUserMenuOpen(false); handleManageSubscription(); }} className="w-full text-left px-3 py-2.5 rounded-lg text-xs flex items-center gap-2 text-gray-300 hover:bg-gray-800 hover:text-white transition font-medium"><CreditCard size={14} className="text-emerald-500" /> Gerenciar Assinatura</button>)}
+                                                    {(userPlan === 'pro' || userPlan === 'agent') && (<button onClick={() => { setIsUserMenuOpen(false); setIsCustomizationOpen(true); }} className="w-full text-left px-3 py-2.5 rounded-lg text-xs flex items-center gap-2 text-gray-300 hover:bg-gray-800 hover:text-white transition font-medium"><Palette size={14} className="text-purple-500" /> Personalizar Visual</button>)}
+                                                    {userPlan !== 'agent' && (<button onClick={() => { setIsUserMenuOpen(false); handleCheckout('AGENT'); }} className="w-full text-left px-3 py-2.5 rounded-lg text-xs flex items-center gap-2 text-gray-300 hover:bg-gray-800 hover:text-white transition font-medium"><Briefcase size={14} className="text-amber-500" /> Virar Consultor</button>)}
+                                                    <div className="h-px bg-gray-800 my-1 mx-2"></div>
+                                                    <button onClick={handleLogout} className="w-full text-left px-3 py-2.5 rounded-lg text-xs flex items-center gap-2 text-red-400 hover:bg-red-950/20 font-medium"><LogOut size={14} /> Sair da Conta</button>
                                                 </div>
-                                                <button onClick={() => { setIsUserMenuOpen(false); setIsProfileModalOpen(true); }} className="w-full text-left px-3 py-2.5 rounded-lg text-xs flex items-center gap-2 text-gray-300 hover:bg-gray-800 hover:text-white transition font-medium"><User size={14} className="text-cyan-500" /> Meu Perfil</button>
-                                                {userPlan !== 'free' && (<button onClick={() => { setIsUserMenuOpen(false); handleManageSubscription(); }} className="w-full text-left px-3 py-2.5 rounded-lg text-xs flex items-center gap-2 text-gray-300 hover:bg-gray-800 hover:text-white transition font-medium"><CreditCard size={14} className="text-emerald-500" /> Gerenciar Assinatura</button>)}
-                                                {(userPlan === 'pro' || userPlan === 'agent') && (<button onClick={() => { setIsUserMenuOpen(false); setIsCustomizationOpen(true); }} className="w-full text-left px-3 py-2.5 rounded-lg text-xs flex items-center gap-2 text-gray-300 hover:bg-gray-800 hover:text-white transition font-medium"><Palette size={14} className="text-purple-500" /> Personalizar Visual</button>)}
-                                                {userPlan !== 'agent' && (<button onClick={() => { setIsUserMenuOpen(false); handleCheckout('AGENT'); }} className="w-full text-left px-3 py-2.5 rounded-lg text-xs flex items-center gap-2 text-gray-300 hover:bg-gray-800 hover:text-white transition font-medium"><Briefcase size={14} className="text-amber-500" /> Virar Consultor</button>)}
-                                                <div className="h-px bg-gray-800 my-1 mx-2"></div>
-                                                <button onClick={handleLogout} className="w-full text-left px-3 py-2.5 rounded-lg text-xs flex items-center gap-2 text-red-400 hover:bg-red-950/20 font-medium"><LogOut size={14} /> Sair da Conta</button>
                                             </div>
                                         </div>
-                                    </div>
-                                </>
-                            )}
+                                    </>
+                                )}
+                            </div>
                         </div>
                     ) : (<button id="btn-login" onClick={() => { setIsAuthModalOpen(true); setShowEmailCheck(false); setAuthMode('login'); }} className="h-12 bg-gray-900 border border-gray-800 text-white px-6 rounded-xl hover:border-cyan-500/50 flex items-center justify-center gap-2 whitespace-nowrap transition"><LogIn size={18} /> Entrar</button>)}
 
@@ -993,24 +1062,24 @@ export default function FinancialDashboard() {
                     </button>
 
                     {/* BOTÃO FATURA RÁPIDA (ITEM NOVO) */}
-                   {/* BOTÃO FATURA RÁPIDA */}
-                    <button 
+                    {/* BOTÃO FATURA RÁPIDA */}
+                    <button
                         onClick={() => {
                             // BLOQUEIO: Só Plus para cima usa a ferramenta rápida
-                            if (userPlan === 'free' || userPlan === 'start') { 
-                                toast.error("Recurso de Produtividade (Plus)", { 
-                                    description: "No plano Start, os lançamentos são manuais (um a um). Assine o Plus para lançar faturas em lote!" 
+                            if (userPlan === 'free' || userPlan === 'start') {
+                                toast.error("Recurso de Produtividade (Plus)", {
+                                    description: "No plano Start, os lançamentos são manuais (um a um). Assine o Plus para lançar faturas em lote!"
                                 });
                                 openPricingModal();
                                 return;
                             }
                             setIsCreditCardModalOpen(true);
-                        }} 
+                        }}
                         className={`h-12 px-6 rounded-xl font-bold transition flex items-center justify-center gap-2 shadow-lg whitespace-nowrap ${(userPlan === 'free' || userPlan === 'start') ? 'bg-gray-800 text-gray-500 border border-gray-700 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-500 text-white shadow-purple-900/20'}`}
                         title="Lançamento Rápido de Fatura"
                     >
-                        <CreditCard size={18} /> 
-                        Fatura {(userPlan === 'free' || userPlan === 'start') && <Lock size={12} className="ml-1"/>}
+                        <CreditCard size={18} />
+                        Fatura {(userPlan === 'free' || userPlan === 'start') && <Lock size={12} className="ml-1" />}
                     </button>
 
                     <button id="btn-novo" onClick={openNewTransactionModal} className="h-12 bg-white text-black px-6 rounded-xl font-bold hover:bg-gray-200 transition flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(255,255,255,0.1)] whitespace-nowrap"><Plus size={18} /> Novo</button>
@@ -1023,61 +1092,61 @@ export default function FinancialDashboard() {
             )}
 
             <ProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} user={user} />
-{currentLayout === 'trader' && (
-                <TraderView 
-                    transactions={transactions} 
-                    installments={installments} 
-                    recurring={recurring} 
-                    activeTab={activeTab} 
-                    months={MONTHS} 
-                    setActiveTab={setActiveTab} 
-                    currentMonthData={currentMonthData} 
-                    previousSurplus={previousSurplus} 
-                    displayBalance={displayBalance} 
-                    onTogglePaid={togglePaid} 
-                    onToggleDelay={toggleDelay} 
+            {currentLayout === 'trader' && (
+                <TraderView
+                    transactions={transactions}
+                    installments={installments}
+                    recurring={recurring}
+                    activeTab={activeTab}
+                    months={MONTHS}
+                    setActiveTab={setActiveTab}
+                    currentMonthData={currentMonthData}
+                    previousSurplus={previousSurplus}
+                    displayBalance={displayBalance}
+                    onTogglePaid={togglePaid}
+                    onToggleDelay={toggleDelay}
                     onDelete={handleDelete}
                     onTogglePaidMonth={togglePaidMonth} // <--- ADICIONE ESTA LINHA
                 />
-            )}            
+            )}
             {currentLayout === 'calendar' && (<CalendarView transactions={transactions} installments={installments} recurring={recurring} activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab} />)}
             <ExportModal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} user={user} userPlan={userPlan} clients={clients} activeTab={activeTab} />
-            
+
             {/* MODAL DE CARTÃO DE CRÉDITO */}
             {/* MODAL DE CARTÃO DE CRÉDITO (ATUALIZADO) */}
-            <CreditCardModal 
-                isOpen={isCreditCardModalOpen} 
-                onClose={() => setIsCreditCardModalOpen(false)} 
+            <CreditCardModal
+                isOpen={isCreditCardModalOpen}
+                onClose={() => setIsCreditCardModalOpen(false)}
                 user={user}
                 activeTab={activeTab}
                 contextId={currentWorkspace?.id}  // <--- ESSA LINHA É A CHAVE! 🔑
                 onSuccess={() => loadData(getActiveUserId(), currentWorkspace?.id)}
             />
             {/* MODAL DE HISTÓRICO (ITEM 5) */}
-        <HistoryModal 
-            isOpen={isHistoryOpen} 
-            onClose={() => setIsHistoryOpen(false)} 
-            transactions={transactions}
-            installments={installments}
-            recurring={recurring}
-        />
+            <HistoryModal
+                isOpen={isHistoryOpen}
+                onClose={() => setIsHistoryOpen(false)}
+                transactions={transactions}
+                installments={installments}
+                recurring={recurring}
+            />
             {currentLayout === 'zen' && (<ZenView displayBalance={displayBalance} currentMonthData={currentMonthData} activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab} />)}
-                    
-{currentLayout === 'timeline' && (
-                <TimelineView 
-                    transactions={transactions} 
+
+            {currentLayout === 'timeline' && (
+                <TimelineView
+                    transactions={transactions}
                     installments={installments}   // <--- NOVO
                     recurring={recurring}         // <--- NOVO
-                    activeTab={activeTab} 
+                    activeTab={activeTab}
                 />
             )}           {currentLayout === 'bento' && (
-                <BentoView 
-                    currentMonthData={currentMonthData} 
-                    transactions={transactions} 
-                    installments={installments} 
+                <BentoView
+                    currentMonthData={currentMonthData}
+                    transactions={transactions}
+                    installments={installments}
                     recurring={recurring}
                     // NOVAS PROPS (Ações Reais)
-                    onOpenCalendar={() => setCurrentLayout('calendar')} 
+                    onOpenCalendar={() => setCurrentLayout('calendar')}
                     onOpenRollover={() => setIsRolloverModalOpen(true)}
                 />
             )}
@@ -1134,23 +1203,23 @@ export default function FinancialDashboard() {
                             {/* --- NOVO: SELETOR DE BANCO/CARTÃO (ITEM 2) 👇 --- */}
                             <div className="mb-4">
                                 <label className="text-gray-500 text-xs uppercase font-bold mb-2 block ml-1 flex items-center gap-2">
-                                    <Landmark size={12}/> Conta / Cartão
+                                    <Landmark size={12} /> Conta / Cartão
                                 </label>
                                 <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
                                     {ACCOUNTS.map(acc => (
-                                        <button 
+                                        <button
                                             key={acc.id}
                                             onClick={() => setFormData({ ...formData, paymentMethod: acc.id })}
                                             className={`
                                                 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition border
-                                                ${formData.paymentMethod === acc.id 
-                                                    ? `${acc.color} ${acc.text} border-transparent shadow-md scale-105` 
+                                                ${formData.paymentMethod === acc.id
+                                                    ? `${acc.color} ${acc.text} border-transparent shadow-md scale-105`
                                                     : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}
                                             `}
                                         >
-                                            {acc.id === 'nubank' && <img src="https://upload.wikimedia.org/wikipedia/commons/f/f7/Nubank_logo_2021.svg" className="w-4 h-4 invert opacity-90"/>}
+                                            {acc.id === 'nubank' && <img src="https://upload.wikimedia.org/wikipedia/commons/f/f7/Nubank_logo_2021.svg" className="w-4 h-4 invert opacity-90" />}
                                             {acc.label}
-                                            {formData.paymentMethod === acc.id && <Check size={12}/>}
+                                            {formData.paymentMethod === acc.id && <Check size={12} />}
                                         </button>
                                     ))}
                                 </div>
@@ -1158,18 +1227,18 @@ export default function FinancialDashboard() {
                             {/* --------------------------------------------------- */}
 
                             {/* --- ORDEM DOS CAMPOS ALTERADA (PEDIDO ANTERIOR) --- */}
-                            
+
                             {/* 1. VALOR TOTAL DA DÍVIDA (AGORA NO TOPO E OPCIONAL) */}
                             <div className="mb-2">
                                 <label className="text-xs text-gray-500 ml-1 mb-1 block">
                                     {formMode === 'installment' ? "Valor TOTAL da Dívida (Opcional)" : "Valor (R$)"}
                                 </label>
-                                <input 
-                                    type="number" 
-                                    value={formData.amount} 
-                                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })} 
-                                    className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none" 
-                                    placeholder={formMode === 'installment' ? "Ex: 1200.00 (Deixe vazio se souber a parcela)" : "0,00"} 
+                                <input
+                                    type="number"
+                                    value={formData.amount}
+                                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                                    className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none"
+                                    placeholder={formMode === 'installment' ? "Ex: 1200.00 (Deixe vazio se souber a parcela)" : "0,00"}
                                 />
                             </div>
 
@@ -1177,7 +1246,7 @@ export default function FinancialDashboard() {
                             {formMode === 'installment' && (
                                 <div className="bg-purple-900/10 p-4 rounded-xl border border-purple-900/30 space-y-3 mb-4 animate-in slide-in-from-top-2">
                                     <p className="text-purple-400 text-xs font-bold uppercase mb-2 flex items-center gap-2">
-                                        <Sparkles size={12}/> Valor da Parcela
+                                        <Sparkles size={12} /> Valor da Parcela
                                     </p>
                                     <div>
                                         <label className="text-gray-400 text-xs block mb-1">Valor Mensal (com Juros):</label>
@@ -1220,7 +1289,7 @@ export default function FinancialDashboard() {
                 </div>
             )}
 
-          {/* MODAL DE PREÇOS ATUALIZADO */}
+            {/* MODAL DE PREÇOS ATUALIZADO */}
             {isPricingOpen && (
                 <div className="fixed inset-0 bg-black/95 backdrop-blur-xl flex items-center justify-center z-[200] p-4 overflow-y-auto">
                     <div className="w-full max-w-6xl">
@@ -1229,20 +1298,20 @@ export default function FinancialDashboard() {
                             <h2 className="text-3xl md:text-5xl font-black text-white mb-4 tracking-tight">Evolua seu Controle.</h2>
                             <p className="text-gray-400">Escolha a potência da sua ferramenta.</p>
                         </div>
-                        
+
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            
+
                             {/* PLANO START - "O Manual Ilimitado" */}
                             <div className="bg-[#111] border border-gray-800 rounded-3xl p-8 flex flex-col relative hover:border-gray-600 transition group">
-                                <h3 className="text-xl font-bold text-gray-300 mb-2 flex items-center gap-2"><Rocket size={20}/> Aliado Start</h3>
+                                <h3 className="text-xl font-bold text-gray-300 mb-2 flex items-center gap-2"><Rocket size={20} /> Aliado Start</h3>
                                 <div className="text-4xl font-black text-white mb-1">R$ 10,00<span className="text-lg font-medium text-gray-500">/mês</span></div>
                                 <div className="text-xs text-gray-500 mb-6">Para quem gosta de registrar tudo manualmente.</div>
                                 <ul className="space-y-4 mb-8 flex-1">
-                                    <li className="flex gap-3 text-sm text-white"><CheckCircle2 size={18} className="text-emerald-500"/> <span><b>Lançamentos Ilimitados</b></span></li>
-                                    <li className="flex gap-3 text-sm text-gray-400"><X size={18} className="text-gray-600"/> <span>Fatura Rápida (Bloqueado)</span></li>
-                                    <li className="flex gap-3 text-sm text-gray-400"><X size={18} className="text-gray-600"/> <span>Exportação Excel (Bloqueado)</span></li>
-                                    <li className="flex gap-3 text-sm text-gray-400"><X size={18} className="text-gray-600"/> <span>Upload de Arquivos</span></li>
-                                    <li className="flex gap-3 text-sm text-gray-400"><Sparkles size={18} className="text-gray-600"/> <span>IA Apenas Consultiva</span></li>
+                                    <li className="flex gap-3 text-sm text-white"><CheckCircle2 size={18} className="text-emerald-500" /> <span><b>Lançamentos Ilimitados</b></span></li>
+                                    <li className="flex gap-3 text-sm text-gray-400"><X size={18} className="text-gray-600" /> <span>Fatura Rápida (Bloqueado)</span></li>
+                                    <li className="flex gap-3 text-sm text-gray-400"><X size={18} className="text-gray-600" /> <span>Exportação Excel (Bloqueado)</span></li>
+                                    <li className="flex gap-3 text-sm text-gray-400"><X size={18} className="text-gray-600" /> <span>Upload de Arquivos</span></li>
+                                    <li className="flex gap-3 text-sm text-gray-400"><Sparkles size={18} className="text-gray-600" /> <span>IA Apenas Consultiva</span></li>
                                 </ul>
                                 <button id="checkout-btn-START" onClick={() => handleCheckout('START')} className="w-full bg-gray-800 text-white font-bold py-4 rounded-xl hover:bg-gray-700 border border-gray-700 transition">Assinar Start</button>
                             </div>
@@ -1250,15 +1319,15 @@ export default function FinancialDashboard() {
                             {/* PLANO PLUS - "A Máquina de Produtividade" */}
                             <div className="bg-[#0f1219] border border-amber-500/30 rounded-3xl p-8 flex flex-col relative transform md:scale-105 transition shadow-2xl shadow-amber-900/20 z-10">
                                 <div className="absolute top-0 right-0 bg-amber-500 text-black text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-xl">MELHOR CUSTO-BENEFÍCIO</div>
-                                <h3 className="text-xl font-bold text-amber-500 mb-2 flex items-center gap-2"><Zap size={20}/> Aliado Plus</h3>
+                                <h3 className="text-xl font-bold text-amber-500 mb-2 flex items-center gap-2"><Zap size={20} /> Aliado Plus</h3>
                                 <div className="text-4xl font-black text-white mb-1">R$ 29,90<span className="text-lg font-medium text-gray-500">/mês</span></div>
                                 <div className="text-xs text-gray-500 mb-6">Automação, rapidez e arquivos.</div>
                                 <ul className="space-y-4 mb-8 flex-1">
-                                    <li className="flex gap-3 text-sm text-white"><CheckCircle2 size={18} className="text-amber-500"/> <span><b>Lançamentos Ilimitados</b></span></li>
-                                    <li className="flex gap-3 text-sm text-white"><CreditCard size={18} className="text-purple-400"/> <span><b>Fatura Rápida em Lote</b></span></li>
-                                    <li className="flex gap-3 text-sm text-white"><FileSpreadsheet size={18} className="text-green-400"/> <span><b>Exportação Excel Pro</b></span></li>
-                                    <li className="flex gap-3 text-sm text-gray-200"><FileText size={18} className="text-emerald-400"/> <span>Upload de Comprovantes</span></li>
-                                    <li className="flex gap-3 text-sm text-gray-200"><Sparkles size={18} className="text-purple-400"/> <span>IA que Lança Contas</span></li>
+                                    <li className="flex gap-3 text-sm text-white"><CheckCircle2 size={18} className="text-amber-500" /> <span><b>Lançamentos Ilimitados</b></span></li>
+                                    <li className="flex gap-3 text-sm text-white"><CreditCard size={18} className="text-purple-400" /> <span><b>Fatura Rápida em Lote</b></span></li>
+                                    <li className="flex gap-3 text-sm text-white"><FileSpreadsheet size={18} className="text-green-400" /> <span><b>Exportação Excel Pro</b></span></li>
+                                    <li className="flex gap-3 text-sm text-gray-200"><FileText size={18} className="text-emerald-400" /> <span>Upload de Comprovantes</span></li>
+                                    <li className="flex gap-3 text-sm text-gray-200"><Sparkles size={18} className="text-purple-400" /> <span>IA que Lança Contas</span></li>
                                 </ul>
                                 <button id="checkout-btn-PREMIUM" onClick={() => handleCheckout('PREMIUM')} className="w-full bg-gradient-to-r from-amber-500 to-orange-600 text-white font-bold py-4 rounded-xl hover:shadow-lg hover:shadow-amber-500/20 transition">Quero Produtividade</button>
                             </div>
@@ -1266,14 +1335,14 @@ export default function FinancialDashboard() {
                             {/* PLANO PRO - "O Visual e a Inteligência" */}
                             <div className="bg-[#0a0a0a] border border-purple-500/50 rounded-3xl p-8 flex flex-col relative overflow-hidden group">
                                 <div className="absolute inset-0 bg-gradient-to-br from-purple-900/10 to-cyan-900/10 opacity-0 group-hover:opacity-100 transition duration-500"></div>
-                                <h3 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-400 mb-2 flex items-center gap-2"><Crown size={20} className="text-purple-400"/> Aliado Pro</h3>
+                                <h3 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-400 mb-2 flex items-center gap-2"><Crown size={20} className="text-purple-400" /> Aliado Pro</h3>
                                 <div className="text-4xl font-black text-white mb-1">R$ 59,90<span className="text-lg font-medium text-gray-500">/mês</span></div>
                                 <div className="text-xs text-gray-500 mb-6">Poder total e personalização.</div>
                                 <ul className="space-y-4 mb-8 flex-1 relative z-10">
-                                    <li className="flex gap-3 text-sm text-white"><CheckCircle2 size={18} className="text-purple-400"/> <span><b>Tudo do Plus incluso</b></span></li>
-                                    <li className="flex gap-3 text-sm text-gray-300"><Palette size={18} className="text-pink-400"/> <span><b>Temas & Cores Exclusivos</b></span></li>
-                                    <li className="flex gap-3 text-sm text-gray-300"><Layout size={18} className="text-blue-400"/> <span><b>Layouts (Trader, Zen, Calendar)</b></span></li>
-                                    <li className="flex gap-3 text-sm text-gray-300"><Sparkles size={18} className="text-cyan-400"/> <span><b>IA Avançada (GPT-4)</b></span></li>
+                                    <li className="flex gap-3 text-sm text-white"><CheckCircle2 size={18} className="text-purple-400" /> <span><b>Tudo do Plus incluso</b></span></li>
+                                    <li className="flex gap-3 text-sm text-gray-300"><Palette size={18} className="text-pink-400" /> <span><b>Temas & Cores Exclusivos</b></span></li>
+                                    <li className="flex gap-3 text-sm text-gray-300"><Layout size={18} className="text-blue-400" /> <span><b>Layouts (Trader, Zen, Calendar)</b></span></li>
+                                    <li className="flex gap-3 text-sm text-gray-300"><Sparkles size={18} className="text-cyan-400" /> <span><b>IA Avançada (GPT-4)</b></span></li>
                                 </ul>
                                 <button id="checkout-btn-PRO" onClick={() => handleCheckout('PRO')} className="w-full bg-gray-800 border border-purple-500/50 text-white font-bold py-4 rounded-xl hover:bg-purple-900/20 hover:border-purple-400 transition relative z-10">Virar Pro</button>
                             </div>
@@ -1300,10 +1369,10 @@ export default function FinancialDashboard() {
 
             {isAuthModalOpen && (<div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[200] p-4"><div className="bg-[#111] border border-gray-800 p-8 rounded-3xl w-full max-w-sm shadow-2xl relative text-center"><button onClick={() => setIsAuthModalOpen(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white transition"><X size={24} /></button><div className="flex justify-center mb-6"><div className="bg-gray-900/50 p-3 rounded-2xl border border-gray-800">{showEmailCheck ? <Mail className="text-cyan-400" size={32} /> : <Lock className="text-cyan-400" size={32} />}</div></div>{showEmailCheck ? (<div className="animate-in fade-in zoom-in duration-300"><h2 className="text-2xl font-bold mb-2 text-white">Verifique seu e-mail</h2><p className="text-gray-400 text-sm mb-6">Enviamos um link de acesso para <b>{email}</b>. Clique nele para ativar sua conta.</p><div className="bg-cyan-900/20 text-cyan-400 text-xs p-3 rounded-xl border border-cyan-900/50 mb-6">Dica: Verifique a caixa de Spam.</div><button onClick={() => { setShowEmailCheck(false); setAuthMode('login'); }} className="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2">Voltar para Login</button></div>) : (<div><div className="flex justify-center mb-6"><div className="flex bg-black p-1 rounded-xl border border-gray-800"><button onClick={() => setAuthMode('login')} className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${authMode === 'login' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>Entrar</button><button onClick={() => setAuthMode('signup')} className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${authMode === 'signup' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>Criar Conta</button></div></div><div className="space-y-4 text-left"><div><label className="text-xs text-gray-500 ml-1 mb-1 block">E-mail</label><div className="relative"><Mail className="absolute left-3 top-3.5 text-gray-600" size={16} /><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seu@email.com" className="w-full bg-gray-900 border border-gray-700 rounded-xl py-3 pl-10 pr-3 text-white focus:border-cyan-500 outline-none transition" /></div></div><div><label className="text-xs text-gray-500 ml-1 mb-1 block">Senha</label><div className="relative"><Lock className="absolute left-3 top-3.5 text-gray-600" size={16} /><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="********" className="w-full bg-gray-900 border border-gray-700 rounded-xl py-3 pl-10 pr-3 text-white focus:border-cyan-500 outline-none transition" /></div></div></div>{authMessage && (<div className={`mt-4 p-3 rounded-lg text-xs flex items-center gap-2 ${authMessage.includes('❌') ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-green-500/10 text-green-400 border border-green-500/20'}`}>{authMessage}</div>)}<button onClick={handleAuth} disabled={loadingAuth} className="w-full bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl transition mt-6 flex items-center justify-center gap-2 shadow-lg shadow-cyan-900/20">{loadingAuth ? <Loader2 className="animate-spin" size={20} /> : (authMode === 'login' ? 'Acessar Conta' : 'Criar Conta')}</button>{authMode === 'login' && (<div className="mt-4 pt-4 border-t border-gray-800"><button onClick={handleResetPassword} disabled={loadingAuth} className="text-xs text-gray-500 hover:text-cyan-400 transition underline decoration-gray-700 hover:decoration-cyan-400 underline-offset-4">Esqueci minha senha</button></div>)}</div>)}</div></div>)}
             {isClientModalOpen && (<div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4"><div className="bg-[#111] border border-gray-800 p-6 rounded-3xl w-full max-w-sm"><h3 className="text-lg font-bold text-white mb-4">Novo Cliente</h3><input type="email" placeholder="E-mail do cliente" value={newClientEmail} onChange={(e) => setNewClientEmail(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white outline-none mb-4" /><div className="flex gap-2"><button onClick={() => setIsClientModalOpen(false)} className="flex-1 bg-gray-800 text-white py-3 rounded-xl">Cancelar</button><button onClick={handleAddClient} disabled={addingClient} className="flex-1 bg-cyan-600 text-white py-3 rounded-xl font-bold">{addingClient ? '...' : 'Adicionar'}</button></div></div></div>)}
-           {isAIOpen && (
+            {isAIOpen && (
                 <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[200] p-4 animate-in fade-in duration-300">
                     <div className="bg-[#0f0f13] border border-gray-700 w-full max-w-2xl h-[600px] rounded-3xl shadow-2xl flex flex-col relative overflow-hidden">
-                        
+
                         {/* HEADER */}
                         <div className="p-6 border-b border-gray-800 bg-[#111] flex justify-between items-center z-10">
                             <div className="flex items-center gap-3">
@@ -1315,7 +1384,7 @@ export default function FinancialDashboard() {
 
                         {/* ÁREA DE MENSAGENS (ATUALIZADA) */}
                         <div className="flex-1 p-6 overflow-y-auto space-y-4 scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent">
-                            
+
                             {/* ESTADO VAZIO (BOAS VINDAS) - Só aparece se não tiver histórico */}
                             {chatHistory.length === 0 && !isAiLoading && (
                                 <div className="h-full flex flex-col items-center justify-center text-center opacity-40 animate-in zoom-in duration-500">
@@ -1330,15 +1399,14 @@ export default function FinancialDashboard() {
                             {/* HISTÓRICO DE MENSAGENS REAIS */}
                             {chatHistory.map((msg, idx) => (
                                 <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-300`}>
-                                    <div className={`max-w-[85%] p-4 rounded-2xl text-sm leading-relaxed whitespace-pre-line shadow-sm ${
-                                        msg.role === 'user' 
-                                            ? 'bg-purple-600 text-white rounded-br-none' 
-                                            : (msg.type === 'error' ? 'bg-red-900/20 text-red-200 border border-red-800 rounded-tl-none' : 'bg-gray-800 border border-gray-700 text-gray-200 rounded-tl-none')
-                                    }`}>
+                                    <div className={`max-w-[85%] p-4 rounded-2xl text-sm leading-relaxed whitespace-pre-line shadow-sm ${msg.role === 'user'
+                                        ? 'bg-purple-600 text-white rounded-br-none'
+                                        : (msg.type === 'error' ? 'bg-red-900/20 text-red-200 border border-red-800 rounded-tl-none' : 'bg-gray-800 border border-gray-700 text-gray-200 rounded-tl-none')
+                                        }`}>
                                         {/* Se for mensagem do usuário com imagem, mostra miniatura visual */}
                                         {msg.content === 'Analisar comprovante...' && (
                                             <div className="flex items-center gap-2 mb-2 text-purple-200 bg-purple-700/50 p-2 rounded-lg text-xs">
-                                                <FileText size={14}/> Comprovante enviado
+                                                <FileText size={14} /> Comprovante enviado
                                             </div>
                                         )}
                                         {msg.content}
@@ -1386,7 +1454,7 @@ export default function FinancialDashboard() {
 
                         {/* ÁREA DE INPUT DO CHAT (JÁ ATUALIZADA) */}
                         <div className="p-4 border-t border-gray-800 bg-[#111]">
-                            
+
                             {/* 1. PREVIEW DO ANEXO */}
                             {attachment && (
                                 <div className="mb-3 flex items-start animate-in slide-in-from-bottom-2">
@@ -1396,10 +1464,10 @@ export default function FinancialDashboard() {
                                         ) : (
                                             <div className="h-16 w-16 bg-gray-800 rounded-xl border border-gray-700 flex items-center justify-center text-red-400"><FileText size={24} /></div>
                                         )}
-                                        <button onClick={() => { setAttachment(null); if(fileInputRef.current) fileInputRef.current.value = ''; }} className="absolute -top-2 -right-2 bg-gray-900 border border-gray-600 text-gray-400 hover:text-white rounded-full p-1 shadow-md transition"><X size={12} /></button>
+                                        <button onClick={() => { setAttachment(null); if (fileInputRef.current) fileInputRef.current.value = ''; }} className="absolute -top-2 -right-2 bg-gray-900 border border-gray-600 text-gray-400 hover:text-white rounded-full p-1 shadow-md transition"><X size={12} /></button>
                                     </div>
                                     <div className="ml-3 mt-1">
-                                        <p className="text-xs text-emerald-500 font-bold flex items-center gap-1"><CheckCircle2 size={12}/> Arquivo pronto</p>
+                                        <p className="text-xs text-emerald-500 font-bold flex items-center gap-1"><CheckCircle2 size={12} /> Arquivo pronto</p>
                                         <p className="text-[10px] text-gray-500 max-w-[200px] leading-tight mt-0.5">A IA vai ler os dados deste comprovante.</p>
                                     </div>
                                 </div>
@@ -1421,7 +1489,7 @@ export default function FinancialDashboard() {
                                                     askGemini(aiInput, attachment?.base64 || null);
                                                     setAiInput('');
                                                     setAttachment(null);
-                                                    if(fileInputRef.current) fileInputRef.current.value = '';
+                                                    if (fileInputRef.current) fileInputRef.current.value = '';
                                                 }
                                             }
                                         }}
@@ -1437,7 +1505,7 @@ export default function FinancialDashboard() {
                                             askGemini(aiInput, attachment?.base64 || null);
                                             setAiInput('');
                                             setAttachment(null);
-                                            if(fileInputRef.current) fileInputRef.current.value = '';
+                                            if (fileInputRef.current) fileInputRef.current.value = '';
                                         }
                                     }}
                                     disabled={isAiLoading || (!aiInput.trim() && !attachment)}
@@ -1451,7 +1519,7 @@ export default function FinancialDashboard() {
                     <Toaster richColors position="top-center" theme={currentTheme === 'light' ? 'light' : 'dark'} />
                 </div>
             )}
-            
+
             {/* MODAL DE NUDGE (MARKETING INTELIGENTE) */}
             {isNudgeOpen && (
                 <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[250] p-6 animate-in fade-in duration-300">
@@ -1461,28 +1529,28 @@ export default function FinancialDashboard() {
                         <div className="absolute -top-10 -right-10 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl"></div>
 
                         <button onClick={() => setIsNudgeOpen(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white transition"><X size={20} /></button>
-                        
+
                         <div className="mb-6">
                             <div className="w-12 h-12 bg-gray-900 rounded-2xl flex items-center justify-center mb-4 border border-gray-800">
                                 <Sparkles className="text-amber-500" size={24} />
                             </div>
                             <h3 className="text-xl font-bold text-white mb-2">Cansado de digitar?</h3>
                             <p className="text-gray-400 text-sm leading-relaxed">
-                                Você já fez <b>{addCounter} lançamentos manuais</b> agora. 
-                                <br/><br/>
+                                Você já fez <b>{addCounter} lançamentos manuais</b> agora.
+                                <br /><br />
                                 No <strong>Aliado Plus</strong>, a IA lê o comprovante e preenche tudo para você em segundos. ⚡
                             </p>
                         </div>
 
                         <div className="space-y-3">
-                            <button 
-                                onClick={() => { setIsNudgeOpen(false); openPricingModal(); }} 
+                            <button
+                                onClick={() => { setIsNudgeOpen(false); openPricingModal(); }}
                                 className="w-full bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-bold py-3 rounded-xl transition shadow-lg shadow-amber-900/20 flex items-center justify-center gap-2"
                             >
                                 <Zap size={18} fill="currentColor" /> Quero Automatizar
                             </button>
-                            <button 
-                                onClick={() => setIsNudgeOpen(false)} 
+                            <button
+                                onClick={() => setIsNudgeOpen(false)}
                                 className="w-full text-gray-500 hover:text-gray-300 text-xs py-2 transition"
                             >
                                 Continuar digitando manualmente
@@ -1491,11 +1559,11 @@ export default function FinancialDashboard() {
                     </div>
                 </div>
             )}
-{/* MODAL DE ROLLOVER (CONTAS ATRASADAS) - ITEM 7 REFINADO */}
+            {/* MODAL DE ROLLOVER (CONTAS ATRASADAS) - ITEM 7 REFINADO */}
             {isRolloverModalOpen && (
                 <div className="fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center z-[300] p-6 animate-in zoom-in duration-300">
                     <div className="bg-[#111] border border-red-900/30 p-8 rounded-3xl w-full max-w-lg shadow-2xl relative overflow-hidden">
-                        
+
                         {/* Luz de fundo vermelha para dar alerta */}
                         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-600 to-orange-600"></div>
                         <div className="absolute -top-20 -right-20 w-64 h-64 bg-red-600/10 rounded-full blur-3xl pointer-events-none"></div>
@@ -1504,7 +1572,7 @@ export default function FinancialDashboard() {
                             <div className="flex items-start justify-between mb-6">
                                 <div>
                                     <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                                        <AlertTriangle className="text-red-500" size={24} /> 
+                                        <AlertTriangle className="text-red-500" size={24} />
                                         Pendências
                                     </h2>
                                     <p className="text-gray-400 text-sm mt-1">
@@ -1528,7 +1596,7 @@ export default function FinancialDashboard() {
                                             <div>
                                                 <p className="text-white font-bold text-sm">{item.title}</p>
                                                 <p className="text-xs text-gray-500 flex items-center gap-1">
-                                                    <Clock size={10}/> {item.month} • {item.origin === 'installments' ? 'Parcela' : (item.origin === 'recurring' ? 'Fixa' : 'Gasto')}
+                                                    <Clock size={10} /> {item.month} • {item.origin === 'installments' ? 'Parcela' : (item.origin === 'recurring' ? 'Fixa' : 'Gasto')}
                                                 </p>
                                             </div>
                                         </div>
@@ -1537,12 +1605,12 @@ export default function FinancialDashboard() {
                                                 {(item.amount || item.value || item.value_per_month).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                                             </span>
                                             {/* Botão Individual de Adiar */}
-                                            <button 
-                                                onClick={() => toggleDelay(item.origin, item)} 
+                                            <button
+                                                onClick={() => toggleDelay(item.origin, item)}
                                                 className="text-xs bg-gray-800 text-gray-400 p-2 rounded-lg hover:bg-orange-900/20 hover:text-orange-400 border border-transparent hover:border-orange-500/30 transition"
                                                 title="Mover para Stand-by (Ignorar por enquanto)"
                                             >
-                                                <LogOut size={14}/>
+                                                <LogOut size={14} />
                                             </button>
                                         </div>
                                     </div>
@@ -1551,22 +1619,22 @@ export default function FinancialDashboard() {
 
                             {/* Ações em Lote */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                <button 
-                                    onClick={handleMarkAllAsPaid} 
+                                <button
+                                    onClick={handleMarkAllAsPaid}
                                     className="bg-emerald-600 hover:bg-emerald-500 text-white py-3 px-4 rounded-xl font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20"
                                 >
-                                    <CheckSquare size={18}/> Já Paguei Tudo
+                                    <CheckSquare size={18} /> Já Paguei Tudo
                                     <span className="text-[10px] font-normal opacity-80">(Esqueci de dar baixa)</span>
                                 </button>
 
-                                <button 
-                                    onClick={() => setIsRolloverModalOpen(false)} 
+                                <button
+                                    onClick={() => setIsRolloverModalOpen(false)}
                                     className="bg-gray-800 hover:bg-gray-700 text-white py-3 px-4 rounded-xl font-bold transition flex items-center justify-center gap-2 border border-gray-700"
                                 >
-                                    <Clock size={18}/> Ver Depois
+                                    <Clock size={18} /> Ver Depois
                                 </button>
                             </div>
-                            
+
                             <p className="text-center text-[10px] text-gray-600 mt-4">
                                 Dica: Contas em "Stand-by" não somam no saldo nem nas dívidas.
                             </p>
