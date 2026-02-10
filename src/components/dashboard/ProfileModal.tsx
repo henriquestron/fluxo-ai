@@ -25,16 +25,18 @@ export default function ProfileModal({ isOpen, onClose, user }: ProfileModalProp
   const [uploading, setUploading] = useState(false);
 
   // Buscar dados ao abrir
+ // 1. BUSCAR TELEFONE AO ABRIR (Corrigido para evitar erro 406)
   useEffect(() => {
     if (user?.id) {
       const fetchSettings = async () => {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('user_settings')
           .select('whatsapp_phone')
           .eq('user_id', user.id)
-          .single();
+          .maybeSingle(); // <--- MUDANÇA AQUI: De .single() para .maybeSingle()
         
-        if (data?.whatsapp_phone) {
+        // Se der erro ou não tiver dados, apenas ignora (não quebra o site)
+        if (!error && data?.whatsapp_phone) {
           setWhatsapp(data.whatsapp_phone);
         }
       };
