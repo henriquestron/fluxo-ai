@@ -24,8 +24,6 @@ export async function POST(req: Request) {
         }
 
         const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-        
-        // --- MODELO MAIS ATUAL ---
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
         const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
@@ -40,7 +38,6 @@ export async function POST(req: Request) {
         const messageId = key.id; // Vacina Anti-Duplicidade
         const remoteJid = key.remoteJid;       
         const senderId = remoteJid.split('@')[0];
-        
         let messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
 
         console.log(`📩 Recebido de: ${senderId} | MsgID: ${messageId}`);
@@ -83,33 +80,30 @@ export async function POST(req: Request) {
 
         if (!messageContent) return NextResponse.json({ status: 'No Content' });
 
-        // 3. IA - PROMPT ALINHADO COM O SITE
+        // 3. IA - PROMPT AJUSTADO
         const systemPrompt = `
         ATUE COMO: Assistente Financeiro "Meu Aliado".
-        DATA HOJE: ${new Date().toISOString().split('T')[0]}.
+        DATA HOJE: ${new Date().toLocaleDateString('pt-BR')}.
 
-        SUA MISSÃO É CLASSIFICAR O TEXTO EM UMA DAS 3 TABELAS ABAIXO E RETORNAR O JSON EXATO.
+        CLASSIFIQUE O TEXTO E RETORNE O JSON EXATO PARA A TABELA CORRETA:
 
-        1. GASTOS/GANHOS PONTUAIS (Tabela: "transactions"):
-           Ex: "Uber", "Mercado", "Pix Recebido", "Gasolina".
-           JSON: [{"action":"add", "table":"transactions", "data":{ "title": "...", "amount": 0.00, "type": "expense", "date": "YYYY-MM-DD", "category": "Outros", "target_month": "Mês" }}]
+        1. GASTOS/GANHOS À VISTA (transactions):
+           Ex: "Uber", "Mercado", "Pix Recebido".
+           JSON: [{"action":"add", "table":"transactions", "data":{ "title": "...", "amount": 0.00, "type": "expense", "date": "DD/MM/YYYY", "category": "Outros", "target_month": "Mês" }}]
 
-        2. PARCELADOS (Tabela: "installments"):
-           Ex: "Comprei iPhone em 12x", "Dividi a TV em 10 vezes", "Compra parcelada".
+        2. PARCELADOS (installments):
+           Ex: "iPhone 12x", "Compra parcelada".
            JSON: [{"action":"add", "table":"installments", "data":{ "title": "...", "total_value": 0.00, "installments_count": 1, "value_per_month": 0.00, "due_day": 10, "status": "active" }}]
 
-        3. FIXOS/RECORRENTES (Tabela: "recurring"):
-           Ex: "Aluguel", "Netflix", "Spotify", "Internet", "Salário fixo".
+        3. FIXOS (recurring):
+           Ex: "Aluguel", "Netflix".
            JSON: [{"action":"add", "table":"recurring", "data":{ "title": "...", "value": 0.00, "type": "expense", "category": "Fixa", "due_day": 10, "status": "active" }}]
 
-        [CONVERSA]
-        Se não for lançamento financeiro, retorne: {"reply": "Resposta curta e útil."}
-
-        RETORNE APENAS O JSON LIMPO. SEM MARKDOWN.
+        [CONVERSA] {"reply": "..."}
+        RETORNE APENAS O JSON.
         `;
 
         const result = await model.generateContent([systemPrompt, messageContent]);
-        
         let cleanJson = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
         const arrayMatch = cleanJson.match(/\[[\s\S]*\]/);
         const objectMatch = cleanJson.match(/\{[\s\S]*\}/);
@@ -131,74 +125,37 @@ export async function POST(req: Request) {
                         user_id: userSettings.user_id,
                         context: workspace?.id, 
                         created_at: new Date(),
-                        message_id: messageId // Vacina
+                        message_id: messageId // Vacina Anti-Duplicidade
                     };
 
                     // --- CENÁRIO 1: PARCELADOS (installments) ---
+                    // AGORA SIMPLIFICADO: Só insere na installments e pronto.
                     if (cmd.table === 'installments') {
                         payload.current_installment = 1;
                         payload.status = 'active';
                         
-                        // 1. Insere o Contrato Pai na tabela 'installments'
-                        const { data: installmentData, error: instError } = await supabase
-                            .from('installments')
-                            .insert([payload])
-                            .select()
-                            .single();
+                        // Garante que não tenha campos de 'transactions' perdidos aqui
+                        delete payload.date;
+                        delete payload.target_month;
+
+                        // Insere apenas na tabela de contratos parcelados
+                        const { error } = await supabase.from('installments').insert([payload]);
                         
-                        if (instError) {
-                            console.log("⚠️ Parcelamento ignorado (possível duplicidade).");
-                            continue; 
-                        }
-
-                        if (installmentData) {
-                            // 2. Gera as parcelas na tabela 'transactions' para o Dashboard
-                            const totalParcelas = cmd.data.installments_count;
-                            const valorParcela = cmd.data.value_per_month;
-                            const diaVenc = cmd.data.due_day || 10;
-                            const hojeBR = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
-
-                            for (let i = 0; i < totalParcelas; i++) {
-                                const anoAtual = hojeBR.getFullYear();
-                                const mesAtual = hojeBR.getMonth(); // 0=Jan
-
-                                // Cria data: Mês Atual + i
-                                let dataParcela = new Date(anoAtual, mesAtual + i, 1);
-                                
-                                // Ajusta dia
-                                const ultimoDiaMes = new Date(dataParcela.getFullYear(), dataParcela.getMonth() + 1, 0).getDate();
-                                const diaFinal = Math.min(diaVenc, ultimoDiaMes);
-                                dataParcela.setDate(diaFinal);
-
-                                const mesNome = months[dataParcela.getMonth()];
-                                const ano = dataParcela.getFullYear();
-                                const diaStr = String(diaFinal).padStart(2, '0');
-                                const mesStr = String(dataParcela.getMonth() + 1).padStart(2, '0');
-                                const dataFormatada = `${diaStr}/${mesStr}/${ano}`;
-
-                                const parcelaMessageId = `${messageId}_p${i+1}`;
-
-                                await supabase.from('transactions').insert([{
-                                    user_id: userSettings.user_id,
-                                    context: workspace?.id,
-                                    title: `${cmd.data.title} (${i+1}/${totalParcelas})`,
-                                    amount: valorParcela,
-                                    type: 'expense',
-                                    date: dataFormatada,
-                                    target_month: mesNome,
-                                    category: 'Parcelado',
-                                    is_paid: false,
-                                    status: 'pending',
-                                    message_id: parcelaMessageId
-                                }]);
-                            }
-                            await sendWhatsAppMessage(targetPhone, `✅ Parcelamento criado: ${totalParcelas}x de ${valorParcela.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`);
-                            continue; 
+                        if (!error) {
+                            const total = cmd.data.total_value || 0;
+                            const parcelas = cmd.data.installments_count || 0;
+                            const valorParcela = cmd.data.value_per_month || 0;
+                            
+                            const msg = `✅ Parcelamento Registrado!\n${cmd.data.title}\n${parcelas}x de ${valorParcela.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n(Total: ${total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})`;
+                            await sendWhatsAppMessage(targetPhone, msg);
+                        } else {
+                            if (error.code === '23505') console.log("⚠️ Parcelamento duplicado ignorado.");
+                            else console.error("❌ Erro Installments:", error);
                         }
                     }
 
                     // --- CENÁRIO 2: RECORRENTES (recurring) ---
-                    if (cmd.table === 'recurring') {
+                    else if (cmd.table === 'recurring') {
                         payload.status = 'active';
                         const { error } = await supabase.from('recurring').insert([payload]);
                         if (!error) {
@@ -208,15 +165,26 @@ export async function POST(req: Request) {
                     }
 
                     // --- CENÁRIO 3: GASTOS PONTUAIS (transactions) ---
-                    if (cmd.table === 'transactions') {
-                        // Formata Data BR
-                        if (cmd.data.date && cmd.data.date.includes('-')) {
-                             const parts = cmd.data.date.split('-'); 
-                             if (parts.length === 3) payload.date = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                    else if (cmd.table === 'transactions') {
+                        // Tratamento de Data BR para Banco
+                        if (cmd.data.date && cmd.data.date.includes('/')) {
+                             // Se vier DD/MM/YYYY, o Supabase geralmente aceita se o locale estiver certo, 
+                             // mas é mais seguro manter como texto BR se sua coluna for text
+                             payload.date = cmd.data.date;
+                        } else if (!cmd.data.date) {
+                            const hoje = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
+                            const dStr = String(hoje.getDate()).padStart(2,'0');
+                            const mStr = String(hoje.getMonth()+1).padStart(2,'0');
+                            payload.date = `${dStr}/${mStr}/${hoje.getFullYear()}`;
                         }
                         
-                        const d = new Date(cmd.data.date);
-                        payload.target_month = months[d.getUTCMonth()];
+                        // Define Mês (Baseado na string DD/MM/YYYY)
+                        if (payload.date) {
+                            const [dia, mes, ano] = payload.date.split('/');
+                            const mesIndex = parseInt(mes) - 1;
+                            if (months[mesIndex]) payload.target_month = months[mesIndex];
+                        }
+
                         payload.is_paid = true;
                         payload.status = 'paid';
                         
@@ -227,7 +195,7 @@ export async function POST(req: Request) {
                             const valorFmt = val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                             await sendWhatsAppMessage(targetPhone, `✅ Lançado: ${cmd.data.title} (${valorFmt})`);
                         } else if (error.code === '23505') {
-                            console.log("⚠️ Duplicidade ignorada.");
+                            console.log("⚠️ Gasto duplicado ignorado.");
                         }
                     }
                 }
