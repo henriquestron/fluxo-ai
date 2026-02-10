@@ -127,7 +127,7 @@ export async function POST(req: Request) {
         if (!messageContent) return NextResponse.json({ status: 'No Text' });
 
         // --- 5. INTELIGÊNCIA ARTIFICIAL (GEMINI) ---
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
         
         const systemPrompt = `
         ATUE COMO: "Meu Aliado", assistente financeiro.
