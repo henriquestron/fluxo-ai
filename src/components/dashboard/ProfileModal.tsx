@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Lock, Camera, Save, Loader2, Mail, Phone, Shield } from 'lucide-react'; // Troquei Crown por Shield (mais comum)
+import { X, User, Lock, Camera, Save, Loader2, Mail, Phone, Shield, Link as LinkIcon, ExternalLink } from 'lucide-react'; 
 import { supabase } from '@/supabase';
 import { toast } from 'sonner';
+
+// --- CONFIGURAÇÃO DO BOT ---
+// COLOQUE AQUI O NÚMERO DO SEU ROBÔ (O que recebe as mensagens)
+// Formato: 55 + DDD + Numero (Sem caracteres especiais)
+const BOT_NUMBER = "556293882931"; 
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -24,8 +29,7 @@ export default function ProfileModal({ isOpen, onClose, user }: ProfileModalProp
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  // Buscar dados ao abrir
- // 1. BUSCAR TELEFONE AO ABRIR (Corrigido para evitar erro 406)
+  // 1. BUSCAR TELEFONE AO ABRIR
   useEffect(() => {
     if (user?.id) {
       const fetchSettings = async () => {
@@ -33,9 +37,8 @@ export default function ProfileModal({ isOpen, onClose, user }: ProfileModalProp
           .from('user_settings')
           .select('whatsapp_phone')
           .eq('user_id', user.id)
-          .maybeSingle(); // <--- MUDANÇA AQUI: De .single() para .maybeSingle()
+          .maybeSingle();
         
-        // Se der erro ou não tiver dados, apenas ignora (não quebra o site)
         if (!error && data?.whatsapp_phone) {
           setWhatsapp(data.whatsapp_phone);
         }
@@ -48,7 +51,7 @@ export default function ProfileModal({ isOpen, onClose, user }: ProfileModalProp
   const handleAvatarUpload = async (e: any) => {
     try {
       setUploading(true);
-      const file = e.target.files?.[0]; // Proteção extra aqui
+      const file = e.target.files?.[0];
       if (!file) return;
 
       const fileExt = file.name.split('.').pop();
@@ -80,7 +83,7 @@ export default function ProfileModal({ isOpen, onClose, user }: ProfileModalProp
       if (authError) throw authError;
 
       // 2. Tabela user_settings
-      const cleanPhone = whatsapp.replace(/\D/g, ''); // Limpa formatação
+      const cleanPhone = whatsapp.replace(/\D/g, ''); 
       
       const { error: dbError } = await supabase
         .from('user_settings')
@@ -116,6 +119,25 @@ export default function ProfileModal({ isOpen, onClose, user }: ProfileModalProp
       setConfirmPassword('');
     }
     setLoading(false);
+  };
+
+  // --- FUNÇÃO DO LINK MÁGICO ---
+  const handleConnectWhatsapp = () => {
+    const cleanPhone = whatsapp.replace(/\D/g, '');
+    
+    if (cleanPhone.length < 10) {
+      toast.error("Digite seu número completo com DDD antes de conectar.");
+      return;
+    }
+
+    // Gera o texto: "Ativar 556299999999"
+    const message = `Ativar ${cleanPhone}`;
+    
+    // Gera o Link do WhatsApp (Deep Link)
+    const link = `https://wa.me/${BOT_NUMBER}?text=${encodeURIComponent(message)}`;
+    
+    // Abre em nova aba
+    window.open(link, '_blank');
   };
 
   return (
@@ -194,14 +216,31 @@ export default function ProfileModal({ isOpen, onClose, user }: ProfileModalProp
                       <Shield size={10} /> PRO
                     </span>
                   </div>
-                  <input 
-                    type="text" 
-                    value={whatsapp}
-                    onChange={(e) => setWhatsapp(e.target.value)}
-                    placeholder="55 + DDD + Número"
-                    className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-purple-500 outline-none transition placeholder:text-gray-600"
-                  />
-                  <p className="text-[10px] text-gray-500 mt-1 ml-1">Para enviar comprovantes e receber alertas.</p>
+                  
+                  <div className="relative">
+                    <input 
+                      type="text" 
+                      value={whatsapp}
+                      onChange={(e) => setWhatsapp(e.target.value)}
+                      placeholder="55 + DDD + Número"
+                      className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-purple-500 outline-none transition placeholder:text-gray-600"
+                    />
+                  </div>
+                  <p className="text-[10px] text-gray-500 mt-1 ml-1 mb-2">Digite seu número para liberar o botão de conexão.</p>
+
+                  {/* --- BOTÃO DE CONEXÃO NOVO --- */}
+                  {whatsapp.length > 8 && (
+                    <button 
+                      onClick={handleConnectWhatsapp}
+                      className="w-full bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/50 text-emerald-400 font-bold py-2.5 rounded-xl transition flex items-center justify-center gap-2 mb-2 group"
+                    >
+                      <LinkIcon size={16} className="group-hover:rotate-45 transition-transform" /> 
+                      Conectar WhatsApp
+                      <ExternalLink size={12} className="opacity-50"/>
+                    </button>
+                  )}
+                  {/* ----------------------------- */}
+
                 </div>
 
                 {/* Email */}
