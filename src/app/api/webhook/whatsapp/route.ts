@@ -46,11 +46,11 @@ export async function POST(req: Request) {
 
         const key = body.data?.key;
         if (!key?.remoteJid || key.fromMe) return NextResponse.json({ status: 'Ignored' });
-        
-        const messageId = key.id; 
-        const remoteJid = key.remoteJid;       
+
+        const messageId = key.id;
+        const remoteJid = key.remoteJid;
         const senderId = remoteJid.split('@')[0];
-        
+
         // --- LÓGICA DE ÁUDIO ---
         let promptParts: any[] = [];
         let hasAudio = false;
@@ -61,9 +61,17 @@ export async function POST(req: Request) {
         // Verifica se é áudio
         if (msgType === "audioMessage" || msgData?.audioMessage) {
             console.log("🎙️ Áudio detectado.");
-            
+
             // 1. Tenta pegar o Base64 direto (Se vc ativou na Evolution)
-            let audioBase64 = body.data?.base64 || msgData?.audioMessage?.base64;
+            // 1. DEBUG: Vamos ver o que tem dentro do body
+            console.log("🔍 CHAVES DO DATA:", Object.keys(body.data || {}));
+            if (msgData?.audioMessage) console.log("🔍 CHAVES DO AUDIO:", Object.keys(msgData.audioMessage));
+
+            // Tenta pegar o Base64 direto
+            let audioBase64 = body.data?.base64 ||
+                msgData?.base64 ||
+                msgData?.audioMessage?.base64 ||
+                body.data?.message?.base64; // Tenta todas as variações possíveis
 
             // 2. Se não tem base64, tenta baixar da URL (Cuidado com .enc)
             if (!audioBase64) {
@@ -98,13 +106,13 @@ export async function POST(req: Request) {
 
         // 2. BUSCA USUÁRIO (Resumida)
         let { data: userSettings } = await supabase.from('user_settings').select('*').or(`whatsapp_phone.eq.${senderId},whatsapp_id.eq.${senderId}`).maybeSingle();
-        
+
         // Se não achou ID, tenta pelo telefone (Lógica de vínculo)
         if (!userSettings && senderId.length < 15) {
-             const variations = [senderId, senderId.length > 12 ? senderId.replace('9', '') : senderId, senderId.length < 13 ? senderId.slice(0, 4) + '9' + senderId.slice(4) : senderId];
-             const { data: found } = await supabase.from('user_settings').select('*').in('whatsapp_phone', variations).maybeSingle();
-             userSettings = found;
-             if (userSettings) await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userSettings.user_id);
+            const variations = [senderId, senderId.length > 12 ? senderId.replace('9', '') : senderId, senderId.length < 13 ? senderId.slice(0, 4) + '9' + senderId.slice(4) : senderId];
+            const { data: found } = await supabase.from('user_settings').select('*').in('whatsapp_phone', variations).maybeSingle();
+            userSettings = found;
+            if (userSettings) await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userSettings.user_id);
         }
 
         if (!userSettings) return NextResponse.json({ error: "User unknown" });
@@ -135,7 +143,7 @@ export async function POST(req: Request) {
         const finalPrompt = [systemPrompt, ...promptParts];
         const result = await model.generateContent(finalPrompt);
         let cleanJson = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-        
+
         const arrayMatch = cleanJson.match(/\[[\s\S]*\]/);
         const objectMatch = cleanJson.match(/\{[\s\S]*\}/);
         if (arrayMatch) cleanJson = arrayMatch[0];
@@ -148,7 +156,7 @@ export async function POST(req: Request) {
 
             for (const cmd of commands) {
                 if (cmd.reply) await sendWhatsAppMessage(targetPhone, cmd.reply);
-                
+
                 else if (cmd.action === 'add') {
                     let payload: any = { ...cmd.data, user_id: userSettings.user_id, context: workspace?.id, created_at: new Date(), message_id: messageId };
 
@@ -157,8 +165,8 @@ export async function POST(req: Request) {
                         delete payload.date; delete payload.target_month;
                         const { error } = await supabase.from('installments').insert([payload]);
                         if (!error) {
-                             const total = (cmd.data.total_value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                             await sendWhatsAppMessage(targetPhone, `✅ Parcelado: ${cmd.data.title} (${total})`);
+                            const total = (cmd.data.total_value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                            await sendWhatsAppMessage(targetPhone, `✅ Parcelado: ${cmd.data.title} (${total})`);
                         }
                     }
                     else if (cmd.table === 'recurring') {
@@ -168,20 +176,20 @@ export async function POST(req: Request) {
                     }
                     else if (cmd.table === 'transactions') {
                         if (!payload.date) {
-                            const hoje = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
-                            const dStr = String(hoje.getDate()).padStart(2,'0');
-                            const mStr = String(hoje.getMonth()+1).padStart(2,'0');
+                            const hoje = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+                            const dStr = String(hoje.getDate()).padStart(2, '0');
+                            const mStr = String(hoje.getMonth() + 1).padStart(2, '0');
                             payload.date = `${dStr}/${mStr}/${hoje.getFullYear()}`;
                         }
                         if (payload.date) {
-                             const [dia, mes] = payload.date.split('/');
-                             if (months[parseInt(mes)-1]) payload.target_month = months[parseInt(mes)-1];
+                            const [dia, mes] = payload.date.split('/');
+                            if (months[parseInt(mes) - 1]) payload.target_month = months[parseInt(mes) - 1];
                         }
                         payload.is_paid = true; payload.status = 'paid';
                         const { error } = await supabase.from('transactions').insert([payload]);
                         if (!error) {
-                             const val = (cmd.data.amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                             await sendWhatsAppMessage(targetPhone, `✅ Lançado: ${cmd.data.title} (${val})`);
+                            const val = (cmd.data.amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                            await sendWhatsAppMessage(targetPhone, `✅ Lançado: ${cmd.data.title} (${val})`);
                         }
                     }
                 }
