@@ -91,7 +91,7 @@ export async function POST(req: Request) {
         const contextId = workspace?.id;
 
         // 4. PROCESSAR COM IA
-        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         const systemPrompt = `Você é um assistente financeiro. Hoje é ${new Date().toISOString().split('T')[0]}.
         Retorne JSON para: {"action": "add", "table": "transactions", "data": {"description": "...", "amount": 0.00, "type": "expense", "date": "YYYY-MM-DD", "category": "Outros"}}`;
         
