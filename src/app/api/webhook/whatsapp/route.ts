@@ -84,7 +84,7 @@ export async function POST(req: Request) {
         if (!messageContent) return NextResponse.json({ status: 'No Text' });
 
         // --- 3. IA ---
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
         
         // VOLTEI O PROMPT PARA O FORMATO LIMPO (SEM ETIQUETAS)
         const systemPrompt = `
