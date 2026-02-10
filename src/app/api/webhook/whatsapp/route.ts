@@ -160,10 +160,25 @@ export async function POST(req: Request) {
                             }
                         }
 
-                        // Define mês de início do parcelamento baseado em horário de São Paulo
+                        // Define mês de início do parcelamento: tente a data fornecida (DD/MM/YYYY ou YYYY-MM-DD),
+                        // senão use a data atual em São Paulo (mesma lógica usada em `transactions`).
                         if (!payload.start_month) {
-                            const nowSP = saoPauloNow();
-                            payload.start_month = months[nowSP.getMonth()];
+                            let monthIndex: number | null = null;
+                            const d = cmd.data?.date || cmd.data?.start_date || null;
+                            if (d && typeof d === 'string') {
+                                if (d.includes('/')) {
+                                    const parts = d.split('/');
+                                    if (parts.length >= 2) monthIndex = parseInt(parts[1], 10) - 1;
+                                } else if (d.includes('-')) {
+                                    const parts = d.split('-');
+                                    if (parts.length >= 2) monthIndex = parseInt(parts[1], 10) - 1;
+                                }
+                            }
+                            if (monthIndex === null || isNaN(monthIndex) || monthIndex < 0 || monthIndex > 11) {
+                                const nowSP = saoPauloNow();
+                                monthIndex = nowSP.getMonth();
+                            }
+                            payload.start_month = months[monthIndex];
                         }
 
                         // Se duplicar o ID, o banco ignora silenciosamente ou retorna erro que tratamos
