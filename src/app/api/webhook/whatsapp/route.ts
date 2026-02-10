@@ -25,6 +25,7 @@ export async function POST(req: Request) {
 
         const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+        // MODELO ATUALIZADO
         const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
         const body = await req.json();
@@ -38,6 +39,7 @@ export async function POST(req: Request) {
         const messageId = key.id; // Vacina Anti-Duplicidade
         const remoteJid = key.remoteJid;       
         const senderId = remoteJid.split('@')[0];
+        
         let messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
 
         console.log(`📩 Recebido de: ${senderId} | MsgID: ${messageId}`);
@@ -104,6 +106,7 @@ export async function POST(req: Request) {
         `;
 
         const result = await model.generateContent([systemPrompt, messageContent]);
+        
         let cleanJson = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
         const arrayMatch = cleanJson.match(/\[[\s\S]*\]/);
         const objectMatch = cleanJson.match(/\{[\s\S]*\}/);
@@ -125,7 +128,7 @@ export async function POST(req: Request) {
                         user_id: userSettings.user_id,
                         context: workspace?.id, 
                         created_at: new Date(),
-                        message_id: messageId // Vacina Anti-Duplicidade
+                        message_id: messageId // VACINA ANTI-DUPLICIDADE
                     };
 
                     // --- CENÁRIO 1: PARCELADOS (installments) ---
@@ -139,6 +142,7 @@ export async function POST(req: Request) {
                         delete payload.target_month;
 
                         // Insere apenas na tabela de contratos parcelados
+                        // Se duplicar o ID, o banco ignora silenciosamente ou retorna erro que tratamos
                         const { error } = await supabase.from('installments').insert([payload]);
                         
                         if (!error) {
@@ -168,10 +172,14 @@ export async function POST(req: Request) {
                     else if (cmd.table === 'transactions') {
                         // Tratamento de Data BR para Banco
                         if (cmd.data.date && cmd.data.date.includes('/')) {
-                             // Se vier DD/MM/YYYY, o Supabase geralmente aceita se o locale estiver certo, 
-                             // mas é mais seguro manter como texto BR se sua coluna for text
+                             // Mantém como está se já vier DD/MM/AAAA
                              payload.date = cmd.data.date;
-                        } else if (!cmd.data.date) {
+                        } else if (cmd.data.date && cmd.data.date.includes('-')) {
+                             // Converte YYYY-MM-DD para DD/MM/AAAA
+                             const parts = cmd.data.date.split('-'); 
+                             if (parts.length === 3) payload.date = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                        } else {
+                            // Se não veio data, usa hoje BR
                             const hoje = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
                             const dStr = String(hoje.getDate()).padStart(2,'0');
                             const mStr = String(hoje.getMonth()+1).padStart(2,'0');
