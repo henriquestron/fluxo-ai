@@ -28,7 +28,6 @@ export async function POST(req: Request) {
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
         const body = await req.json();
 
-        // Filtro de eventos
         if (body.event && body.event !== "messages.upsert") return NextResponse.json({ status: 'Ignored Event' });
 
         const key = body.data?.key;
@@ -39,8 +38,7 @@ export async function POST(req: Request) {
         const messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
 
         console.log(`\n--- 📩 MENSAGEM RECEBIDA ---`);
-        console.log(`De: ${senderId}`);
-        console.log(`Texto: "${messageContent}"`);
+        console.log(`De: ${senderId} | Texto: "${messageContent}"`);
 
         // --- 1. BUSCA E VINCULAÇÃO ---
         let { data: userSettings } = await supabase
@@ -56,7 +54,6 @@ export async function POST(req: Request) {
         }
 
         if (!userSettings) {
-            // Lógica de Ativação por Link/Texto
             const cleanMessage = messageContent.replace(/\D/g, ''); 
             if (cleanMessage.length >= 10 && cleanMessage.length <= 13) {
                 console.log(`🔍 Tentando vincular ${senderId} ao telefone ${cleanMessage}`);
@@ -64,17 +61,15 @@ export async function POST(req: Request) {
                 const { data: userToLink } = await supabase.from('user_settings').select('*').in('whatsapp_phone', possiblePhones).maybeSingle();
 
                 if (userToLink) {
-                    console.log(`✅ VINCULADO! UserID: ${userToLink.user_id}`);
                     await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userToLink.user_id);
                     await sendWhatsAppMessage(remoteJid, `✅ *Conta Conectada!* \nReconheci você. Pode mandar seus gastos.`);
                     return NextResponse.json({ success: true, action: "linked" });
                 }
             }
-            console.log("⚠️ Usuário desconhecido.");
             return NextResponse.json({ error: "User unknown" });
         }
 
-        // --- 2. PREPARAÇÃO PARA IA ---
+        // --- 2. PREPARAÇÃO ---
         if (senderId !== userSettings.whatsapp_phone && userSettings.whatsapp_id !== senderId) {
             await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userSettings.user_id);
             userSettings.whatsapp_id = senderId;
@@ -89,23 +84,20 @@ export async function POST(req: Request) {
             .limit(1)
             .single();
 
-        console.log(`🏢 Workspace ID: ${workspace?.id || "NÃO ENCONTRADO (Isso impede o salvamento!)"}`);
-
         if (!messageContent) return NextResponse.json({ status: 'No Text' });
 
-        // --- 3. CHAMADA DA IA ---
+        // --- 3. IA ---
         const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
         
         const systemPrompt = `
         ATUE COMO: Assistente Financeiro. DATA: ${new Date().toISOString().split('T')[0]}.
-        REGRAS RÍGIDAS DO BANCO DE DADOS:
-        1. OBRIGATÓRIO: Use 'title' (nunca 'description').
-        2. OBRIGATÓRIO: Use 'target_month' para transactions (Ex: Jan, Fev).
-        3. OBRIGATÓRIO: Formato 'YYYY-MM-DD' para datas.
-
-        RETORNE APENAS JSON:
-        [GASTO COMUM]
-        [{"action":"add", "table":"transactions", "data":{ "title": "...", "amount": 0.00, "type": "expense", "date": "YYYY-MM-DD", "category": "Outros", "target_month": "Mês", "status": "paid" }}]
+        REGRAS:
+        1. Use 'title' para nome.
+        2. Transactions exige 'target_month' (Ex: Jan, Fev).
+        
+        RETORNE JSON:
+        [TRANSAÇÃO COMUM]
+        [{"action":"add", "table":"transactions", "data":{ "title": "...", "amount": 0.00, "type": "expense", "date": "YYYY-MM-DD", "category": "Outros" }}]
         
         [CONTA FIXA]
         [{"action":"add", "table":"recurring", "data":{ "title": "...", "value": 0.00, "type": "expense", "due_day": 10, "category": "Fixa" }}]
@@ -119,10 +111,6 @@ export async function POST(req: Request) {
 
         const result = await model.generateContent([systemPrompt, messageContent]);
         const cleanJson = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-        
-        // --- LOG CRÍTICO DA IA ---
-        console.log("🤖 RESPOSTA BRUTA DA IA:", cleanJson); 
-
         const jsonMatch = cleanJson.match(/\[[\s\S]*\]/) || cleanJson.match(/\{[\s\S]*\}/);
 
         if (jsonMatch) {
@@ -138,26 +126,34 @@ export async function POST(req: Request) {
                     let payload: any = {
                         ...cmd.data,
                         user_id: userSettings.user_id,
-                        context: workspace?.id, // Se isso for null, o banco rejeita
+                        context: workspace?.id, 
                         created_at: new Date()
                     };
 
+                    // --- TRATAMENTO ESPECÍFICO POR TABELA ---
+                    
+                    // 1. GASTOS ÚNICOS (Transactions)
                     if (cmd.table === 'transactions') {
                         const d = new Date(cmd.data.date);
                         payload.target_month = months[d.getUTCMonth()];
-                        payload.status = 'paid';
+                        payload.is_paid = true;  // Força aparecer como pago
+                        payload.status = 'paid'; 
                     }
 
-                    // --- LOG CRÍTICO DO BANCO ---
-                    console.log(`💾 TENTANDO SALVAR EM '${cmd.table}':`, JSON.stringify(payload, null, 2));
+                    // 2. PARCELADOS (Installments) - CORREÇÃO NOVA
+                    if (cmd.table === 'installments') {
+                        payload.current_installment = 1; // OBRIGATÓRIO (No Null)
+                        payload.status = 'active';
+                    }
+
+                    console.log(`💾 SALVANDO EM ${cmd.table}:`, JSON.stringify(payload, null, 2));
 
                     const { error } = await supabase.from(cmd.table).insert([payload]);
 
                     if (error) {
-                        console.error(`❌ ERRO FATAL SUPABASE:`, error);
-                        await sendWhatsAppMessage(targetPhone, `❌ Erro técnico: ${error.message} (Código: ${error.code})`);
+                        console.error(`❌ ERRO SUPABASE:`, error);
+                        await sendWhatsAppMessage(targetPhone, `❌ Erro: ${error.message}`);
                     } else {
-                        console.log("✅ SUCESSO: Dados salvos no banco!");
                         const val = cmd.data.amount || cmd.data.value || cmd.data.total_value || 0;
                         const valorFmt = val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                         await sendWhatsAppMessage(targetPhone, `✅ Lançado: ${cmd.data.title} (${valorFmt})`);
@@ -165,14 +161,13 @@ export async function POST(req: Request) {
                 }
             }
         } else {
-            console.log("⚠️ IA não retornou JSON válido.");
             await sendWhatsAppMessage(targetPhone, result.response.text());
         }
 
         return NextResponse.json({ success: true });
 
     } catch (e: any) {
-        console.error("🔥 ERRO GERAL NO SERVIDOR:", e);
+        console.error("🔥 ERRO GERAL:", e);
         return NextResponse.json({ error: e.message }, { status: 500 });
     }
 }
