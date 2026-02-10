@@ -8,7 +8,6 @@ const INSTANCE_NAME = "MEO_ALIADO_INSTANCE";
 
 async function sendWhatsAppMessage(jid: string, text: string) {
     const finalJid = jid.includes('@') ? jid : `${jid}@s.whatsapp.net`;
-    console.log(`📤 Enviando ZAP para: ${finalJid}`);
     try {
         await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE_NAME}`, {
             method: 'POST',
@@ -37,8 +36,7 @@ export async function POST(req: Request) {
         const senderId = remoteJid.split('@')[0];
         const messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
 
-        console.log(`\n--- 📩 MENSAGEM RECEBIDA ---`);
-        console.log(`De: ${senderId} | Texto: "${messageContent}"`);
+        console.log(`📩 Recebido de: ${senderId}`);
 
         // --- 1. BUSCA E VINCULAÇÃO ---
         let { data: userSettings } = await supabase
@@ -56,7 +54,7 @@ export async function POST(req: Request) {
         if (!userSettings) {
             const cleanMessage = messageContent.replace(/\D/g, ''); 
             if (cleanMessage.length >= 10 && cleanMessage.length <= 13) {
-                console.log(`🔍 Tentando vincular ${senderId} ao telefone ${cleanMessage}`);
+                console.log(`🔍 Vinculando ${senderId} ao telefone ${cleanMessage}`);
                 const possiblePhones = [cleanMessage, `55${cleanMessage}`, cleanMessage.replace(/^55/, '')];
                 const { data: userToLink } = await supabase.from('user_settings').select('*').in('whatsapp_phone', possiblePhones).maybeSingle();
 
@@ -69,7 +67,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "User unknown" });
         }
 
-        // --- 2. PREPARAÇÃO ---
+        // --- 2. ATUALIZAÇÃO DE ID ---
         if (senderId !== userSettings.whatsapp_phone && userSettings.whatsapp_id !== senderId) {
             await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userSettings.user_id);
             userSettings.whatsapp_id = senderId;
@@ -96,17 +94,10 @@ export async function POST(req: Request) {
         2. Transactions exige 'target_month' (Ex: Jan, Fev).
         
         RETORNE JSON:
-        [TRANSAÇÃO COMUM]
-        [{"action":"add", "table":"transactions", "data":{ "title": "...", "amount": 0.00, "type": "expense", "date": "YYYY-MM-DD", "category": "Outros" }}]
-        
-        [CONTA FIXA]
-        [{"action":"add", "table":"recurring", "data":{ "title": "...", "value": 0.00, "type": "expense", "due_day": 10, "category": "Fixa" }}]
-
-        [PARCELADO]
-        [{"action":"add", "table":"installments", "data":{ "title": "...", "total_value": 0.00, "installments_count": 10, "value_per_month": 0.00, "due_day": 10 }}]
-
-        [CONVERSA]
-        {"reply": "..."}
+        [TRANSAÇÃO] [{"action":"add", "table":"transactions", "data":{ "title": "...", "amount": 0.00, "type": "expense", "date": "YYYY-MM-DD", "category": "Outros" }}]
+        [FIXO] [{"action":"add", "table":"recurring", "data":{ "title": "...", "value": 0.00, "type": "expense", "due_day": 10, "category": "Fixa" }}]
+        [PARCELADO] [{"action":"add", "table":"installments", "data":{ "title": "...", "total_value": 0.00, "installments_count": 10, "value_per_month": 0.00, "due_day": 10 }}]
+        [CONVERSA] {"reply": "..."}
         `;
 
         const result = await model.generateContent([systemPrompt, messageContent]);
@@ -130,19 +121,31 @@ export async function POST(req: Request) {
                         created_at: new Date()
                     };
 
-                    // --- TRATAMENTO ESPECÍFICO POR TABELA ---
-                    
-                    // 1. GASTOS ÚNICOS (Transactions)
+                    // --- FORMATADOR DE DATA MANUAL (À PROVA DE ERRO) ---
+                    // Converte YYYY-MM-DD para DD/MM/AAAA
+                    if (cmd.data.date) {
+                         const dateObj = new Date(cmd.data.date);
+                         // Garante dia e mês com 2 dígitos
+                         const day = String(dateObj.getUTCDate()).padStart(2, '0');
+                         const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+                         const year = dateObj.getUTCFullYear();
+                         
+                         // Se for transactions, salva como texto BR. Se for installments (due_day), mantém numero.
+                         if (cmd.table === 'transactions') {
+                             payload.date = `${day}/${month}/${year}`; // AQUI ESTÁ A MÁGICA
+                         }
+                    }
+
+                    // --- TRATAMENTO ESPECÍFICO ---
                     if (cmd.table === 'transactions') {
                         const d = new Date(cmd.data.date);
                         payload.target_month = months[d.getUTCMonth()];
-                        payload.is_paid = true;  // Força aparecer como pago
-                        payload.status = 'paid'; 
+                        payload.is_paid = true;
+                        payload.status = 'paid';
                     }
 
-                    // 2. PARCELADOS (Installments) - CORREÇÃO NOVA
                     if (cmd.table === 'installments') {
-                        payload.current_installment = 1; // OBRIGATÓRIO (No Null)
+                        payload.current_installment = 1;
                         payload.status = 'active';
                     }
 
