@@ -79,7 +79,7 @@ export async function POST(req: Request) {
         const contextId = workspace?.id;
 
         // 4. PROCESSAMENTO IA (Modelo Estável)
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
         const systemPrompt = `
         Aja como um assistente financeiro pessoal.
