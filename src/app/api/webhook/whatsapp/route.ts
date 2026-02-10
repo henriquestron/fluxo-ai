@@ -167,8 +167,17 @@ export async function POST(req: Request) {
                         }
 
                         // Se duplicar o ID, o banco ignora silenciosamente ou retorna erro que tratamos
-                        const { error } = await supabase.from('installments').insert([payload]);
-                        
+                        let insertResp = await supabase.from('installments').insert([payload]);
+                        let error = insertResp.error;
+
+                        // Se o esquema do PostgREST não reconhecer 'start_month', remove e tenta novamente
+                        if (error && error.code === 'PGRST204' && /start_month/.test(String(error.message))) {
+                            console.log("⚠️ Coluna 'start_month' não existe no schema, re-tentando sem ela.");
+                            delete payload.start_month;
+                            insertResp = await supabase.from('installments').insert([payload]);
+                            error = insertResp.error;
+                        }
+
                         if (!error) {
                             const total = cmd.data.total_value || 0;
                             const parcelas = cmd.data.installments_count || 0;
