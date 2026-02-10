@@ -6,6 +6,10 @@ const EVOLUTION_URL = process.env.EVOLUTION_URL || "http://167.234.242.205:8080"
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "sua-senha-secreta";
 const INSTANCE_NAME = "MEO_ALIADO_INSTANCE";
 
+function saoPauloNow() {
+    return new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+}
+
 async function sendWhatsAppMessage(jid: string, text: string) {
     const finalJid = jid.includes('@') ? jid : `${jid}@s.whatsapp.net`;
     try {
@@ -36,11 +40,17 @@ export async function POST(req: Request) {
         const key = body.data?.key;
         if (!key?.remoteJid || key.fromMe) return NextResponse.json({ status: 'Ignored' });
         
-        const messageId = key.id; // Vacina Anti-Duplicidade
+        // messageId (vacina anti-duplicidade) será definido após sabermos remoteJid e messageContent
         const remoteJid = key.remoteJid;       
         const senderId = remoteJid.split('@')[0];
         
         let messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
+        let messageId = key.id; // Vacina Anti-Duplicidade
+        // Se não vier id, crie um identificador determinístico baseado em remetente+conteúdo
+        if (!messageId) {
+            const base = `${remoteJid || ''}|${messageContent || ''}`;
+            try { messageId = 'gen_' + Buffer.from(base).toString('base64').slice(0, 12); } catch { messageId = `gen_${Date.now()}`; }
+        }
 
         console.log(`📩 Recebido de: ${senderId} | MsgID: ${messageId}`);
 
@@ -126,8 +136,8 @@ export async function POST(req: Request) {
                     let payload: any = {
                         ...cmd.data,
                         user_id: userSettings.user_id,
-                        context: workspace?.id, 
-                        created_at: new Date(),
+                        context: workspace?.id,
+                        created_at: saoPauloNow(),
                         message_id: messageId // VACINA ANTI-DUPLICIDADE
                     };
 
@@ -141,7 +151,21 @@ export async function POST(req: Request) {
                         delete payload.date;
                         delete payload.target_month;
 
-                        // Insere apenas na tabela de contratos parcelados
+                        // Anti-duplicidade: verifica por message_id antes de inserir
+                        if (payload.message_id) {
+                            const { data: exists } = await supabase.from('installments').select('id').eq('message_id', payload.message_id).maybeSingle();
+                            if (exists) {
+                                console.log('⚠️ Parcelamento duplicado ignorado (message_id).');
+                                continue;
+                            }
+                        }
+
+                        // Define mês de início do parcelamento baseado em horário de São Paulo
+                        if (!payload.start_month) {
+                            const nowSP = saoPauloNow();
+                            payload.start_month = months[nowSP.getMonth()];
+                        }
+
                         // Se duplicar o ID, o banco ignora silenciosamente ou retorna erro que tratamos
                         const { error } = await supabase.from('installments').insert([payload]);
                         
@@ -161,6 +185,13 @@ export async function POST(req: Request) {
                     // --- CENÁRIO 2: RECORRENTES (recurring) ---
                     else if (cmd.table === 'recurring') {
                         payload.status = 'active';
+                        if (payload.message_id) {
+                            const { data: exists } = await supabase.from('recurring').select('id').eq('message_id', payload.message_id).maybeSingle();
+                            if (exists) {
+                                console.log('⚠️ Recorrente duplicado ignorado (message_id).');
+                                continue;
+                            }
+                        }
                         const { error } = await supabase.from('recurring').insert([payload]);
                         if (!error) {
                              const valorFmt = (cmd.data.value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -196,6 +227,15 @@ export async function POST(req: Request) {
                         payload.is_paid = true;
                         payload.status = 'paid';
                         
+                        // Anti-duplicidade por message_id
+                        if (payload.message_id) {
+                            const { data: exists } = await supabase.from('transactions').select('id').eq('message_id', payload.message_id).maybeSingle();
+                            if (exists) {
+                                console.log("⚠️ Gasto duplicado ignorado (message_id).");
+                                continue;
+                            }
+                        }
+
                         const { error } = await supabase.from('transactions').insert([payload]);
                         
                         if (!error) {
