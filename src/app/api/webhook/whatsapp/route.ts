@@ -6,10 +6,6 @@ const EVOLUTION_URL = process.env.EVOLUTION_URL || "http://167.234.242.205:8080"
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "sua-senha-secreta";
 const INSTANCE_NAME = "MEO_ALIADO_INSTANCE";
 
-function saoPauloNow() {
-    return new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
-}
-
 async function sendWhatsAppMessage(jid: string, text: string) {
     const finalJid = jid.includes('@') ? jid : `${jid}@s.whatsapp.net`;
     try {
@@ -30,7 +26,7 @@ export async function POST(req: Request) {
         const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
         // MODELO ATUALIZADO
-        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
 
         const body = await req.json();
 
@@ -40,17 +36,11 @@ export async function POST(req: Request) {
         const key = body.data?.key;
         if (!key?.remoteJid || key.fromMe) return NextResponse.json({ status: 'Ignored' });
         
-        // messageId (vacina anti-duplicidade) será definido após sabermos remoteJid e messageContent
+        const messageId = key.id; // <--- O CADEADO ANTI-DUPLICIDADE
         const remoteJid = key.remoteJid;       
         const senderId = remoteJid.split('@')[0];
         
         let messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
-        let messageId = key.id; // Vacina Anti-Duplicidade
-        // Se não vier id, crie um identificador determinístico baseado em remetente+conteúdo
-        if (!messageId) {
-            const base = `${remoteJid || ''}|${messageContent || ''}`;
-            try { messageId = 'gen_' + Buffer.from(base).toString('base64').slice(0, 12); } catch { messageId = `gen_${Date.now()}`; }
-        }
 
         console.log(`📩 Recebido de: ${senderId} | MsgID: ${messageId}`);
 
@@ -97,18 +87,15 @@ export async function POST(req: Request) {
         ATUE COMO: Assistente Financeiro "Meu Aliado".
         DATA HOJE: ${new Date().toLocaleDateString('pt-BR')}.
 
-        CLASSIFIQUE O TEXTO E RETORNE O JSON EXATO PARA A TABELA CORRETA:
+        CLASSIFIQUE E RETORNE JSON:
 
-        1. GASTOS/GANHOS À VISTA (transactions):
-           Ex: "Uber", "Mercado", "Pix Recebido".
+        1. GASTOS À VISTA (transactions):
            JSON: [{"action":"add", "table":"transactions", "data":{ "title": "...", "amount": 0.00, "type": "expense", "date": "DD/MM/YYYY", "category": "Outros", "target_month": "Mês" }}]
 
         2. PARCELADOS (installments):
-           Ex: "iPhone 12x", "Compra parcelada".
            JSON: [{"action":"add", "table":"installments", "data":{ "title": "...", "total_value": 0.00, "installments_count": 1, "value_per_month": 0.00, "due_day": 10, "status": "active" }}]
 
         3. FIXOS (recurring):
-           Ex: "Aluguel", "Netflix".
            JSON: [{"action":"add", "table":"recurring", "data":{ "title": "...", "value": 0.00, "type": "expense", "category": "Fixa", "due_day": 10, "status": "active" }}]
 
         [CONVERSA] {"reply": "..."}
@@ -116,7 +103,6 @@ export async function POST(req: Request) {
         `;
 
         const result = await model.generateContent([systemPrompt, messageContent]);
-        
         let cleanJson = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
         const arrayMatch = cleanJson.match(/\[[\s\S]*\]/);
         const objectMatch = cleanJson.match(/\{[\s\S]*\}/);
@@ -136,63 +122,23 @@ export async function POST(req: Request) {
                     let payload: any = {
                         ...cmd.data,
                         user_id: userSettings.user_id,
-                        context: workspace?.id,
-                        created_at: saoPauloNow(),
+                        context: workspace?.id, 
+                        created_at: new Date(),
                         message_id: messageId // VACINA ANTI-DUPLICIDADE
                     };
 
                     // --- CENÁRIO 1: PARCELADOS (installments) ---
-                    // AGORA SIMPLIFICADO: Só insere na installments e pronto.
                     if (cmd.table === 'installments') {
-                        payload.current_installment = 0;
+                        // AQUI ESTÁ O AJUSTE QUE VOCÊ PEDIU
+                        payload.current_installment = 0; 
                         payload.status = 'active';
                         
-                        // Garante que não tenha campos de 'transactions' perdidos aqui
                         delete payload.date;
                         delete payload.target_month;
 
-                        // Anti-duplicidade: verifica por message_id antes de inserir
-                        if (payload.message_id) {
-                            const { data: exists } = await supabase.from('installments').select('id').eq('message_id', payload.message_id).maybeSingle();
-                            if (exists) {
-                                console.log('⚠️ Parcelamento duplicado ignorado (message_id).');
-                                continue;
-                            }
-                        }
-
-                        // Define mês de início do parcelamento: tente a data fornecida (DD/MM/YYYY ou YYYY-MM-DD),
-                        // senão use a data atual em São Paulo (mesma lógica usada em `transactions`).
-                        if (!payload.start_month) {
-                            let monthIndex: number | null = null;
-                            const d = cmd.data?.date || cmd.data?.start_date || null;
-                            if (d && typeof d === 'string') {
-                                if (d.includes('/')) {
-                                    const parts = d.split('/');
-                                    if (parts.length >= 2) monthIndex = parseInt(parts[1], 10) - 1;
-                                } else if (d.includes('-')) {
-                                    const parts = d.split('-');
-                                    if (parts.length >= 2) monthIndex = parseInt(parts[1], 10) - 1;
-                                }
-                            }
-                            if (monthIndex === null || isNaN(monthIndex) || monthIndex < 0 || monthIndex > 11) {
-                                const nowSP = saoPauloNow();
-                                monthIndex = nowSP.getMonth();
-                            }
-                            payload.start_month = months[monthIndex];
-                        }
-
-                        // Se duplicar o ID, o banco ignora silenciosamente ou retorna erro que tratamos
-                        let insertResp = await supabase.from('installments').insert([payload]);
-                        let error = insertResp.error;
-
-                        // Se o esquema do PostgREST não reconhecer 'start_month', remove e tenta novamente
-                        if (error && error.code === 'PGRST204' && /start_month/.test(String(error.message))) {
-                            console.log("⚠️ Coluna 'start_month' não existe no schema, re-tentando sem ela.");
-                            delete payload.start_month;
-                            insertResp = await supabase.from('installments').insert([payload]);
-                            error = insertResp.error;
-                        }
-
+                        // Tenta inserir. Se der erro de duplicidade, cai no catch ou no check de erro
+                        const { error } = await supabase.from('installments').insert([payload]);
+                        
                         if (!error) {
                             const total = cmd.data.total_value || 0;
                             const parcelas = cmd.data.installments_count || 0;
@@ -201,7 +147,8 @@ export async function POST(req: Request) {
                             const msg = `✅ Parcelamento Registrado!\n${cmd.data.title}\n${parcelas}x de ${valorParcela.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}\n(Total: ${total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})`;
                             await sendWhatsAppMessage(targetPhone, msg);
                         } else {
-                            if (error.code === '23505') console.log("⚠️ Parcelamento duplicado ignorado.");
+                            // Se o erro for "Duplicate Key" (23505), apenas ignora.
+                            if (error.code === '23505') console.log("⚠️ Parcelamento duplicado barrado com sucesso.");
                             else console.error("❌ Erro Installments:", error);
                         }
                     }
@@ -209,13 +156,6 @@ export async function POST(req: Request) {
                     // --- CENÁRIO 2: RECORRENTES (recurring) ---
                     else if (cmd.table === 'recurring') {
                         payload.status = 'active';
-                        if (payload.message_id) {
-                            const { data: exists } = await supabase.from('recurring').select('id').eq('message_id', payload.message_id).maybeSingle();
-                            if (exists) {
-                                console.log('⚠️ Recorrente duplicado ignorado (message_id).');
-                                continue;
-                            }
-                        }
                         const { error } = await supabase.from('recurring').insert([payload]);
                         if (!error) {
                              const valorFmt = (cmd.data.value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -225,23 +165,18 @@ export async function POST(req: Request) {
 
                     // --- CENÁRIO 3: GASTOS PONTUAIS (transactions) ---
                     else if (cmd.table === 'transactions') {
-                        // Tratamento de Data BR para Banco
                         if (cmd.data.date && cmd.data.date.includes('/')) {
-                             // Mantém como está se já vier DD/MM/AAAA
                              payload.date = cmd.data.date;
                         } else if (cmd.data.date && cmd.data.date.includes('-')) {
-                             // Converte YYYY-MM-DD para DD/MM/AAAA
                              const parts = cmd.data.date.split('-'); 
                              if (parts.length === 3) payload.date = `${parts[2]}/${parts[1]}/${parts[0]}`;
                         } else {
-                            // Se não veio data, usa hoje BR
                             const hoje = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
                             const dStr = String(hoje.getDate()).padStart(2,'0');
                             const mStr = String(hoje.getMonth()+1).padStart(2,'0');
                             payload.date = `${dStr}/${mStr}/${hoje.getFullYear()}`;
                         }
                         
-                        // Define Mês (Baseado na string DD/MM/YYYY)
                         if (payload.date) {
                             const [dia, mes, ano] = payload.date.split('/');
                             const mesIndex = parseInt(mes) - 1;
@@ -251,15 +186,6 @@ export async function POST(req: Request) {
                         payload.is_paid = true;
                         payload.status = 'paid';
                         
-                        // Anti-duplicidade por message_id
-                        if (payload.message_id) {
-                            const { data: exists } = await supabase.from('transactions').select('id').eq('message_id', payload.message_id).maybeSingle();
-                            if (exists) {
-                                console.log("⚠️ Gasto duplicado ignorado (message_id).");
-                                continue;
-                            }
-                        }
-
                         const { error } = await supabase.from('transactions').insert([payload]);
                         
                         if (!error) {
@@ -267,7 +193,7 @@ export async function POST(req: Request) {
                             const valorFmt = val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                             await sendWhatsAppMessage(targetPhone, `✅ Lançado: ${cmd.data.title} (${valorFmt})`);
                         } else if (error.code === '23505') {
-                            console.log("⚠️ Gasto duplicado ignorado.");
+                            console.log("⚠️ Gasto duplicado barrado com sucesso.");
                         }
                     }
                 }
