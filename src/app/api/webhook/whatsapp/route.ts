@@ -25,28 +25,26 @@ export async function POST(req: Request) {
 
         const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+
         const body = await req.json();
 
-        // FILTRO DE EVENTOS
+        // 1. FILTRO DE EVENTOS E DUPLICIDADE
         if (body.event && body.event !== "messages.upsert") return NextResponse.json({ status: 'Ignored Event' });
 
         const key = body.data?.key;
         if (!key?.remoteJid || key.fromMe) return NextResponse.json({ status: 'Ignored' });
         
-        // ID ÚNICO DA MENSAGEM (A CHAVE PARA NÃO DUPLICAR)
+        // ID DA MENSAGEM (VACINA ANTI-DUPLICIDADE)
         const messageId = key.id; 
 
         const remoteJid = key.remoteJid;       
         const senderId = remoteJid.split('@')[0];
-        
-        let messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
+        const messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
 
-        // Verificação simples de duplicidade na memória (opcional, mas ajuda)
-        // O banco fará a verificação real com o CONSTRAINT UNIQUE
+        console.log(`📩 Recebido de: ${senderId} | MsgID: ${messageId}`);
 
-        console.log(`📩 Recebido de: ${senderId} | Msg ID: ${messageId}`);
-
-        // --- 1. BUSCA E VINCULAÇÃO ---
+        // 2. BUSCA E VINCULAÇÃO DE USUÁRIO
         let { data: userSettings } = await supabase
             .from('user_settings')
             .select('*')
@@ -84,14 +82,15 @@ export async function POST(req: Request) {
 
         if (!messageContent) return NextResponse.json({ status: 'No Content' });
 
-        // --- 3. IA ---
-        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
-        
+        // 3. IA (GEMINI FLASH LATEST)
         const systemPrompt = `
-        ATUE COMO: Assistente Financeiro "Meu Aliado". HOJE: ${new Date().toISOString().split('T')[0]}.
+        ATUE COMO: Assistente Financeiro "Meu Aliado". 
+        MODELO: gemini-1.5-flash-latest
 
-        SE FOR PARCELADO (Ex: "10x de 300"): 
-        Retorne "installments" com "installments_count": 10.
+        REGRAS:
+        1. Se for parcelado (Ex: "10x de 300"), retorne "installments".
+        2. Se for gasto comum, retorne "transactions".
+        3. Datas SEMPRE no formato YYYY-MM-DD.
         
         RETORNE APENAS JSON:
         [PARCELADO] [{"action":"add", "table":"installments", "data":{ "title": "PS5", "total_value": 3000.00, "installments_count": 10, "value_per_month": 300.00, "due_day": 10 }}]
@@ -122,25 +121,24 @@ export async function POST(req: Request) {
                         user_id: userSettings.user_id,
                         context: workspace?.id, 
                         created_at: new Date(),
-                        message_id: messageId // <--- AQUI ESTÁ A VACINA ANTI-DUPLICIDADE
+                        message_id: messageId // VACINA ANTI-DUPLICIDADE
                     };
 
-                    // --- PARCELADO INTELIGENTE (LOOP CORRIGIDO) ---
+                    // --- PARCELADO INTELIGENTE ---
                     if (cmd.table === 'installments') {
                         payload.current_installment = 1;
                         payload.status = 'active';
                         
-                        // Tenta criar o contrato pai
-                        // O onConflict ignora se já existir esse message_id (evita erro)
+                        // 1. Tenta criar o contrato PAI
                         const { data: installmentData, error: instError } = await supabase
                             .from('installments')
                             .insert([payload])
                             .select()
                             .single();
                         
-                        // Se deu erro (provavelmente duplicado), para tudo.
+                        // SE DEU ERRO AQUI, É PORQUE JÁ EXISTE (DUPLICADO). PARE AGORA.
                         if (instError) {
-                            console.log("⚠️ Parcelamento duplicado ignorado.");
+                            console.log("⚠️ Parcelamento duplicado barrado pelo SQL:", instError.message);
                             continue; 
                         }
 
@@ -148,20 +146,21 @@ export async function POST(req: Request) {
                             const totalParcelas = cmd.data.installments_count;
                             const valorParcela = cmd.data.value_per_month;
                             const diaVenc = cmd.data.due_day || 10;
-                            const hoje = new Date(); // Data base é HOJE
+                            
+                            // 2. DATA BASE: FORÇA HORÁRIO BRASILEIRO
+                            // Isso garante que "Hoje" seja a data certa no Brasil, evitando cair em Janeiro por fuso horário
+                            const hojeBR = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
 
+                            // Loop para criar as transações futuras
                             for (let i = 0; i < totalParcelas; i++) {
-                                // LÓGICA DE DATA:
-                                // i=0 -> Mês Atual (Fevereiro)
-                                // i=1 -> Mês Seguinte (Março)
-                                const anoAtual = hoje.getFullYear();
-                                const mesAtual = hoje.getMonth(); // 0=Jan, 1=Fev
+                                const anoAtual = hojeBR.getFullYear();
+                                const mesAtual = hojeBR.getMonth(); // 0=Jan, 1=Fev
 
-                                // Cria a data no dia 1 para evitar bug de dia 30 em fevereiro
+                                // Cria data: Mês Atual + i
+                                // i=0 -> Mês Atual (ex: Fev)
                                 let dataParcela = new Date(anoAtual, mesAtual + i, 1);
                                 
-                                // Ajusta para o dia de vencimento correto
-                                // (Se o mês tiver menos dias, tipo Fev 30, ele joga pro ultimo dia possivel)
+                                // Ajusta dia do vencimento
                                 const ultimoDiaMes = new Date(dataParcela.getFullYear(), dataParcela.getMonth() + 1, 0).getDate();
                                 const diaFinal = Math.min(diaVenc, ultimoDiaMes);
                                 dataParcela.setDate(diaFinal);
@@ -174,7 +173,7 @@ export async function POST(req: Request) {
                                 const mesStr = String(dataParcela.getMonth() + 1).padStart(2, '0');
                                 const dataFormatada = `${diaStr}/${mesStr}/${ano}`;
 
-                                // ID único para cada parcela (MessageID + NumeroParcela) para evitar duplicar as filhas
+                                // ID único da parcela filha
                                 const parcelaMessageId = `${messageId}_p${i+1}`;
 
                                 await supabase.from('transactions').insert([{
@@ -188,17 +187,17 @@ export async function POST(req: Request) {
                                     category: 'Parcelado',
                                     is_paid: false,
                                     status: 'pending',
-                                    message_id: parcelaMessageId // Garante que as parcelas tb não dupliquem
+                                    message_id: parcelaMessageId
                                 }]);
                             }
-                            await sendWhatsAppMessage(targetPhone, `✅ Parcelamento criado! ${totalParcelas}x de ${valorParcela} lançadas.`);
+                            await sendWhatsAppMessage(targetPhone, `✅ Parcelamento criado! ${totalParcelas}x de ${valorParcela.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}.`);
                             continue; 
                         }
                     }
 
                     // --- GASTO ÚNICO ---
                     if (cmd.table === 'transactions') {
-                        // Data manual BR
+                        // Data manual BR (DD/MM/AAAA)
                         if (cmd.data.date && cmd.data.date.includes('-')) {
                              const parts = cmd.data.date.split('-'); 
                              if (parts.length === 3) payload.date = `${parts[2]}/${parts[1]}/${parts[0]}`;
@@ -209,16 +208,12 @@ export async function POST(req: Request) {
                         payload.is_paid = true;
                         payload.status = 'paid';
                         
-                        // Tenta inserir. Se tiver o mesmo message_id, o banco bloqueia (erro 23505)
+                        // Tenta inserir. Se tiver o mesmo message_id, o banco bloqueia
                         const { error } = await supabase.from(cmd.table).insert([payload]);
                         
                         if (error) {
-                            // Se o erro for de duplicidade, ignora. Se for outro, avisa.
-                            if (error.code === '23505') {
-                                console.log("⚠️ Mensagem duplicada ignorada pelo banco.");
-                            } else {
-                                throw error;
-                            }
+                            if (error.code === '23505') console.log("⚠️ Gasto duplicado barrado pelo SQL.");
+                            else console.error("❌ Erro Supabase:", error);
                         } else {
                             const val = cmd.data.amount || 0;
                             const valorFmt = val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -228,8 +223,7 @@ export async function POST(req: Request) {
                 }
             }
         } catch (error: any) {
-            console.error("❌ ERRO:", error);
-            // Evita responder erro para o usuário se for erro interno de duplicação
+            console.error("❌ ERRO JSON:", error);
         }
 
         return NextResponse.json({ success: true });
