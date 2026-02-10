@@ -7,8 +7,8 @@ const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "sua-senha-secreta";
 const INSTANCE_NAME = "MEO_ALIADO_INSTANCE";
 
 async function sendWhatsAppMessage(jid: string, text: string) {
-    // Se for LID (número gigante), tenta mandar pro remoteJid original ou adiciona sufixo
-    // Mas geralmente responder para o JID que chegou funciona melhor se for resposta imediata
+    // Tenta limpar o JID para garantir envio
+    // Se for LID, a Evolution às vezes falha, mas tentamos mesmo assim
     console.log(`📤 Enviando para: ${jid}`);
     try {
         await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE_NAME}`, {
@@ -31,107 +31,105 @@ export async function POST(req: Request) {
 
         if (body.event && body.event !== "messages.upsert") return NextResponse.json({ status: 'Ignored Event' });
 
-        const remoteJid = body.data?.key?.remoteJid;
-        if (!remoteJid || body.data?.key?.fromMe) return NextResponse.json({ status: 'Ignored' });
+        const key = body.data?.key;
+        if (!key?.remoteJid || key.fromMe) return NextResponse.json({ status: 'Ignored' });
 
-        // ID Bruto (LID ou Telefone)
-        const senderId = remoteJid.split('@')[0];
-        const messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
+        // --- 1. A CAÇADA PELO NÚMERO REAL ---
+        const remoteJid = key.remoteJid;       // O endereço que enviou (pode ser LID)
+        const participant = key.participant;   // O endereço real (as vezes vem aqui!)
+        
+        const lidId = remoteJid.split('@')[0];
+        const participantId = participant ? participant.split('@')[0] : null;
 
-        console.log(`📩 Mensagem de: ${senderId}`);
+        console.log(`📩 Recebido de: ${lidId} | Participante: ${participantId || "Não veio"}`);
 
-        // 1. TENTA IDENTIFICAR O USUÁRIO (Busca exata ou por variações se for telefone)
+        // Vamos tentar achar o usuário usando TUDO que temos
+        const possibleIds = [lidId];
+        if (participantId) possibleIds.push(participantId);
+
+        // Busca no banco por Telefone OU ID
         let { data: userSettings } = await supabase
             .from('user_settings')
             .select('*')
-            .or(`whatsapp_phone.eq.${senderId},whatsapp_id.eq.${senderId}`)
+            .or(`whatsapp_phone.in.(${possibleIds.join(',')}),whatsapp_id.in.(${possibleIds.join(',')})`)
             .maybeSingle();
 
-        // Se não achou e o senderId parece telefone (menos de 15 digitos), tenta variações do 9
-        if (!userSettings && senderId.length < 15) {
-             const variations = [
-                senderId,
-                senderId.length > 12 ? senderId.replace('9', '') : senderId,
-                senderId.length < 13 ? senderId.slice(0, 4) + '9' + senderId.slice(4) : senderId
-            ];
-            const { data: found } = await supabase.from('user_settings').select('*').in('whatsapp_phone', variations).maybeSingle();
-            userSettings = found;
+        // Se não achou exato, tenta variação do 9 (para telefones)
+        if (!userSettings) {
+             const cleanIds = possibleIds.map(id => id.length > 13 ? null : id).filter(Boolean) as string[]; // Pega só o que parece telefone
+             
+             if (cleanIds.length > 0) {
+                 const variations: string[] = [];
+                 cleanIds.forEach(id => {
+                     variations.push(id);
+                     variations.push(id.length > 12 ? id.replace('9', '') : id); // Tira 9
+                     variations.push(id.length < 13 ? id.slice(0, 4) + '9' + id.slice(4) : id); // Põe 9
+                 });
+                 
+                 const { data: found } = await supabase.from('user_settings').select('*').in('whatsapp_phone', variations).maybeSingle();
+                 userSettings = found;
+             }
         }
 
-        // --- AQUI ESTÁ A MÁGICA DO VÍNCULO ---
-        if (!userSettings) {
-            // O usuário é desconhecido (provavelmente é um LID novo).
-            // Vamos verificar se ele mandou um número de telefone no texto para se identificar.
-            
-            // Limpa o texto deixando só números
-            const cleanMessage = messageContent.replace(/\D/g, '');
-            
-            // Se o texto parece um telefone (DDD + numero, ex: 62999999999)
-            if (cleanMessage.length >= 10 && cleanMessage.length <= 13) {
-                console.log(`🔍 Tentando vincular LID ${senderId} ao telefone ${cleanMessage}...`);
+        // --- 2. VÍNCULO AUTOMÁTICO (O Pulo do Gato) ---
+        // Se achamos o usuário pelo 'participant' (real) mas o 'remoteJid' (LID) é novo, SALVA AGORA!
+        if (userSettings) {
+            // Se o ID que chegou (LID) não está salvo no banco, salva agora.
+            if (userSettings.whatsapp_id !== lidId && lidId !== userSettings.whatsapp_phone) {
+                console.log(`🔗 VINCULANDO AUTOMATICAMENTE: LID ${lidId} ao usuário ${userSettings.whatsapp_phone}`);
+                await supabase.from('user_settings')
+                    .update({ whatsapp_id: lidId })
+                    .eq('user_id', userSettings.user_id);
                 
-                // Busca quem é o dono desse telefone digitado
-                const possiblePhones = [
-                    `55${cleanMessage}`, // Tenta com 55
-                    cleanMessage,        // Tenta puro
-                    cleanMessage.includes('55') ? cleanMessage : `55${cleanMessage}`
-                ];
+                // Atualiza localmente para usar na resposta
+                userSettings.whatsapp_id = lidId;
+            }
+        } 
+        else {
+            // --- 3. SE AINDA NÃO ACHOU, PEDE O NÚMERO ---
+            // Se chegou aqui, o pacote não trouxe o número real. Precisamos perguntar.
+            
+            const messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
+            const cleanMessage = messageContent.replace(/\D/g, ''); // Só numeros
 
-                const { data: userToLink } = await supabase
-                    .from('user_settings')
-                    .select('*')
-                    .in('whatsapp_phone', possiblePhones) // Poderia adicionar variações do 9 aqui tb
-                    .maybeSingle();
+            // Se o usuário digitou um telefone no texto (ex: "sou o 62999...")
+            if (cleanMessage.length >= 10 && cleanMessage.length <= 13) {
+                const possiblePhones = [`55${cleanMessage}`, cleanMessage, cleanMessage.includes('55') ? cleanMessage : `55${cleanMessage}`];
+                const { data: userToLink } = await supabase.from('user_settings').select('*').in('whatsapp_phone', possiblePhones).maybeSingle();
 
                 if (userToLink) {
-                    // ACHOU! Vamos salvar o LID nesse usuário.
-                    await supabase.from('user_settings')
-                        .update({ whatsapp_id: senderId })
-                        .eq('user_id', userToLink.user_id);
-                    
-                    await sendWhatsAppMessage(remoteJid, `✅ *Conta Vinculada!* \nReconheci você como dono do telefone ${userToLink.whatsapp_phone}.\n\nAgora pode mandar seus gastos!`);
+                    await supabase.from('user_settings').update({ whatsapp_id: lidId }).eq('user_id', userToLink.user_id);
+                    await sendWhatsAppMessage(remoteJid, `✅ *Vínculo realizado!* Agora te reconheço.`);
                     return NextResponse.json({ success: true, action: "linked" });
-                } else {
-                    await sendWhatsAppMessage(remoteJid, `❌ Não encontrei o telefone ${cleanMessage} no banco de dados.\nVerifique se cadastrou o número correto no site.`);
-                    return NextResponse.json({ error: "Phone not found in DB" });
                 }
-            } else {
-                // Se não mandou telefone, pede para mandar
-                await sendWhatsAppMessage(remoteJid, `👋 Olá! Não reconheci seu dispositivo.\n\nPara liberar o acesso, responda com seu **número de telefone cadastrado** (ex: 62999999999).`);
-                return NextResponse.json({ error: "User unknown, asked for phone" });
             }
+            
+            // Tenta responder pedindo o número (Se falhar o envio pro LID, o usuário terá que cadastrar o LID manualmente no banco uma vez)
+            console.log("⚠️ Usuário desconhecido e sem participant. Pedindo número...");
+            await sendWhatsAppMessage(remoteJid, "Olá! Para configurar seu acesso, responda apenas com seu *número de celular* cadastrado (ex: 62999999999).");
+            return NextResponse.json({ error: "User unknown" });
         }
 
-        // ... (Se chegou aqui, o usuário já existe ou acabou de ser vinculado) ...
+        // Define o alvo da resposta (SEMPRE O TELEFONE REAL SE TIVER)
+        const targetPhone = userSettings.whatsapp_phone || lidId;
 
-        // Auto-aprendizado (Atualiza ID se mudou)
-        if (senderId !== userSettings.whatsapp_phone && userSettings.whatsapp_id !== senderId) {
-            await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userSettings.user_id);
-            userSettings.whatsapp_id = senderId;
-        }
+        // --- 4. FLUXO NORMAL (IA e Banco) ---
+        const { data: workspace } = await supabase.from('workspaces').select('id').eq('user_id', userSettings.user_id).limit(1).single();
 
-        const targetPhone = userSettings.whatsapp_phone || senderId;
-
-        // 2. CONTEXTO DO WORKSPACE
-        const { data: workspace } = await supabase
-            .from('workspaces')
-            .select('id')
-            .eq('user_id', userSettings.user_id)
-            .limit(1)
-            .single();
-
-        // 3. IA GEMINI (Seu código ajustado)
+        const messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
         if (!messageContent) return NextResponse.json({ status: 'No Text' });
+
         const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
         
         const systemPrompt = `
         ATUE COMO: "Meu Aliado", assistente financeiro.
         DATA: ${new Date().toISOString().split('T')[0]}.
 
-        REGRAS DO BANCO: 'title' (obrigatório), 'amount' ou 'value'.
-        TABELAS: 'transactions' (comum), 'recurring' (fixa), 'installments' (parcelado).
+        REGRAS:
+        1. 'title' é obrigatório.
+        2. Tabela 'transactions' usa 'target_month' (Ex: Jan, Fev).
 
-        FORMATOS JSON:
+        FORMATOS:
         [{"action":"add", "table":"transactions", "data":{ "title": "...", "amount": 0.00, "type": "expense", "date": "YYYY-MM-DD", "category": "Outros", "target_month": "Mês", "status": "paid" }}]
         {"reply": "Olá"}
         `;
