@@ -4,6 +4,29 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+// app/api/webhook/whatsapp/route.ts
+
+// ... seus imports e configurações do supabase/gemini ...
+
+async function fetchMediaFromEvolution(messageKey: any) {
+    const response = await fetch(`http://167.234.242.205:8080/instance/fetchMedia`, {
+        method: 'POST',
+        headers: {
+            'apikey': 'sua-senha-secreta-muda-isso-aqui',
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            instanceName: "MEO_ALIADO_INSTANCE",
+            messageKey: messageKey
+        })
+    });
+
+    const data = await response.json();
+    
+    // A Evolution API retorna o base64 direto ou uma URL. 
+    // Na configuração padrão do Baileys, ela costuma vir como base64.
+    return data.base64 || data.mediaUrl; 
+}
 
 export async function POST(req: Request) {
     try {
