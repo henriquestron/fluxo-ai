@@ -95,6 +95,8 @@ export default function FinancialDashboard() {
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
     const [isHistoryOpen, setIsHistoryOpen] = useState(false); // <--- Adicione junto com os outros states
     // ... outros estados ...
+    // Adicione este estado novo
+    const [whatsappEnabled, setWhatsappEnabled] = useState(false);
     const [addCounter, setAddCounter] = useState(0); // Conta quantos itens o usuário adicionou na sessão
     const [isNudgeOpen, setIsNudgeOpen] = useState(false); // Controla o modal de "Cutucão"
     // ... outros states ...
@@ -176,18 +178,18 @@ export default function FinancialDashboard() {
         const standardSteps = [
             { element: '#logo-area', popover: { title: 'Olá! Sou seu Aliado 🛡️', description: 'Vou te ajudar a dominar suas finanças.' } },
             ...(document.getElementById('btn-login') ? [{ element: '#btn-login', popover: { title: 'Salve na Nuvem ☁️', description: 'Crie sua conta para acessar em qualquer lugar.' } }] : []),
-            
+
             { element: '#btn-novo', popover: { title: 'Lançar Contas', description: 'Clique aqui para adicionar gastos, salários ou parcelas.' } },
-            
+
             // NOVOS PASSOS ADICIONADOS 👇
             { element: '#btn-history', popover: { title: 'Raio-X Anual 📅', description: 'Veja sua evolução financeira mês a mês neste gráfico detalhado.' } },
-            
+
             { element: '#btn-export', popover: { title: '📊 Relatórios em Excel', description: 'Exporte seus dados para planilhas profissionais.', side: "bottom", align: 'end' } },
-            
+
             { element: '#card-saldo', popover: { title: 'Seu Termômetro 🌡️', description: 'Aqui fica o saldo final. Verde é lucro, Vermelho é alerta!' } },
-            
+
             { element: '#btn-ai', popover: { title: 'Cérebro Financeiro 🧠', description: 'Fale com a IA para analisar gastos, pedir dicas ou lançar por áudio.' } },
-            
+
             // NOVOS PASSOS ADICIONADOS 👇
             { element: '#btn-notifications', popover: { title: 'Central de Alertas 🔔', description: 'Avisos de contas vencendo hoje e dicas do sistema aparecem aqui.' } },
             { element: '#btn-menu', popover: { title: 'Menu Principal ☰', description: menuDescription, side: "left" } }
@@ -237,6 +239,7 @@ export default function FinancialDashboard() {
                 if (currentUser) {
                     fetchUserProfile(currentUser.id);
                     fetchWorkspaces(currentUser.id);
+                    fetchUserSettings(currentUser.id);
                 }
             } catch (e) { setUser(null); }
         };
@@ -348,7 +351,27 @@ export default function FinancialDashboard() {
             setTransactions([]); setInstallments([]); setRecurring([]);
         }
     };
+    const toggleWhatsappNotification = async () => {
+        if (!user) return;
+        const newValue = !whatsappEnabled;
+        setWhatsappEnabled(newValue);
 
+        // Se não tiver user_settings, cria. Se tiver, atualiza.
+        const { data } = await supabase.from('user_settings').select('id').eq('user_id', user.id).single();
+
+        if (data) {
+            await supabase.from('user_settings').update({ notify_whatsapp: newValue }).eq('user_id', user.id);
+        } else {
+            await supabase.from('user_settings').insert({ user_id: user.id, notify_whatsapp: newValue });
+        }
+
+        toast.success(newValue ? "Notificações WhatsApp Ativadas! 🔔" : "Notificações WhatsApp Desativadas. 🔕");
+    };
+
+    const fetchUserSettings = async (uid: string) => {
+        const { data } = await supabase.from('user_settings').select('notify_whatsapp').eq('user_id', uid).single();
+        if (data) setWhatsappEnabled(data.notify_whatsapp);
+    };
     const switchWorkspace = (workspace: any) => {
         if (workspace.id === currentWorkspace?.id) return;
         setCurrentWorkspace(workspace);
@@ -359,10 +382,13 @@ export default function FinancialDashboard() {
     const fetchUserProfile = async (userId: string) => {
         const { data } = await supabase.from('profiles').select('plan_tier, preferred_layout, theme_color').eq('id', userId).single();
         const plan = data?.plan_tier || 'free';
+
         setUserPlan(plan);
         if (data?.preferred_layout) setCurrentLayout(data.preferred_layout as any);
         if (data?.theme_color) setCurrentTheme(data.theme_color);
         if (plan === 'agent') fetchClients(userId);
+
+
     };
 
     const handleSavePreferences = async (type: 'layout' | 'theme', value: string) => {
@@ -379,55 +405,81 @@ export default function FinancialDashboard() {
     // --- LÓGICA DE NOTIFICAÇÃO (CORRIGIDA COM SOM ONLINE) ---
     // --- LÓGICA DE NOTIFICAÇÃO (SEM SOM + VISUAL GARANTIDO) ---
     // --- LÓGICA DE NOTIFICAÇÃO (CORRIGIDA: 1 VEZ POR DIA APENAS) ---
+    // --- LÓGICA DE NOTIFICAÇÃO (CORRIGIDA E BLINDADA) ---
+    // --- LÓGICA DE NOTIFICAÇÃO (CORRIGIDA E COM WHATSAPP) ---
     const checkUpcomingBills = async (userId: string) => {
         if (!userId) return;
+
+        // 1. Prepara as datas
         const today = new Date();
         const dayNum = today.getDate();
         const dayStr = dayNum.toString().padStart(2, '0');
         const monthMap: Record<number, string> = { 0: 'Jan', 1: 'Fev', 2: 'Mar', 3: 'Abr', 4: 'Mai', 5: 'Jun', 6: 'Jul', 7: 'Ago', 8: 'Set', 9: 'Out', 10: 'Nov', 11: 'Dez' };
         const currentMonthName = monthMap[today.getMonth()];
 
-        // 1. Identificar contas vencendo HOJE
+        // 2. Identificar contas vencendo HOJE
         const billsDueToday = [
-            ...transactions.filter(t => t.type === 'expense' && !t.is_paid && t.status !== 'delayed' && t.date?.startsWith(dayStr)),
+            ...transactions.filter(t => t.type === 'expense' && !t.is_paid && t.status !== 'delayed' && t.date?.startsWith(`${dayStr}/`)),
             ...recurring.filter(r => r.type === 'expense' && r.due_day === dayNum && r.status !== 'delayed' && !r.paid_months?.includes(currentMonthName)),
             ...installments.filter(i => i.due_day === dayNum && i.status !== 'delayed' && !i.paid_months?.includes(currentMonthName))
         ];
 
-        if (billsDueToday.length > 0) {
-            // 2. Verificar se já existe QUALQUER notificação de cobrança hoje (independente do texto)
-            const todayStart = new Date();
-            todayStart.setHours(0, 0, 0, 0);
-            const todayISO = todayStart.toISOString();
+        // Se não tiver contas hoje, encerra por aqui.
+        if (billsDueToday.length === 0) return;
 
-            const { data: existingNotifs } = await supabase
-                .from('notifications')
-                .select('id')
-                .eq('user_id', userId)
-                .eq('title', 'Contas Vencendo Hoje! 💸') // Verifica pelo Título, que é fixo
-                .gte('created_at', todayISO);
+        // 3. VERIFICAÇÃO DE SEGURANÇA (Anti-Duplicidade) 🛑
+        // Define o início do dia de hoje (00:00:00) em formato ISO
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+        const startOfDayISO = startOfDay.toISOString();
 
-            // 3. Só cria se NÃO existir nenhuma hoje
-            if (!existingNotifs || existingNotifs.length === 0) {
-                const messageSignature = `Você tem ${billsDueToday.length} conta(s) para pagar hoje. Não esqueça!`;
-                
-                // Salva no Banco
-                const { error } = await supabase.from('notifications').insert({
-                    user_id: userId,
-                    title: 'Contas Vencendo Hoje! 💸',
-                    message: messageSignature,
-                    type: 'warning',
-                    is_read: false
-                });
+        // Busca no banco se JÁ EXISTE uma notificação criada HOJE com esse título
+        const { data: existingNotifs } = await supabase
+            .from('notifications')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('title', 'Contas Vencendo Hoje! 💸') // Título Fixo
+            .gte('created_at', startOfDayISO) // Criada de hoje pra frente
+            .limit(1);
 
-                if (!error) {
-                    toast.warning("Atenção: Contas Vencendo Hoje!", {
-                        description: messageSignature,
-                        duration: 5000,
-                        icon: <AlertTriangle className="text-orange-500" />
-                    });
-                }
-            }
+        // Se já existe, significa que o aviso de hoje já foi dado. Para tudo.
+        if (existingNotifs && existingNotifs.length > 0) {
+            console.log("🔕 Notificação diária já enviada. Ignorando...");
+            return;
+        }
+
+        // 4. Se chegou aqui, é a primeira vez no dia. Cria a notificação!
+        const messageSignature = `Você tem ${billsDueToday.length} conta(s) para pagar hoje. Não esqueça!`;
+
+        const { error } = await supabase.from('notifications').insert({
+            user_id: userId,
+            title: 'Contas Vencendo Hoje! 💸', // Título Fixo (Importante para a trava funcionar)
+            message: messageSignature,
+            type: 'warning',
+            is_read: false
+        });
+
+        if (!error) {
+            // A. Mostra o Toast na tela imediatamente
+            toast.warning("Atenção: Contas Vencendo Hoje!", {
+                description: messageSignature,
+                duration: 5000,
+                icon: <AlertTriangle className="text-orange-500" />
+            });
+
+            // B. DISPARA O WHATSAPP (Backend decide se manda ou não) 📲
+            console.log("📤 Tentando enviar WhatsApp...");
+            fetch('/api/check-notifications', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId, bills: billsDueToday })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) console.log("✅ WhatsApp enviado com sucesso!");
+                    else console.log("⚠️ WhatsApp não enviado:", data.reason);
+                })
+                .catch(err => console.error("❌ Erro ao chamar API WhatsApp:", err));
         }
     };
 
@@ -1036,7 +1088,7 @@ export default function FinancialDashboard() {
                     </button>
                     {user ? (
                         <div id="btn-notifications" className="flex items-center gap-3">
-                            
+
                             {/* 🔔 SININHO (Agora   posicionado corretamente ao lado do menu) */}
                             <NotificationBell userId={user.id} />
 
@@ -1061,6 +1113,20 @@ export default function FinancialDashboard() {
                                                     </div>
                                                     <button onClick={() => { setIsUserMenuOpen(false); setIsProfileModalOpen(true); }} className="w-full text-left px-3 py-2.5 rounded-lg text-xs flex items-center gap-2 text-gray-300 hover:bg-gray-800 hover:text-white transition font-medium"><User size={14} className="text-cyan-500" /> Meu Perfil</button>
                                                     {userPlan !== 'free' && (<button onClick={() => { setIsUserMenuOpen(false); handleManageSubscription(); }} className="w-full text-left px-3 py-2.5 rounded-lg text-xs flex items-center gap-2 text-gray-300 hover:bg-gray-800 hover:text-white transition font-medium"><CreditCard size={14} className="text-emerald-500" /> Gerenciar Assinatura</button>)}
+                                                    <div className="px-3 py-2.5 flex items-center justify-between">
+                                                        <div className="flex items-center gap-2 text-xs text-gray-300 font-medium">
+                                                            <Smartphone size={14} className="text-emerald-500" />
+                                                            Notificar no Zap
+                                                        </div>
+
+                                                        {/* O Toggle Switch */}
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); toggleWhatsappNotification(); }}
+                                                            className={`w-8 h-4 rounded-full transition-colors relative ${whatsappEnabled ? 'bg-emerald-600' : 'bg-gray-700'}`}
+                                                        >
+                                                            <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${whatsappEnabled ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                                                        </button>
+                                                    </div>
                                                     {(userPlan === 'pro' || userPlan === 'agent') && (<button onClick={() => { setIsUserMenuOpen(false); setIsCustomizationOpen(true); }} className="w-full text-left px-3 py-2.5 rounded-lg text-xs flex items-center gap-2 text-gray-300 hover:bg-gray-800 hover:text-white transition font-medium"><Palette size={14} className="text-purple-500" /> Personalizar Visual</button>)}
                                                     {userPlan !== 'agent' && (<button onClick={() => { setIsUserMenuOpen(false); handleCheckout('AGENT'); }} className="w-full text-left px-3 py-2.5 rounded-lg text-xs flex items-center gap-2 text-gray-300 hover:bg-gray-800 hover:text-white transition font-medium"><Briefcase size={14} className="text-amber-500" /> Virar Consultor</button>)}
                                                     <div className="h-px bg-gray-800 my-1 mx-2"></div>
