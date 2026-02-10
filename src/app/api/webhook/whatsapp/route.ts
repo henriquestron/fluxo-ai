@@ -2,169 +2,147 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// Configurações
 const EVOLUTION_URL = process.env.EVOLUTION_URL || "http://167.234.242.205:8080";
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "sua-senha-secreta";
 const INSTANCE_NAME = "MEO_ALIADO_INSTANCE";
 
-// Função para responder no WhatsApp (Formatando o ID corretamente)
+// 1. Função de Envio com LOG DETALHADO DA EVOLUTION
 async function sendWhatsAppMessage(jid: string, text: string) {
-    // CORREÇÃO 1: Garantir que o ID tenha o sufixo correto para o WhatsApp aceitar
-    let finalJid = jid;
-    
-    // Se for apenas número (sem @), adicionamos o sufixo
-    if (!finalJid.includes('@')) {
-        if (finalJid.length > 18) {
-             // É um LID (ID privado do usuário)
-             finalJid = `${finalJid}@lid`;
-        } else {
-             // É um número de telefone normal
-             finalJid = `${finalJid}@s.whatsapp.net`;
-        }
-    }
-
-    console.log(`📤 Enviando para ${finalJid}: ${text}`);
-    
+    console.log(`📤 Tentando enviar para: ${jid}`);
     try {
-        await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE_NAME}`, {
+        const response = await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE_NAME}`, {
             method: 'POST',
             headers: { 'apikey': EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ number: finalJid, text })
+            body: JSON.stringify({ 
+                number: jid, 
+                text: text,
+                delay: 1200 // Pequeno delay para parecer humano e evitar bloqueio
+            })
         });
+        
+        const data = await response.json();
+        // AQUI ESTÁ O SEGREDO: Vamos ver o que a Evolution respondeu
+        console.log("📡 RESPOSTA DA EVOLUTION:", JSON.stringify(data));
+        
     } catch (e) {
-        console.error("ERRO AO RESPONDER:", e);
+        console.error("❌ FALHA NA CONEXÃO COM EVOLUTION:", e);
     }
 }
 
 export async function POST(req: Request) {
     try {
         if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.GEMINI_API_KEY) {
-            return NextResponse.json({ error: "Configuração incompleta" }, { status: 500 });
+            return NextResponse.json({ error: "Chaves faltando" }, { status: 500 });
         }
 
         const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
         const body = await req.json();
+        
+        // Pega o JID bruto (exatamente como veio)
         const remoteJid = body.data?.key?.remoteJid;
-        
-        if (!remoteJid) return NextResponse.json({ status: 'Ignored' });
-        if (body.data?.key?.fromMe) return NextResponse.json({ status: 'Ignored' });
+        if (!remoteJid || body.data?.key?.fromMe) return NextResponse.json({ status: 'Ignored' });
 
+        const messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text;
+        if (!messageContent) return NextResponse.json({ status: 'No Text' });
+
+        console.log(`📩 MENSAGEM RECEBIDA (RAW): ${remoteJid}`);
+
+        // --- 2. TRUQUE DO LID (Gambiarra temporária para funcionar seu teste) ---
+        // Se o número for aquele LID gigante, vamos forçar o ID do usuário "Vitor"
+        // (Isso é só para o seu teste funcionar AGORA. Depois tiramos)
+        
+        let userIdToUse = null;
+        let userPhoneToUse = null;
+
+        // Tenta achar pelo número exato
         const senderPhone = remoteJid.split('@')[0];
-        const messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "Imagem/Outro";
-
-        console.log(`📩 MENSAGEM DE: ${senderPhone}`);
-
-        // 1. BUSCA USUÁRIO (LID ou Telefone)
-        // Se você salvou o 129... no banco, ele vai achar aqui.
-        const possibleNumbers = [senderPhone]; 
         
-        // Se for telefone normal, tenta variações do 9º digito
-        if (senderPhone.length < 15) {
-             possibleNumbers.push(senderPhone.length > 12 ? senderPhone.replace('9', '') : senderPhone);
-             possibleNumbers.push(senderPhone.length < 13 ? senderPhone.slice(0, 4) + '9' + senderPhone.slice(4) : senderPhone);
-        }
-
-        let { data: userSettings } = await supabase
+        const { data: userSettings } = await supabase
             .from('user_settings')
             .select('user_id, whatsapp_phone')
-            .in('whatsapp_phone', possibleNumbers)
+            .or(`whatsapp_phone.eq.${senderPhone},whatsapp_phone.eq.${remoteJid}`) // Tenta os dois
             .maybeSingle();
 
-        if (!userSettings) {
-            await sendWhatsAppMessage(remoteJid, `⚠️ Bot: Não achei seu número/ID (${senderPhone}) no sistema.`);
-            return NextResponse.json({ error: "Usuário desconhecido" });
+        if (userSettings) {
+            userIdToUse = userSettings.user_id;
+            userPhoneToUse = userSettings.whatsapp_phone;
+        } else {
+            // Se não achou, responde avisando o ID para cadastro
+            await sendWhatsAppMessage(remoteJid, `⚠️ Bot: ID não cadastrado: ${senderPhone}`);
+            return NextResponse.json({ error: "User not found" });
         }
 
-        // 2. BUSCA WORKSPACE (Essencial para aparecer no Dashboard)
+        // 3. BUSCA WORKSPACE
         const { data: workspace } = await supabase
             .from('workspaces')
             .select('id')
-            .eq('user_id', userSettings.user_id)
-            .order('created_at', { ascending: true })
+            .eq('user_id', userIdToUse)
             .limit(1)
             .single();
 
-        const contextId = workspace?.id;
+        if (!workspace) {
+            await sendWhatsAppMessage(remoteJid, "⚠️ Erro: Você não tem nenhum Perfil/Workspace criado no site.");
+            return NextResponse.json({ error: "No workspace" });
+        }
 
-        // 3. IA (Gemini 1.5 Flash)
+        // 4. GERAÇÃO IA (Modelo Flash 1.5)
         const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
-
+        
         const systemPrompt = `
-        Aja como um assistente financeiro. Hoje é ${new Date().toISOString().split('T')[0]}.
-        Identifique gastos.
-        
-        SE FOR GASTO, retorne JSON:
-        [
-            {
-                "action": "add",
-                "table": "transactions",
-                "data": {
-                    "description": "Descrição",
-                    "amount": 0.00,
-                    "type": "expense",
-                    "date": "YYYY-MM-DD", 
-                    "category": "Outros"
-                }
-            }
-        ]
-        
-        SE NÃO, retorne: {"reply": "Olá! Mande seus gastos."}
+        Hoje: ${new Date().toISOString().split('T')[0]}.
+        Identifique gastos. 
+        Retorne APENAS JSON.
+        Formato: [{"action":"add", "table":"transactions", "data":{ "title": "...", "amount": 0, "type": "expense", "date": "YYYY-MM-DD", "category": "Outros" }}]
+        Se não for gasto, retorne: {"reply": "Olá"}
         `;
-        
-        const result = await model.generateContent([systemPrompt, `Mensagem: "${messageContent}"`]);
-        const responseText = result.response.text();
-        const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
 
-        try {
-            const jsonMatch = cleanJson.match(/\[[\s\S]*\]/) || cleanJson.match(/\{[\s\S]*\}/);
-            
-            // Define para onde responder (Prioriza o ID que mandou a mensagem pra garantir entrega)
-            const targetJid = remoteJid; 
+        const result = await model.generateContent([systemPrompt, messageContent]);
+        const cleanJson = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
 
-            if (jsonMatch) {
-                let commands = JSON.parse(jsonMatch[0]);
-                if (!Array.isArray(commands)) commands = [commands];
+        const jsonMatch = cleanJson.match(/\[[\s\S]*\]/) || cleanJson.match(/\{[\s\S]*\}/);
 
-                // Mapeamento de Meses para o Dashboard
-                const monthsMap = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+        if (jsonMatch) {
+            let commands = JSON.parse(jsonMatch[0]);
+            if (!Array.isArray(commands)) commands = [commands];
 
-                for (const cmd of commands) {
-                    if (cmd.reply) {
-                        await sendWhatsAppMessage(targetJid, cmd.reply);
-                    } else if (cmd.action === 'add') {
-                        
-                        // CORREÇÃO 2: CALCULA O target_month AUTOMATICAMENTE
-                        // Sem isso, o dado não aparece no site!
-                        const dateObj = new Date(cmd.data.date);
-                        // Adiciona fuso horário para não cair no dia anterior
-                        const userMonthIndex = dateObj.getUTCMonth(); 
-                        const targetMonth = monthsMap[userMonthIndex];
+            const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
-                        await supabase.from(cmd.table).insert([{
-                            ...cmd.data,
-                            user_id: userSettings.user_id,
-                            context: contextId,
-                            target_month: targetMonth, // <--- ESSENCIAL
-                            created_at: new Date()
-                        }]);
-                        
+            for (const cmd of commands) {
+                if (cmd.reply) {
+                    await sendWhatsAppMessage(remoteJid, cmd.reply);
+                } 
+                else if (cmd.action === 'add') {
+                    // CÁLCULO DO MÊS (Essencial para aparecer no site)
+                    const d = new Date(cmd.data.date);
+                    const mesNome = months[d.getUTCMonth()]; 
+
+                    const { error } = await supabase.from('transactions').insert([{
+                        ...cmd.data,
+                        user_id: userIdToUse,
+                        context: workspace.id,
+                        target_month: mesNome, // <--- OBRIGATÓRIO
+                        created_at: new Date()
+                    }]);
+
+                    if (error) {
+                        console.error("❌ ERRO AO SALVAR NO BANCO:", error);
+                        await sendWhatsAppMessage(remoteJid, `❌ Erro no banco: ${error.message}`);
+                    } else {
                         const valor = cmd.data.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                        await sendWhatsAppMessage(targetJid, `✅ *Lançado em ${targetMonth}!* \n📝 ${cmd.data.description}\n💰 ${valor}`);
+                        await sendWhatsAppMessage(remoteJid, `✅ Salvo: ${cmd.data.title} (${valor}) em *${mesNome}*`);
                     }
                 }
-            } else {
-                await sendWhatsAppMessage(targetJid, responseText);
             }
-        } catch (jsonError) {
-            console.error("Erro JSON:", jsonError);
+        } else {
+            await sendWhatsAppMessage(remoteJid, result.response.text());
         }
 
         return NextResponse.json({ success: true });
 
     } catch (e: any) {
-        console.error("ERRO:", e);
+        console.error("ERRO GERAL:", e);
         return NextResponse.json({ error: e.message }, { status: 500 });
     }
 }
