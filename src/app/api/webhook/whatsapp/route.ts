@@ -1,17 +1,13 @@
-// app/api/webhook/whatsapp/route.ts
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// Configurações de Ambiente
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+// Configurações (apenas constantes de texto, sem iniciar conexões ainda)
+const EVOLUTION_URL = process.env.EVOLUTION_URL || "http://167.234.242.205:8080"; 
+const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "sua-senha-secreta-muda-isso-aqui";
+const INSTANCE_NAME = "MEO_ALIADO_INSTANCE";
 
-const EVOLUTION_URL = "http://167.234.242.205:8080"; 
-const EVOLUTION_API_KEY = "sua-senha-secreta-muda-isso-aqui"; // Mesma do docker-compose
-const INSTANCE_NAME = "MEO_ALIADO_INSTANCE"; // Ou o nome que você criou (ZAP_NOVO)
-
-// Função auxiliar para baixar imagem via Evolution API v2
+// Função auxiliar para baixar imagem
 async function fetchMediaFromEvolution(messageObject: any) {
     try {
         const response = await fetch(`${EVOLUTION_URL}/chat/getBase64FromMediaMessage/${INSTANCE_NAME}`, {
@@ -21,13 +17,13 @@ async function fetchMediaFromEvolution(messageObject: any) {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                message: messageObject, // Envia o objeto da mensagem completo
+                message: messageObject,
                 convertToMp4: false
             })
         });
 
         const data = await response.json();
-        return data.base64; // Retorna a string base64 limpa
+        return data.base64;
     } catch (error) {
         console.error("Erro ao baixar mídia:", error);
         return null;
@@ -45,9 +41,19 @@ async function sendWhatsAppMessage(jid: string, text: string) {
 
 export async function POST(req: Request) {
     try {
+        // --- MUDANÇA AQUI: Inicia as conexões DENTRO da função ---
+        if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.GEMINI_API_KEY) {
+            console.error("Variáveis de ambiente faltando!");
+            return NextResponse.json({ error: "Configuração de servidor incompleta" }, { status: 500 });
+        }
+
+        const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        // ---------------------------------------------------------
+
         const body = await req.json();
 
-        // 0. IGNORAR MENSAGENS DO PRÓPRIO ROBÔ (Evita Loop Infinito)
+        // 0. IGNORAR MENSAGENS DO PRÓPRIO ROBÔ
         if (body.data?.key?.fromMe) {
             return NextResponse.json({ status: 'Ignored (From Me)' });
         }
@@ -59,12 +65,8 @@ export async function POST(req: Request) {
 
         if (!message) return NextResponse.json({ status: 'No message content' });
 
-        // Identificar conteúdo
         const isImage = !!message?.imageMessage;
-        // Pega texto de legenda (imagem) ou texto puro
         const textContent = message?.conversation || message?.extendedTextMessage?.text || message?.imageMessage?.caption || "";
-
-        console.log(`📩 Recebido de ${senderPhone}: ${isImage ? '[IMAGEM]' : '[TEXTO]'} "${textContent}"`);
 
         // 2. BUSCAR USUÁRIO NO SUPABASE
         const { data: userSettings } = await supabase
@@ -73,9 +75,9 @@ export async function POST(req: Request) {
             .eq('whatsapp_phone', senderPhone)
             .single();
 
-        // Se não achar usuário, ignora (ou manda mensagem pedindo cadastro)
         if (!userSettings) {
-            console.log("Usuário não encontrado:", senderPhone);
+            // Opcional: Avisar que não tem cadastro
+            // await sendWhatsAppMessage(remoteJid, "Olá! Seu número não está cadastrado no sistema.");
             return NextResponse.json({ error: "Telefone não vinculado" });
         }
 
@@ -85,29 +87,15 @@ export async function POST(req: Request) {
         let prompt = `Analise a entrada. Texto do usuário: "${textContent}".`;
 
         if (isImage) {
-            console.log("🔍 Baixando imagem...");
-            const base64Data = await fetchMediaFromEvolution(message); // Passa o objeto message inteiro
-            
+            const base64Data = await fetchMediaFromEvolution(message);
             if (base64Data) {
                 mediaData = [{ inlineData: { data: base64Data, mimeType: "image/jpeg" } }];
                 prompt += " Analise este comprovante fiscal/recibo.";
-            } else {
-                await sendWhatsAppMessage(remoteJid, "❌ Não consegui baixar a imagem. Tente de novo.");
-                return NextResponse.json({ error: "Falha download imagem" });
             }
         }
 
-        // Prompt de Sistema: Define a personalidade e o formato de saída
         const systemPrompt = `
-        Você é uma IA Financeira que alimenta um banco de dados Supabase.
-        Analise o texto e/ou imagem e extraia os dados da transação.
-        
-        Regras:
-        1. Se for gasto/compra -> type: "expense"
-        2. Se for recebimento/salário -> type: "income"
-        3. Se não tiver valor claro, ignore.
-        4. Converta a data para formato ISO (YYYY-MM-DD) se encontrar, senão use null (o banco põe hoje).
-        
+        Você é uma IA Financeira.
         Responda ESTRITAMENTE este JSON (sem markdown):
         [
             {
@@ -124,50 +112,33 @@ export async function POST(req: Request) {
         ]
         `;
 
-        // 4. CHAMAR A IA
         const result = await model.generateContent([systemPrompt, prompt, ...mediaData]);
         const responseText = result.response.text();
-        
-        console.log("🤖 Resposta Gemini:", responseText);
 
-        // 5. PROCESSAR JSON E SALVAR NO BANCO
-        // Limpa possíveis blocos de código ```json ... ```
+        // 4. PROCESSAR JSON E SALVAR
         const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '');
         const jsonMatch = cleanJson.match(/\[[\s\S]*\]/);
 
         if (jsonMatch) {
             const commands = JSON.parse(jsonMatch[0]);
-            
             for (const cmd of commands) {
                 if (cmd.action === 'add') {
-                    // Insere no Supabase
-                    const { error } = await supabase
-                        .from(cmd.table)
-                        .insert([{ 
-                            ...cmd.data, 
-                            user_id: userSettings.user_id,
-                            created_at: new Date() // Garante data de criação
-                        }]);
-
-                    if (error) {
-                        console.error("Erro Supabase:", error);
-                        await sendWhatsAppMessage(remoteJid, "⚠️ Erro ao salvar no banco.");
-                    } else {
-                        const valorFormatado = cmd.data.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                        await sendWhatsAppMessage(remoteJid, `✅ *Lançado!* \n📝 ${cmd.data.description}\n💰 ${valorFormatado}\n📂 ${cmd.data.category}`);
-                    }
+                    await supabase.from(cmd.table).insert([{ 
+                        ...cmd.data, 
+                        user_id: userSettings.user_id,
+                        created_at: new Date()
+                    }]);
+                    
+                    const valorFormatado = cmd.data.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                    await sendWhatsAppMessage(remoteJid, `✅ *Lançado!* \n📝 ${cmd.data.description}\n💰 ${valorFormatado}`);
                 }
             }
-        } else {
-            // Se a IA não retornou JSON (provavelmente era só papo furado)
-            // Opcional: Responder como chat normal
-            // await sendWhatsAppMessage(remoteJid, responseText);
         }
 
         return NextResponse.json({ success: true });
 
     } catch (e) {
-        console.error("Erro CRÍTICO no Webhook:", e);
+        console.error("Erro Webhook:", e);
         return NextResponse.json({ error: "Erro interno" }, { status: 500 });
     }
 }
