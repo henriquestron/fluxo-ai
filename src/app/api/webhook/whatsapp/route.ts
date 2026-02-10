@@ -144,7 +144,7 @@ export async function POST(req: Request) {
                     // --- CENÁRIO 1: PARCELADOS (installments) ---
                     // AGORA SIMPLIFICADO: Só insere na installments e pronto.
                     if (cmd.table === 'installments') {
-                        payload.current_installment = 1;
+                        payload.current_installment = 0;
                         payload.status = 'active';
                         
                         // Garante que não tenha campos de 'transactions' perdidos aqui
