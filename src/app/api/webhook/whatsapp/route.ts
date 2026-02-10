@@ -2,22 +2,20 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// Tente ler as variáveis, ou use valores padrão para teste
+// Configurações
 const EVOLUTION_URL = process.env.EVOLUTION_URL || "http://167.234.242.205:8080";
-const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "sua-senha-secreta-muda-isso-aqui";
+const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "sua-senha-secreta";
 const INSTANCE_NAME = "MEO_ALIADO_INSTANCE";
 
-// Função para responder no WhatsApp (Com logs de erro)
+// Função para responder no WhatsApp
 async function sendWhatsAppMessage(jid: string, text: string) {
-    console.log(`📤 Tentando enviar para ${jid}: ${text}`);
+    console.log(`📤 Enviando para ${jid}: ${text}`);
     try {
-        const res = await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE_NAME}`, {
+        await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE_NAME}`, {
             method: 'POST',
             headers: { 'apikey': EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
             body: JSON.stringify({ number: jid, text })
         });
-        const data = await res.json();
-        console.log("RESPOSTA EVOLUTION:", data);
     } catch (e) {
         console.error("ERRO AO RESPONDER:", e);
     }
@@ -25,10 +23,10 @@ async function sendWhatsAppMessage(jid: string, text: string) {
 
 export async function POST(req: Request) {
     try {
-        // Verifica chaves críticas
-        if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-            console.error("❌ ERRO: SUPABASE_SERVICE_ROLE_KEY faltando!");
-            return NextResponse.json({ error: "Configuração de servidor incompleta" }, { status: 500 });
+        // Verifica Chaves
+        if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.GEMINI_API_KEY) {
+            console.error("❌ ERRO: Chaves de API faltando!");
+            return NextResponse.json({ error: "Configuração incompleta" }, { status: 500 });
         }
 
         const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
@@ -36,50 +34,36 @@ export async function POST(req: Request) {
 
         const body = await req.json();
 
-        // 1. QUEM MANDOU?
-        const remoteJid = body.data?.key?.remoteJid; // Ex: 556299999999@s.whatsapp.net
+        // 1. FILTROS DE SEGURANÇA
+        const remoteJid = body.data?.key?.remoteJid;
         if (!remoteJid) return NextResponse.json({ status: 'Ignored (No JID)' });
-        
-        // Ignora mensagens do próprio robô
         if (body.data?.key?.fromMe) return NextResponse.json({ status: 'Ignored (From Me)' });
 
-        const senderPhone = remoteJid.split('@')[0]; // O número puro
+        const senderPhone = remoteJid.split('@')[0];
         const messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "Imagem/Outro";
 
-        console.log(`📩 MENSAGEM RECEBIDA DE: ${senderPhone}`);
+        console.log(`📩 MENSAGEM DE: ${senderPhone}`);
 
-        // 2. BUSCA INTELIGENTE DO USUÁRIO (Tenta com e sem o 9º dígito)
-        // O Brasil é bagunçado. Às vezes vem 55629..., às vezes 5562...
-        // Vamos testar as variações.
-        
+        // 2. BUSCA DO USUÁRIO (Lógica do 9º dígito)
         const possibleNumbers = [
-            senderPhone, // Como veio
-            senderPhone.length > 12 ? senderPhone.replace('9', '') : senderPhone, // Tenta tirar o 9 (se for longo)
-            senderPhone.length < 13 ? senderPhone.slice(0, 4) + '9' + senderPhone.slice(4) : senderPhone // Tenta por o 9 (se for curto)
+            senderPhone,
+            senderPhone.length > 12 ? senderPhone.replace('9', '') : senderPhone,
+            senderPhone.length < 13 ? senderPhone.slice(0, 4) + '9' + senderPhone.slice(4) : senderPhone
         ];
-
-        // Remove duplicatas
         const uniqueNumbers = [...new Set(possibleNumbers)];
-        
-        console.log("🔍 Procurando por:", uniqueNumbers);
 
         let { data: userSettings } = await supabase
             .from('user_settings')
             .select('user_id')
-            .in('whatsapp_phone', uniqueNumbers) // Busca qualquer um dos formatos
+            .in('whatsapp_phone', uniqueNumbers)
             .maybeSingle();
 
-        // --- MODO DEBUG ATIVADO ---
-        // Se não achar o usuário, o robô VAI AVISAR no WhatsApp.
         if (!userSettings) {
-            console.log("❌ Usuário não encontrado no banco.");
-            await sendWhatsAppMessage(remoteJid, `⚠️ DEBUG: Não encontrei seu número no sistema.\n\nO robô leu: ${senderPhone}\nNo banco deve estar igual.\n\nVá no seu Perfil > WhatsApp e salve exatamente este número.`);
+            await sendWhatsAppMessage(remoteJid, `⚠️ Bot: Não achei seu número (${senderPhone}) no sistema. Cadastre-o no seu perfil.`);
             return NextResponse.json({ error: "Usuário desconhecido" });
         }
 
-        console.log("✅ Usuário encontrado! ID:", userSettings.user_id);
-
-        // 3. BUSCAR WORKSPACE
+        // 3. BUSCA DO WORKSPACE
         const { data: workspace } = await supabase
             .from('workspaces')
             .select('id')
@@ -90,43 +74,80 @@ export async function POST(req: Request) {
 
         const contextId = workspace?.id;
 
-        // 4. PROCESSAR COM IA
-        // Adicione o sufixo "-latest" ou use o código de versão "001"
-// Modelo Gemini 1.0 Pro (Estável e Compatível)
-const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-        const systemPrompt = `Você é um assistente financeiro. Hoje é ${new Date().toISOString().split('T')[0]}.
-        Retorne JSON para: {"action": "add", "table": "transactions", "data": {"description": "...", "amount": 0.00, "type": "expense", "date": "YYYY-MM-DD", "category": "Outros"}}`;
-        
-        const result = await model.generateContent([systemPrompt, `Usuário disse: ${messageContent}`]);
-        const responseText = result.response.text();
-        
-        // Tenta extrair JSON
-        const jsonMatch = responseText.match(/\[[\s\S]*\]/) || responseText.match(/\{[\s\S]*\}/);
+        // 4. PROCESSAMENTO IA (Modelo Atualizado)
+        // Usando o modelo mais estável e rápido atual
+        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
-        if (jsonMatch) {
-            // Se a IA gerou um comando de banco, executa
-            let commands = JSON.parse(jsonMatch[0]);
-            if (!Array.isArray(commands)) commands = [commands];
-
-            for (const cmd of commands) {
-                if (cmd.action === 'add') {
-                    await supabase.from(cmd.table).insert([{
-                        ...cmd.data,
-                        user_id: userSettings.user_id,
-                        context: contextId
-                    }]);
-                    await sendWhatsAppMessage(remoteJid, `✅ Lançado: ${cmd.data.description} R$ ${cmd.data.amount}`);
+        const systemPrompt = `
+        Aja como um assistente financeiro pessoal.
+        Data de hoje: ${new Date().toISOString().split('T')[0]}.
+        
+        Sua missão: Identificar gastos ou ganhos na mensagem.
+        
+        SE FOR GASTO/GANHO, retorne APENAS este JSON:
+        [
+            {
+                "action": "add",
+                "table": "transactions",
+                "data": {
+                    "description": "Descrição curta",
+                    "amount": 0.00,
+                    "type": "expense" (ou "income"),
+                    "date": "YYYY-MM-DD",
+                    "category": "Alimentação" (ou Transporte, Lazer, Casa, Outros)
                 }
             }
-        } else {
-            // Se não for gasto (ex: "Bom dia"), responde normal
-            await sendWhatsAppMessage(remoteJid, "🤖 Entendi, mas não parece um gasto. Tente: 'Gastei 50 no Uber'.");
+        ]
+
+        SE NÃO FOR GASTO (ex: "Oi", "Bom dia"), retorne APENAS:
+        {"reply": "Olá! Sou seu assistente financeiro. Me mande seus gastos (ex: Almoço 30 reais)."}
+        `;
+        
+        const result = await model.generateContent([systemPrompt, `Mensagem do usuário: "${messageContent}"`]);
+        const responseText = result.response.text();
+        
+        // Limpeza do JSON (remove markdown ```json ... ```)
+        const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+
+        // Tenta processar
+        try {
+            // Tenta achar array ou objeto
+            const jsonMatch = cleanJson.match(/\[[\s\S]*\]/) || cleanJson.match(/\{[\s\S]*\}/);
+            
+            if (jsonMatch) {
+                let commands = JSON.parse(jsonMatch[0]);
+                if (!Array.isArray(commands)) commands = [commands];
+
+                for (const cmd of commands) {
+                    if (cmd.reply) {
+                        // Se a IA mandou responder texto simples
+                        await sendWhatsAppMessage(remoteJid, cmd.reply);
+                    } else if (cmd.action === 'add') {
+                        // Se a IA mandou adicionar gasto
+                        await supabase.from(cmd.table).insert([{
+                            ...cmd.data,
+                            user_id: userSettings.user_id,
+                            context: contextId,
+                            created_at: new Date()
+                        }]);
+                        
+                        const valorFormatado = cmd.data.amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                        await sendWhatsAppMessage(remoteJid, `✅ *Lançado!* \n📝 ${cmd.data.description}\n💰 ${valorFormatado}`);
+                    }
+                }
+            } else {
+                // Se a IA falou algo fora do JSON
+                await sendWhatsAppMessage(remoteJid, responseText);
+            }
+        } catch (jsonError) {
+            console.error("Erro ao ler JSON da IA:", jsonError);
+            // Em último caso, não responde nada para não spamar erro
         }
 
         return NextResponse.json({ success: true });
 
     } catch (e: any) {
-        console.error("ERRO FATAL:", e);
+        console.error("ERRO CRÍTICO:", e);
         return NextResponse.json({ error: e.message }, { status: 500 });
     }
 }
