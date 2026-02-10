@@ -67,7 +67,6 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "User unknown" });
         }
 
-        // --- 2. ATUALIZAÇÃO DE ID ---
         if (senderId !== userSettings.whatsapp_phone && userSettings.whatsapp_id !== senderId) {
             await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userSettings.user_id);
             userSettings.whatsapp_id = senderId;
@@ -85,27 +84,45 @@ export async function POST(req: Request) {
         if (!messageContent) return NextResponse.json({ status: 'No Text' });
 
         // --- 3. IA ---
-        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         
+        // VOLTEI O PROMPT PARA O FORMATO LIMPO (SEM ETIQUETAS)
         const systemPrompt = `
-        ATUE COMO: Assistente Financeiro. DATA: ${new Date().toISOString().split('T')[0]}.
-        REGRAS:
-        1. Use 'title' para nome.
+        ATUE COMO: Assistente Financeiro "Meu Aliado". 
+        DATA HOJE: ${new Date().toISOString().split('T')[0]}.
+
+        REGRAS RÍGIDAS:
+        1. Use 'title' para o nome do gasto.
         2. Transactions exige 'target_month' (Ex: Jan, Fev).
+        3. Datas SEMPRE no formato YYYY-MM-DD.
         
-        RETORNE JSON:
-        [TRANSAÇÃO] [{"action":"add", "table":"transactions", "data":{ "title": "...", "amount": 0.00, "type": "expense", "date": "YYYY-MM-DD", "category": "Outros" }}]
-        [FIXO] [{"action":"add", "table":"recurring", "data":{ "title": "...", "value": 0.00, "type": "expense", "due_day": 10, "category": "Fixa" }}]
-        [PARCELADO] [{"action":"add", "table":"installments", "data":{ "title": "...", "total_value": 0.00, "installments_count": 10, "value_per_month": 0.00, "due_day": 10 }}]
-        [CONVERSA] {"reply": "..."}
+        RETORNE APENAS O ARRAY JSON (SEM TEXTO EXTRA):
+        
+        [GASTO COMUM]
+        [{"action":"add", "table":"transactions", "data":{ "title": "Almoço", "amount": 20.00, "type": "expense", "date": "2024-02-10", "category": "Alimentação" }}]
+        
+        [CONTA FIXA]
+        [{"action":"add", "table":"recurring", "data":{ "title": "Netflix", "value": 55.90, "type": "expense", "due_day": 10, "category": "Fixa" }}]
+
+        [PARCELADO]
+        [{"action":"add", "table":"installments", "data":{ "title": "Tênis", "total_value": 500.00, "installments_count": 5, "value_per_month": 100.00, "due_day": 10 }}]
+
+        [CONVERSA]
+        {"reply": "Olá! Mande seus gastos."}
         `;
 
         const result = await model.generateContent([systemPrompt, messageContent]);
-        const cleanJson = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-        const jsonMatch = cleanJson.match(/\[[\s\S]*\]/) || cleanJson.match(/\{[\s\S]*\}/);
+        let cleanJson = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+        
+        // GARANTIA EXTRA: Pega apenas o que está entre [ e ] ou { e }
+        const arrayMatch = cleanJson.match(/\[[\s\S]*\]/);
+        const objectMatch = cleanJson.match(/\{[\s\S]*\}/);
+        
+        if (arrayMatch) cleanJson = arrayMatch[0];
+        else if (objectMatch) cleanJson = objectMatch[0];
 
-        if (jsonMatch) {
-            let commands = JSON.parse(jsonMatch[0]);
+        try {
+            let commands = JSON.parse(cleanJson);
             if (!Array.isArray(commands)) commands = [commands];
             const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
@@ -121,25 +138,29 @@ export async function POST(req: Request) {
                         created_at: new Date()
                     };
 
-                    // --- FORMATADOR DE DATA MANUAL (À PROVA DE ERRO) ---
-                    // Converte YYYY-MM-DD para DD/MM/AAAA
-                    if (cmd.data.date) {
-                         const dateObj = new Date(cmd.data.date);
-                         // Garante dia e mês com 2 dígitos
-                         const day = String(dateObj.getUTCDate()).padStart(2, '0');
-                         const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
-                         const year = dateObj.getUTCFullYear();
-                         
-                         // Se for transactions, salva como texto BR. Se for installments (due_day), mantém numero.
-                         if (cmd.table === 'transactions') {
-                             payload.date = `${day}/${month}/${year}`; // AQUI ESTÁ A MÁGICA
+                    // --- CONVERSOR DE DATA MANUAL (YYYY-MM-DD -> DD/MM/YYYY) ---
+                    // Isso resolve o problema do gasto não aparecer no site
+                    if (cmd.data.date && cmd.data.date.includes('-')) {
+                         const parts = cmd.data.date.split('-'); // [2026, 02, 10]
+                         if (parts.length === 3) {
+                             const year = parts[0];
+                             const month = parts[1];
+                             const day = parts[2];
+                             
+                             // Salva como DD/MM/AAAA para transactions
+                             if (cmd.table === 'transactions') {
+                                 payload.date = `${day}/${month}/${year}`;
+                             }
                          }
                     }
 
-                    // --- TRATAMENTO ESPECÍFICO ---
+                    // --- REGRAS ESPECÍFICAS ---
                     if (cmd.table === 'transactions') {
-                        const d = new Date(cmd.data.date);
-                        payload.target_month = months[d.getUTCMonth()];
+                        // Se for transactions, define o mês alvo baseado na data enviada pela IA
+                        if (cmd.data.date) {
+                            const d = new Date(cmd.data.date);
+                            payload.target_month = months[d.getUTCMonth()];
+                        }
                         payload.is_paid = true;
                         payload.status = 'paid';
                     }
@@ -155,7 +176,7 @@ export async function POST(req: Request) {
 
                     if (error) {
                         console.error(`❌ ERRO SUPABASE:`, error);
-                        await sendWhatsAppMessage(targetPhone, `❌ Erro: ${error.message}`);
+                        await sendWhatsAppMessage(targetPhone, `❌ Erro ao salvar: ${error.message}`);
                     } else {
                         const val = cmd.data.amount || cmd.data.value || cmd.data.total_value || 0;
                         const valorFmt = val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -163,7 +184,9 @@ export async function POST(req: Request) {
                     }
                 }
             }
-        } else {
+        } catch (error) {
+            console.error("❌ ERRO JSON:", error);
+            // Se falhar o JSON, manda a resposta em texto da IA (fallback)
             await sendWhatsAppMessage(targetPhone, result.response.text());
         }
 
