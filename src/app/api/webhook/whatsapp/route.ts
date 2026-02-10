@@ -85,7 +85,7 @@ export async function POST(req: Request) {
         if (!messageContent) return NextResponse.json({ status: 'No Content' });
 
         // --- 3. IA ---
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
         
         const systemPrompt = `
         ATUE COMO: Assistente Financeiro "Meu Aliado". HOJE: ${new Date().toISOString().split('T')[0]}.
