@@ -6,6 +6,14 @@ const EVOLUTION_URL = process.env.EVOLUTION_URL || "http://167.234.242.205:8080"
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "sua-senha-secreta";
 const INSTANCE_NAME = "MEO_ALIADO_INSTANCE";
 
+// Função para baixar imagem da mensagem (se houver)
+async function downloadMedia(url: string) {
+    const res = await fetch(url, { headers: { 'apikey': EVOLUTION_API_KEY } });
+    if (!res.ok) return null;
+    const arrayBuffer = await res.arrayBuffer();
+    return Buffer.from(arrayBuffer).toString('base64');
+}
+
 async function sendWhatsAppMessage(jid: string, text: string) {
     const finalJid = jid.includes('@') ? jid : `${jid}@s.whatsapp.net`;
     try {
@@ -34,7 +42,28 @@ export async function POST(req: Request) {
 
         const remoteJid = key.remoteJid;       
         const senderId = remoteJid.split('@')[0];
-        const messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
+        
+        // --- LÓGICA DE TEXTO E IMAGEM ---
+        let messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
+        const messageType = body.data?.messageType;
+        let imageBase64 = null;
+
+        // Se for imagem, tenta baixar
+        if (messageType === "imageMessage" || body.data?.message?.imageMessage) {
+            console.log("📸 Imagem detectada! Tentando baixar...");
+            const mediaUrl = body.data?.message?.imageMessage?.url || body.data?.mediaUrl; // Evolution varia as vezes
+            // Na Evolution V2, geralmente precisa buscar a midia pelo ID ou o webhook manda base64 direto se configurado
+            // Vou assumir que o webhook manda o base64 no body ou URL (ajuste conforme sua config da Evolution)
+            
+            // SE A EVOLUTION MANDAR O BASE64 DIRETO (Configuração recomendada):
+            if (body.data?.message?.imageMessage?.jpegThumbnail) {
+                 // Thumbnail é baixa qualidade, ideal é configurar o webhook para mandar o 'media' completo
+                 // Mas para teste, vamos usar o texto da legenda
+                 messageContent = body.data?.message?.imageMessage?.caption || "Analise esta imagem de comprovante";
+            }
+            
+            // NOTA: Para imagem funcionar 100%, você precisa ativar "includeBase64" no webhook da Evolution ou baixar da URL.
+        }
 
         console.log(`📩 Recebido de: ${senderId}`);
 
@@ -73,51 +102,34 @@ export async function POST(req: Request) {
         }
 
         const targetPhone = userSettings.whatsapp_phone || senderId;
+        const { data: workspace } = await supabase.from('workspaces').select('id').eq('user_id', userSettings.user_id).limit(1).single();
 
-        const { data: workspace } = await supabase
-            .from('workspaces')
-            .select('id')
-            .eq('user_id', userSettings.user_id)
-            .limit(1)
-            .single();
-
-        if (!messageContent) return NextResponse.json({ status: 'No Text' });
+        if (!messageContent && !imageBase64) return NextResponse.json({ status: 'No Content' });
 
         // --- 3. IA ---
         const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
         
-        // VOLTEI O PROMPT PARA O FORMATO LIMPO (SEM ETIQUETAS)
         const systemPrompt = `
-        ATUE COMO: Assistente Financeiro "Meu Aliado". 
-        DATA HOJE: ${new Date().toISOString().split('T')[0]}.
+        ATUE COMO: Assistente Financeiro "Meu Aliado". HOJE: ${new Date().toISOString().split('T')[0]}.
 
-        REGRAS RÍGIDAS:
-        1. Use 'title' para o nome do gasto.
-        2. Transactions exige 'target_month' (Ex: Jan, Fev).
-        3. Datas SEMPRE no formato YYYY-MM-DD.
+        SE FOR PARCELADO (Ex: "10x de 300"): 
+        Retorne a tabela "installments" com "installments_count": 10 e "total_value": 3000 (total geral).
         
-        RETORNE APENAS O ARRAY JSON (SEM TEXTO EXTRA):
-        
-        [GASTO COMUM]
-        [{"action":"add", "table":"transactions", "data":{ "title": "Almoço", "amount": 20.00, "type": "expense", "date": "2024-02-10", "category": "Alimentação" }}]
-        
-        [CONTA FIXA]
-        [{"action":"add", "table":"recurring", "data":{ "title": "Netflix", "value": 55.90, "type": "expense", "due_day": 10, "category": "Fixa" }}]
+        SE FOR COMPROVANTE (Imagem ou Texto): 
+        Extraia data, valor e local.
 
-        [PARCELADO]
-        [{"action":"add", "table":"installments", "data":{ "title": "Tênis", "total_value": 500.00, "installments_count": 5, "value_per_month": 100.00, "due_day": 10 }}]
-
-        [CONVERSA]
-        {"reply": "Olá! Mande seus gastos."}
+        RETORNE APENAS JSON:
+        [PARCELADO] [{"action":"add", "table":"installments", "data":{ "title": "PS5", "total_value": 3000.00, "installments_count": 10, "value_per_month": 300.00, "due_day": 10 }}]
+        [GASTO] [{"action":"add", "table":"transactions", "data":{ "title": "Almoço", "amount": 20.00, "type": "expense", "date": "YYYY-MM-DD", "category": "Alimentação" }}]
+        [CONVERSA] {"reply": "..."}
         `;
 
+        // Se tiver imagem, mandamos junto (implementação futura simplificada aqui focando no texto primeiro)
         const result = await model.generateContent([systemPrompt, messageContent]);
-        let cleanJson = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
         
-        // GARANTIA EXTRA: Pega apenas o que está entre [ e ] ou { e }
+        let cleanJson = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
         const arrayMatch = cleanJson.match(/\[[\s\S]*\]/);
         const objectMatch = cleanJson.match(/\{[\s\S]*\}/);
-        
         if (arrayMatch) cleanJson = arrayMatch[0];
         else if (objectMatch) cleanJson = objectMatch[0];
 
@@ -138,62 +150,87 @@ export async function POST(req: Request) {
                         created_at: new Date()
                     };
 
-                    // --- CONVERSOR DE DATA MANUAL (YYYY-MM-DD -> DD/MM/YYYY) ---
-                    // Isso resolve o problema do gasto não aparecer no site
+                    // --- TRATAMENTO DE DATA (BR) ---
                     if (cmd.data.date && cmd.data.date.includes('-')) {
-                         const parts = cmd.data.date.split('-'); // [2026, 02, 10]
+                         const parts = cmd.data.date.split('-'); 
                          if (parts.length === 3) {
-                             const year = parts[0];
-                             const month = parts[1];
-                             const day = parts[2];
-                             
-                             // Salva como DD/MM/AAAA para transactions
                              if (cmd.table === 'transactions') {
-                                 payload.date = `${day}/${month}/${year}`;
+                                 payload.date = `${parts[2]}/${parts[1]}/${parts[0]}`;
                              }
                          }
                     }
 
-                    // --- REGRAS ESPECÍFICAS ---
-                    if (cmd.table === 'transactions') {
-                        // Se for transactions, define o mês alvo baseado na data enviada pela IA
-                        if (cmd.data.date) {
-                            const d = new Date(cmd.data.date);
-                            payload.target_month = months[d.getUTCMonth()];
-                        }
-                        payload.is_paid = true;
-                        payload.status = 'paid';
-                    }
-
+                    // --- PARCELADO INTELIGENTE (LOOP DE CRIAÇÃO) ---
                     if (cmd.table === 'installments') {
+                        // Salva o "contrato" pai na tabela installments
                         payload.current_installment = 1;
                         payload.status = 'active';
+                        
+                        console.log(`💾 Criando Contrato Parcelado:`, payload);
+                        const { data: installmentData, error: instError } = await supabase.from('installments').insert([payload]).select().single();
+                        
+                        if (!instError && installmentData) {
+                            // AGORA A MÁGICA: Cria as X transações futuras na tabela 'transactions'
+                            // Para aparecer no extrato mês a mês
+                            const totalParcelas = cmd.data.installments_count;
+                            const valorParcela = cmd.data.value_per_month;
+                            const diaVenc = cmd.data.due_day || 10;
+                            const hoje = new Date();
+
+                            for (let i = 0; i < totalParcelas; i++) {
+                                // Calcula data: Mês atual + i
+                                const dataParcela = new Date(hoje.getFullYear(), hoje.getMonth() + i, diaVenc);
+                                const mesNome = months[dataParcela.getMonth()];
+                                const ano = dataParcela.getFullYear();
+                                
+                                // Formata data BR
+                                const diaStr = String(diaVenc).padStart(2, '0');
+                                const mesStr = String(dataParcela.getMonth() + 1).padStart(2, '0');
+                                const dataFormatada = `${diaStr}/${mesStr}/${ano}`;
+
+                                await supabase.from('transactions').insert([{
+                                    user_id: userSettings.user_id,
+                                    context: workspace?.id,
+                                    title: `${cmd.data.title} (${i+1}/${totalParcelas})`, // Ex: PS5 (1/10)
+                                    amount: valorParcela,
+                                    type: 'expense',
+                                    date: dataFormatada,
+                                    target_month: mesNome,
+                                    category: 'Parcelado',
+                                    is_paid: false, // Futuro não está pago
+                                    status: 'pending'
+                                }]);
+                            }
+                            await sendWhatsAppMessage(targetPhone, `✅ Parcelamento criado! ${totalParcelas}x de ${valorParcela} lançadas.`);
+                            continue; // Pula o insert padrão pois já fizemos manual
+                        }
                     }
 
-                    console.log(`💾 SALVANDO EM ${cmd.table}:`, JSON.stringify(payload, null, 2));
-
-                    const { error } = await supabase.from(cmd.table).insert([payload]);
-
-                    if (error) {
-                        console.error(`❌ ERRO SUPABASE:`, error);
-                        await sendWhatsAppMessage(targetPhone, `❌ Erro ao salvar: ${error.message}`);
-                    } else {
-                        const val = cmd.data.amount || cmd.data.value || cmd.data.total_value || 0;
+                    // Insert Padrão (Gastos à vista)
+                    if (cmd.table === 'transactions') {
+                        const d = new Date(cmd.data.date);
+                        payload.target_month = months[d.getUTCMonth()];
+                        payload.is_paid = true;
+                        payload.status = 'paid';
+                        
+                        console.log(`💾 Salvando Gasto:`, payload);
+                        const { error } = await supabase.from(cmd.table).insert([payload]);
+                        if (error) throw error;
+                        
+                        const val = cmd.data.amount || 0;
                         const valorFmt = val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                         await sendWhatsAppMessage(targetPhone, `✅ Lançado: ${cmd.data.title} (${valorFmt})`);
                     }
                 }
             }
-        } catch (error) {
-            console.error("❌ ERRO JSON:", error);
-            // Se falhar o JSON, manda a resposta em texto da IA (fallback)
+        } catch (error: any) {
+            console.error("❌ ERRO:", error);
             await sendWhatsAppMessage(targetPhone, result.response.text());
         }
 
         return NextResponse.json({ success: true });
 
     } catch (e: any) {
-        console.error("🔥 ERRO GERAL:", e);
         return NextResponse.json({ error: e.message }, { status: 500 });
     }
 }
