@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Lock, Camera, Save, Loader2, Mail, Phone, Shield, Link as LinkIcon, ExternalLink } from 'lucide-react'; 
+import { X, User, Lock, Camera, Save, Loader2, Mail, Phone, Shield, Link as LinkIcon, ExternalLink, Copy, Check } from 'lucide-react'; 
 import { supabase } from '@/supabase';
 import { toast } from 'sonner';
 
 // --- CONFIGURAÇÃO DO BOT ---
-// COLOQUE AQUI O NÚMERO DO SEU ROBÔ (O que recebe as mensagens)
-// Formato: 55 + DDD + Numero (Sem caracteres especiais)
-const BOT_NUMBER = "556293882931"; 
+const BOT_NUMBER = "556293882931"; // Seu número de Admin
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -28,6 +26,7 @@ export default function ProfileModal({ isOpen, onClose, user }: ProfileModalProp
   
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [copied, setCopied] = useState(false); // Estado para o ícone de copiado
 
   // 1. BUSCAR TELEFONE AO ABRIR
   useEffect(() => {
@@ -124,20 +123,27 @@ export default function ProfileModal({ isOpen, onClose, user }: ProfileModalProp
   // --- FUNÇÃO DO LINK MÁGICO ---
   const handleConnectWhatsapp = () => {
     const cleanPhone = whatsapp.replace(/\D/g, '');
+    if (cleanPhone.length < 10) return toast.error("Número incompleto.");
     
-    if (cleanPhone.length < 10) {
-      toast.error("Digite seu número completo com DDD antes de conectar.");
-      return;
-    }
-
-    // Gera o texto: "Ativar 556299999999"
+    // Tenta forçar o protocolo whatsapp:// que as vezes ajuda a escolher o app
+    // Mas o wa.me é mais seguro para web.
     const message = `Ativar ${cleanPhone}`;
-    
-    // Gera o Link do WhatsApp (Deep Link)
     const link = `https://wa.me/${BOT_NUMBER}?text=${encodeURIComponent(message)}`;
-    
-    // Abre em nova aba
     window.open(link, '_blank');
+  };
+
+  // --- FUNÇÃO DE COPIAR CÓDIGO (NOVA) ---
+  const handleCopyCode = () => {
+    const cleanPhone = whatsapp.replace(/\D/g, '');
+    if (cleanPhone.length < 10) return toast.error("Salve seu número primeiro.");
+
+    const message = `Ativar ${cleanPhone}`;
+    navigator.clipboard.writeText(message);
+    
+    setCopied(true);
+    toast.success("Código copiado! Abra seu WhatsApp pessoal e cole na conversa com o Bot.");
+    
+    setTimeout(() => setCopied(false), 3000);
   };
 
   return (
@@ -226,18 +232,29 @@ export default function ProfileModal({ isOpen, onClose, user }: ProfileModalProp
                       className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-purple-500 outline-none transition placeholder:text-gray-600"
                     />
                   </div>
-                  <p className="text-[10px] text-gray-500 mt-1 ml-1 mb-2">Digite seu número para liberar o botão de conexão.</p>
+                  <p className="text-[10px] text-gray-500 mt-1 ml-1 mb-2">Digite seu número para liberar a conexão.</p>
 
-                  {/* --- BOTÃO DE CONEXÃO NOVO --- */}
+                  {/* --- ÁREA DE CONEXÃO --- */}
                   {whatsapp.length > 8 && (
-                    <button 
-                      onClick={handleConnectWhatsapp}
-                      className="w-full bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/50 text-emerald-400 font-bold py-2.5 rounded-xl transition flex items-center justify-center gap-2 mb-2 group"
-                    >
-                      <LinkIcon size={16} className="group-hover:rotate-45 transition-transform" /> 
-                      Conectar WhatsApp
-                      <ExternalLink size={12} className="opacity-50"/>
-                    </button>
+                    <div className="flex gap-2">
+                        {/* Botão Principal (Link) */}
+                        <button 
+                        onClick={handleConnectWhatsapp}
+                        className="flex-1 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/50 text-emerald-400 font-bold py-2.5 rounded-xl transition flex items-center justify-center gap-2 mb-2 group"
+                        >
+                        <LinkIcon size={16} /> 
+                        Conectar
+                        </button>
+
+                        {/* Botão Copiar (Backup) */}
+                        <button 
+                        onClick={handleCopyCode}
+                        className="w-12 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 font-bold py-2.5 rounded-xl transition flex items-center justify-center mb-2"
+                        title="Copiar código de ativação"
+                        >
+                        {copied ? <Check size={16} className="text-green-500"/> : <Copy size={16} />} 
+                        </button>
+                    </div>
                   )}
                   {/* ----------------------------- */}
 
@@ -264,7 +281,8 @@ export default function ProfileModal({ isOpen, onClose, user }: ProfileModalProp
 
           {activeTab === 'security' && (
             <div className="space-y-6">
-              <div className="bg-orange-500/10 border border-orange-500/20 p-4 rounded-xl flex items-start gap-3">
+               {/* (Mantive igual) */}
+               <div className="bg-orange-500/10 border border-orange-500/20 p-4 rounded-xl flex items-start gap-3">
                  <Lock className="text-orange-500 mt-1" size={20}/>
                  <div>
                    <h4 className="text-orange-400 font-bold text-sm">Área Sensível</h4>
