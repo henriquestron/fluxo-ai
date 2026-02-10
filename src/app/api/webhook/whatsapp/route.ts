@@ -89,7 +89,7 @@ export async function POST(req: Request) {
         const contextId = workspace?.id;
 
         // 3. IA (Gemini 1.5 Flash)
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
         const systemPrompt = `
         Aja como um assistente financeiro. Hoje é ${new Date().toISOString().split('T')[0]}.
