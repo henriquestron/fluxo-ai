@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Lock, Camera, Save, Loader2, Mail } from 'lucide-react';
+import { X, User, Lock, Camera, Save, Loader2, Mail, Phone, Shield } from 'lucide-react'; // Troquei Crown por Shield (mais comum)
 import { supabase } from '@/supabase';
 import { toast } from 'sonner';
 
@@ -13,33 +13,52 @@ export default function ProfileModal({ isOpen, onClose, user }: ProfileModalProp
   if (!isOpen || !user) return null;
 
   const [activeTab, setActiveTab] = useState<'details' | 'security'>('details');
+  
+  // States
   const [fullName, setFullName] = useState(user.user_metadata?.full_name || '');
   const [avatarUrl, setAvatarUrl] = useState(user.user_metadata?.avatar_url || '');
-  
+  const [whatsapp, setWhatsapp] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  // Upload de Foto de Perfil
+  // Buscar dados ao abrir
+  useEffect(() => {
+    if (user?.id) {
+      const fetchSettings = async () => {
+        const { data } = await supabase
+          .from('user_settings')
+          .select('whatsapp_phone')
+          .eq('user_id', user.id)
+          .single();
+        
+        if (data?.whatsapp_phone) {
+          setWhatsapp(data.whatsapp_phone);
+        }
+      };
+      fetchSettings();
+    }
+  }, [user]);
+
+  // Upload Foto
   const handleAvatarUpload = async (e: any) => {
     try {
       setUploading(true);
-      const file = e.target.files[0];
+      const file = e.target.files?.[0]; // Proteção extra aqui
       if (!file) return;
 
       const fileExt = file.name.split('.').pop();
       const fileName = `avatar_${user.id}_${Date.now()}.${fileExt}`;
       const filePath = `avatars/${fileName}`;
 
-      // 1. Upload para o Supabase Storage
-      const { error: uploadError } = await supabase.storage.from('comprovantes').upload(filePath, file); // Usando o bucket existente 'comprovantes' para facilitar
+      const { error: uploadError } = await supabase.storage.from('comprovantes').upload(filePath, file);
       if (uploadError) throw uploadError;
 
-      // 2. Pegar URL Pública
       const { data } = supabase.storage.from('comprovantes').getPublicUrl(filePath);
       setAvatarUrl(data.publicUrl);
-      toast.success("Foto carregada! Clique em Salvar para confirmar.");
+      toast.success("Foto carregada! Clique em Salvar.");
 
     } catch (error: any) {
       toast.error("Erro no upload: " + error.message);
@@ -48,39 +67,49 @@ export default function ProfileModal({ isOpen, onClose, user }: ProfileModalProp
     }
   };
 
-  // Salvar Dados (Nome e Foto)
+  // Salvar Geral
   const handleUpdateProfile = async () => {
     setLoading(true);
-    const { error } = await supabase.auth.updateUser({
-      data: { full_name: fullName, avatar_url: avatarUrl }
-    });
+    try {
+      // 1. Auth
+      const { error: authError } = await supabase.auth.updateUser({
+        data: { full_name: fullName, avatar_url: avatarUrl }
+      });
+      if (authError) throw authError;
 
-    if (error) {
-      toast.error("Erro ao atualizar perfil.");
-    } else {
-      toast.success("Perfil atualizado com sucesso!");
-      // Força um reload suave para atualizar o header
+      // 2. Tabela user_settings
+      const cleanPhone = whatsapp.replace(/\D/g, ''); // Limpa formatação
+      
+      const { error: dbError } = await supabase
+        .from('user_settings')
+        .upsert({ 
+          user_id: user.id, 
+          whatsapp_phone: cleanPhone 
+        }, { onConflict: 'user_id' });
+
+      if (dbError) throw dbError;
+
+      toast.success("Perfil atualizado!");
       window.location.reload(); 
+
+    } catch (error: any) {
+      toast.error("Erro: " + error.message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   // Trocar Senha
   const handleChangePassword = async () => {
-    if (password !== confirmPassword) {
-      return toast.warning("As senhas não coincidem.");
-    }
-    if (password.length < 6) {
-      return toast.warning("A senha deve ter no mínimo 6 caracteres.");
-    }
+    if (password !== confirmPassword) return toast.warning("Senhas não conferem.");
+    if (password.length < 6) return toast.warning("Mínimo 6 caracteres.");
 
     setLoading(true);
     const { error } = await supabase.auth.updateUser({ password: password });
 
-    if (error) {
-      toast.error("Erro ao trocar senha: " + error.message);
-    } else {
-      toast.success("Senha alterada! Use a nova senha no próximo login.");
+    if (error) toast.error("Erro: " + error.message);
+    else {
+      toast.success("Senha alterada!");
       setPassword('');
       setConfirmPassword('');
     }
@@ -115,16 +144,14 @@ export default function ProfileModal({ isOpen, onClose, user }: ProfileModalProp
           </button>
         </div>
 
-        {/* CONTEÚDO */}
+        {/* CONTENT */}
         <div className="p-8 overflow-y-auto">
           
-          {/* ABA 1: DADOS */}
           {activeTab === 'details' && (
             <div className="space-y-6">
-              
-              {/* AVATAR UPLOAD */}
+              {/* Avatar */}
               <div className="flex flex-col items-center gap-4">
-                <div className="relative group cursor-pointer">
+                <div className="relative group cursor-pointer w-24 h-24">
                   <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-gray-700 group-hover:border-purple-500 transition shadow-xl">
                     {avatarUrl ? (
                       <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
@@ -143,20 +170,41 @@ export default function ProfileModal({ isOpen, onClose, user }: ProfileModalProp
                 <p className="text-xs text-gray-500">Clique na foto para alterar</p>
               </div>
 
-              {/* INPUTS */}
+              {/* Inputs */}
               <div className="space-y-4">
                 <div>
-                  <label className="text-xs text-gray-500 font-bold ml-1 mb-1 block">Nome de Exibição</label>
+                  <label className="text-xs text-gray-500 font-bold ml-1 mb-1 block">Nome</label>
                   <input 
                     type="text" 
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Como você quer ser chamado?"
                     className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-purple-500 outline-none transition"
                   />
                 </div>
+
+                {/* WhatsApp Input */}
                 <div>
-                  <label className="text-xs text-gray-500 font-bold ml-1 mb-1 block">E-mail (Não alterável)</label>
+                  <div className="flex justify-between items-center mb-1 ml-1">
+                    <label className="text-xs text-gray-500 font-bold flex items-center gap-1">
+                      <Phone size={12} /> WhatsApp (IA)
+                    </label>
+                    <span className="bg-yellow-500/20 text-yellow-500 border border-yellow-500/50 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <Shield size={10} /> PRO
+                    </span>
+                  </div>
+                  <input 
+                    type="text" 
+                    value={whatsapp}
+                    onChange={(e) => setWhatsapp(e.target.value)}
+                    placeholder="55 + DDD + Número"
+                    className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-purple-500 outline-none transition placeholder:text-gray-600"
+                  />
+                  <p className="text-[10px] text-gray-500 mt-1 ml-1">Para enviar comprovantes e receber alertas.</p>
+                </div>
+
+                {/* Email */}
+                <div>
+                  <label className="text-xs text-gray-500 font-bold ml-1 mb-1 block">E-mail</label>
                   <div className="w-full bg-gray-900/50 border border-gray-800 rounded-xl p-3 text-gray-400 flex items-center gap-2 cursor-not-allowed">
                     <Mail size={16}/> {user.email}
                   </div>
@@ -166,57 +214,43 @@ export default function ProfileModal({ isOpen, onClose, user }: ProfileModalProp
               <button 
                 onClick={handleUpdateProfile} 
                 disabled={loading || uploading}
-                className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl transition shadow-lg shadow-purple-900/20 flex items-center justify-center gap-2"
+                className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl transition shadow-lg flex items-center justify-center gap-2"
               >
-                {loading ? <Loader2 className="animate-spin"/> : <><Save size={18}/> Salvar Alterações</>}
+                {loading ? <Loader2 className="animate-spin"/> : <><Save size={18}/> Salvar</>}
               </button>
             </div>
           )}
 
-          {/* ABA 2: SEGURANÇA */}
           {activeTab === 'security' && (
             <div className="space-y-6">
               <div className="bg-orange-500/10 border border-orange-500/20 p-4 rounded-xl flex items-start gap-3">
-                <Lock className="text-orange-500 mt-1" size={20}/>
-                <div>
-                  <h4 className="text-orange-400 font-bold text-sm">Área Sensível</h4>
-                  <p className="text-orange-500/70 text-xs mt-1">Ao alterar sua senha, você pode ser desconectado de outros dispositivos.</p>
-                </div>
-              </div>
+                 <Lock className="text-orange-500 mt-1" size={20}/>
+                 <div>
+                   <h4 className="text-orange-400 font-bold text-sm">Área Sensível</h4>
+                   <p className="text-orange-500/70 text-xs mt-1">Alterar senha pode desconectar outros dispositivos.</p>
+                 </div>
+               </div>
 
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs text-gray-500 font-bold ml-1 mb-1 block">Nova Senha</label>
-                  <input 
-                    type="password" 
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="No mínimo 6 caracteres"
-                    className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-purple-500 outline-none transition"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500 font-bold ml-1 mb-1 block">Confirmar Nova Senha</label>
-                  <input 
-                    type="password" 
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Digite novamente"
-                    className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-purple-500 outline-none transition"
-                  />
-                </div>
-              </div>
+               <div className="space-y-4">
+                 <div>
+                   <label className="text-xs text-gray-500 font-bold ml-1 mb-1 block">Nova Senha</label>
+                   <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-purple-500 outline-none" />
+                 </div>
+                 <div>
+                   <label className="text-xs text-gray-500 font-bold ml-1 mb-1 block">Confirmar</label>
+                   <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-purple-500 outline-none" />
+                 </div>
+               </div>
 
-              <button 
-                onClick={handleChangePassword} 
-                disabled={loading || !password}
-                className="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded-xl transition border border-gray-600 flex items-center justify-center gap-2"
-              >
-                {loading ? <Loader2 className="animate-spin"/> : "Atualizar Senha"}
-              </button>
+               <button 
+                 onClick={handleChangePassword} 
+                 disabled={loading || !password}
+                 className="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded-xl transition border border-gray-600 flex items-center justify-center gap-2"
+               >
+                 {loading ? <Loader2 className="animate-spin"/> : "Atualizar Senha"}
+               </button>
             </div>
           )}
-
         </div>
       </div>
     </div>
