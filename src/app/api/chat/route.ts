@@ -7,44 +7,16 @@ export async function POST(req: Request) {
   if (!apiKey) return NextResponse.json({ error: "Chave API faltando no servidor" }, { status: 500 });
 
   try {
-    // Recebemos o 'history' aqui agora
     const { prompt, contextData, userPlan, images, history } = await req.json();
     
-    const genAI = new GoogleGenerativeAI(apiKey);
-    
-    // Usando Gemini 2.0 Flash (Rápido, Inteligente e Multimodal)
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-
-    // --- 1. PREPARAÇÃO E LIMPEZA DAS IMAGENS ---
-    const imageParts = images?.map((img: any) => {
-        let base64Data = img.base64;
-        let mimeType = "image/jpeg"; // Padrão seguro
-
-        // Tenta descobrir se é PDF pelo cabeçalho
-        const mimeMatch = base64Data.match(/^data:(.*);base64,/);
-        if (mimeMatch && mimeMatch[1]) {
-            mimeType = mimeMatch[1];
-        }
-
-        // Remove cabeçalho e espaços
-        base64Data = base64Data.replace(/^data:.*;base64,/, "").trim();
-
-        return {
-            inlineData: {
-                data: base64Data,
-                mimeType: mimeType
-            }
-        };
-    }) || [];
-
-    // --- 2. IDENTIFICAÇÃO DOS PERSONAGENS ---
+    // --- 1. DEFINIR O SYSTEM PROMPT (ANTES DE TUDO) ---
+    // Precisamos definir isso antes de iniciar o modelo
     const isConsultant = contextData?.is_consultant || false;
     const viewingClient = contextData?.viewing_as_client || false;
-    const targetName = viewingClient ? (contextData.client_name || "o Cliente") : "Você (Vitor)";
+    const targetName = viewingClient ? (contextData.client_name || "o Cliente") : "Você";
     const userRole = isConsultant ? "CONSULTOR FINANCEIRO" : "DONO DA CONTA";
 
-    // --- 3. PROMPT DE SISTEMA ---
-    const systemInstruction = `
+    const systemInstructionText = `
         ATUE COMO: "Meu Aliado", um estrategista financeiro de elite.
         
         --- CONTEXTO DA SESSÃO ---
@@ -97,10 +69,40 @@ export async function POST(req: Request) {
         3. Nunca invente dados. Use apenas o que está no JSON fornecido.
     `;
 
-    // INICIA O CHAT COM HISTÓRICO
+    // --- 2. INICIALIZAR O MODELO COM A INSTRUÇÃO ---
+    // A CORREÇÃO ESTÁ AQUI: Passamos systemInstruction na criação do modelo, não no chat.
+    const genAI = new GoogleGenerativeAI(apiKey);
+    
+    // Mudei para gemini-1.5-flash para garantir estabilidade máxima com systemInstruction
+    const model = genAI.getGenerativeModel({ 
+        model: "gemini-2.0-flash", 
+        systemInstruction: systemInstructionText 
+    });
+
+    // --- 3. PREPARAÇÃO DAS IMAGENS ---
+    const imageParts = images?.map((img: any) => {
+        let base64Data = img.base64;
+        let mimeType = "image/jpeg"; 
+
+        const mimeMatch = base64Data.match(/^data:(.*);base64,/);
+        if (mimeMatch && mimeMatch[1]) {
+            mimeType = mimeMatch[1];
+        }
+
+        base64Data = base64Data.replace(/^data:.*;base64,/, "").trim();
+
+        return {
+            inlineData: {
+                data: base64Data,
+                mimeType: mimeType
+            }
+        };
+    }) || [];
+
+    // --- 4. INICIA O CHAT (APENAS COM O HISTÓRICO) ---
+    // Removemos systemInstruction daqui pois já está no modelo
     const chat = model.startChat({
-        history: history || [], 
-        systemInstruction: systemInstruction 
+        history: history || []
     });
 
     // Monta a mensagem atual
