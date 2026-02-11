@@ -17,7 +17,6 @@ async function sendWhatsAppMessage(jid: string, text: string) {
     } catch (e) { console.error("❌ Erro Envio ZAP:", e); }
 }
 
-// Função para baixar APENAS se não vier base64
 async function downloadMedia(url: string) {
     try {
         console.log("📥 Tentando baixar URL:", url);
@@ -46,11 +45,11 @@ export async function POST(req: Request) {
 
         const key = body.data?.key;
         if (!key?.remoteJid || key.fromMe) return NextResponse.json({ status: 'Ignored' });
-
-        const messageId = key.id;
-        const remoteJid = key.remoteJid;
+        
+        const messageId = key.id; 
+        const remoteJid = key.remoteJid;       
         const senderId = remoteJid.split('@')[0];
-
+        
         // --- LÓGICA DE ÁUDIO ---
         let promptParts: any[] = [];
         let hasAudio = false;
@@ -58,26 +57,14 @@ export async function POST(req: Request) {
         const msgData = body.data?.message;
         const msgType = body.data?.messageType;
 
-        // Verifica se é áudio
         if (msgType === "audioMessage" || msgData?.audioMessage) {
             console.log("🎙️ Áudio detectado.");
+            
+            let audioBase64 = body.data?.base64 || msgData?.audioMessage?.base64 || body.data?.message?.base64;
 
-            // 1. Tenta pegar o Base64 direto (Se vc ativou na Evolution)
-            // 1. DEBUG: Vamos ver o que tem dentro do body
-            console.log("🔍 CHAVES DO DATA:", Object.keys(body.data || {}));
-            if (msgData?.audioMessage) console.log("🔍 CHAVES DO AUDIO:", Object.keys(msgData.audioMessage));
-
-            // Tenta pegar o Base64 direto
-            let audioBase64 = body.data?.base64 ||
-                msgData?.base64 ||
-                msgData?.audioMessage?.base64 ||
-                body.data?.message?.base64; // Tenta todas as variações possíveis
-
-            // 2. Se não tem base64, tenta baixar da URL (Cuidado com .enc)
             if (!audioBase64) {
                 const url = msgData?.audioMessage?.url || body.data?.mediaUrl;
                 if (url) {
-                    // Se for .enc, avisa que vai dar ruim
                     if (url.includes('.enc')) console.warn("⚠️ URL Criptografada (.enc). Ative 'Include Base64' na Evolution!");
                     audioBase64 = await downloadMedia(url);
                 }
@@ -86,17 +73,13 @@ export async function POST(req: Request) {
             if (audioBase64) {
                 hasAudio = true;
                 promptParts.push({
-                    inlineData: {
-                        mimeType: "audio/ogg",
-                        data: audioBase64
-                    }
+                    inlineData: { mimeType: "audio/ogg", data: audioBase64 }
                 });
             } else {
                 await sendWhatsAppMessage(remoteJid, "⚠️ Não consegui ouvir o áudio. Ative a opção 'Include Base64' na sua API ou mande texto.");
                 return NextResponse.json({ status: 'Audio Failed' });
             }
         } else {
-            // Texto normal
             const text = msgData?.conversation || msgData?.extendedTextMessage?.text || "";
             if (!text) return NextResponse.json({ status: 'No Content' });
             promptParts.push(text);
@@ -104,18 +87,63 @@ export async function POST(req: Request) {
 
         console.log(`📩 Processando msg de: ${senderId}`);
 
-        // 2. BUSCA USUÁRIO (Resumida)
-        let { data: userSettings } = await supabase.from('user_settings').select('*').or(`whatsapp_phone.eq.${senderId},whatsapp_id.eq.${senderId}`).maybeSingle();
+        // 2. BUSCA E VINCULAÇÃO (AQUI ESTÁ A LÓGICA DE VOLTA COMPLETA) 🔗
+        let { data: userSettings } = await supabase
+            .from('user_settings')
+            .select('*')
+            .or(`whatsapp_phone.eq.${senderId},whatsapp_id.eq.${senderId}`)
+            .maybeSingle();
 
-        // Se não achou ID, tenta pelo telefone (Lógica de vínculo)
+        // Se não achou pelo ID exato, tenta "adivinhar" o formato do número (com/sem 9, com/sem 55)
         if (!userSettings && senderId.length < 15) {
-            const variations = [senderId, senderId.length > 12 ? senderId.replace('9', '') : senderId, senderId.length < 13 ? senderId.slice(0, 4) + '9' + senderId.slice(4) : senderId];
-            const { data: found } = await supabase.from('user_settings').select('*').in('whatsapp_phone', variations).maybeSingle();
-            userSettings = found;
-            if (userSettings) await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userSettings.user_id);
+             const variations = [
+                 senderId, // 556299999999
+                 senderId.length > 12 ? senderId.replace('9', '') : senderId, // 556299999999 (remove o nono digito se tiver)
+                 senderId.length < 13 ? senderId.slice(0, 4) + '9' + senderId.slice(4) : senderId // Adiciona 9 se não tiver
+             ];
+             const { data: found } = await supabase.from('user_settings').select('*').in('whatsapp_phone', variations).maybeSingle();
+             userSettings = found;
         }
 
-        if (!userSettings) return NextResponse.json({ error: "User unknown" });
+        // Se ainda não achou, pode ser a PRIMEIRA VEZ da pessoa mandando mensagem.
+        // Vamos verificar se ela digitou o código/número dela no texto (ex: "Sou o 5562...")
+        if (!userSettings) {
+            const cleanMessage = JSON.stringify(body).replace(/\D/g, ''); // Pega todos os números do texto
+            
+            // Tenta achar alguém no banco que tenha esse número cadastrado manualmente
+            // Ex: O usuário cadastrou "6299999999" no site, e agora mandou mensagem desse número.
+            if (cleanMessage.length >= 10) {
+                const possiblePhones = [cleanMessage, `55${cleanMessage}`, cleanMessage.replace(/^55/, '')];
+                
+                // Procura alguém com esse telefone no campo whatsapp_phone
+                const { data: userToLink } = await supabase
+                    .from('user_settings')
+                    .select('*')
+                    .in('whatsapp_phone', possiblePhones)
+                    .maybeSingle();
+
+                if (userToLink) {
+                    // ACHOU! Vamos vincular o ID do WhatsApp (remoteJid) a esse usuário para sempre.
+                    await supabase
+                        .from('user_settings')
+                        .update({ whatsapp_id: senderId })
+                        .eq('user_id', userToLink.user_id);
+                    
+                    await sendWhatsAppMessage(remoteJid, `✅ *Conta Conectada!* \nReconheci você. Agora posso lançar seus gastos.`);
+                    return NextResponse.json({ success: true, action: "linked" });
+                }
+            }
+            
+            // Se não achou ninguém mesmo
+            // await sendWhatsAppMessage(remoteJid, "Olá! Não reconheci seu número. Cadastre seu telefone no site 'Meu Aliado' primeiro.");
+            return NextResponse.json({ error: "User unknown" });
+        }
+        
+        // Se já achou o usuário, mas o ID do Zap (senderId) ainda não tá salvo (ex: mudou de celular), atualiza.
+        if (senderId !== userSettings.whatsapp_phone && userSettings.whatsapp_id !== senderId) {
+            await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userSettings.user_id);
+            userSettings.whatsapp_id = senderId;
+        }
 
         const targetPhone = userSettings.whatsapp_phone || senderId;
         const { data: workspace } = await supabase.from('workspaces').select('id').eq('user_id', userSettings.user_id).limit(1).single();
@@ -143,7 +171,7 @@ export async function POST(req: Request) {
         const finalPrompt = [systemPrompt, ...promptParts];
         const result = await model.generateContent(finalPrompt);
         let cleanJson = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-
+        
         const arrayMatch = cleanJson.match(/\[[\s\S]*\]/);
         const objectMatch = cleanJson.match(/\{[\s\S]*\}/);
         if (arrayMatch) cleanJson = arrayMatch[0];
@@ -156,7 +184,7 @@ export async function POST(req: Request) {
 
             for (const cmd of commands) {
                 if (cmd.reply) await sendWhatsAppMessage(targetPhone, cmd.reply);
-
+                
                 else if (cmd.action === 'add') {
                     let payload: any = { ...cmd.data, user_id: userSettings.user_id, context: workspace?.id, created_at: new Date(), message_id: messageId };
 
@@ -165,8 +193,8 @@ export async function POST(req: Request) {
                         delete payload.date; delete payload.target_month;
                         const { error } = await supabase.from('installments').insert([payload]);
                         if (!error) {
-                            const total = (cmd.data.total_value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                            await sendWhatsAppMessage(targetPhone, `✅ Parcelado: ${cmd.data.title} (${total})`);
+                             const total = (cmd.data.total_value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                             await sendWhatsAppMessage(targetPhone, `✅ Parcelado: ${cmd.data.title} (${total})`);
                         }
                     }
                     else if (cmd.table === 'recurring') {
@@ -176,20 +204,20 @@ export async function POST(req: Request) {
                     }
                     else if (cmd.table === 'transactions') {
                         if (!payload.date) {
-                            const hoje = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
-                            const dStr = String(hoje.getDate()).padStart(2, '0');
-                            const mStr = String(hoje.getMonth() + 1).padStart(2, '0');
+                            const hoje = new Date(new Date().toLocaleString("en-US", {timeZone: "America/Sao_Paulo"}));
+                            const dStr = String(hoje.getDate()).padStart(2,'0');
+                            const mStr = String(hoje.getMonth()+1).padStart(2,'0');
                             payload.date = `${dStr}/${mStr}/${hoje.getFullYear()}`;
                         }
                         if (payload.date) {
-                            const [dia, mes] = payload.date.split('/');
-                            if (months[parseInt(mes) - 1]) payload.target_month = months[parseInt(mes) - 1];
+                             const [dia, mes] = payload.date.split('/');
+                             if (months[parseInt(mes)-1]) payload.target_month = months[parseInt(mes)-1];
                         }
                         payload.is_paid = true; payload.status = 'paid';
                         const { error } = await supabase.from('transactions').insert([payload]);
                         if (!error) {
-                            const val = (cmd.data.amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                            await sendWhatsAppMessage(targetPhone, `✅ Lançado: ${cmd.data.title} (${val})`);
+                             const val = (cmd.data.amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                             await sendWhatsAppMessage(targetPhone, `✅ Lançado: ${cmd.data.title} (${val})`);
                         }
                     }
                 }
@@ -205,7 +233,6 @@ export async function POST(req: Request) {
             }
         } catch (error) {
             console.error("❌ ERRO JSON:", error);
-            // AGORA ELE AVISA SE DEU RUIM
             if (hasAudio) await sendWhatsAppMessage(targetPhone, "🙉 Ouvi barulho mas não entendi. O áudio pode estar criptografado. Ative 'Include Base64' na Evolution.");
             else await sendWhatsAppMessage(targetPhone, result.response.text());
         }
