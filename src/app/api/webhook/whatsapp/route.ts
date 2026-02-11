@@ -35,7 +35,6 @@ export async function POST(req: Request) {
 
         const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-        // MODELO V2
         const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
         const body = await req.json();
@@ -50,6 +49,9 @@ export async function POST(req: Request) {
         const remoteJid = key.remoteJid;       
         const senderId = remoteJid.split('@')[0];
         
+        // Extrai o TEXTO da mensagem para usar na busca manual
+        const messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
+
         // --- LÓGICA DE ÁUDIO ---
         let promptParts: any[] = [];
         let hasAudio = false;
@@ -59,7 +61,6 @@ export async function POST(req: Request) {
 
         if (msgType === "audioMessage" || msgData?.audioMessage) {
             console.log("🎙️ Áudio detectado.");
-            
             let audioBase64 = body.data?.base64 || msgData?.audioMessage?.base64 || body.data?.message?.base64;
 
             if (!audioBase64) {
@@ -72,50 +73,61 @@ export async function POST(req: Request) {
 
             if (audioBase64) {
                 hasAudio = true;
-                promptParts.push({
-                    inlineData: { mimeType: "audio/ogg", data: audioBase64 }
-                });
+                promptParts.push({ inlineData: { mimeType: "audio/ogg", data: audioBase64 } });
             } else {
                 await sendWhatsAppMessage(remoteJid, "⚠️ Não consegui ouvir o áudio. Ative a opção 'Include Base64' na sua API ou mande texto.");
                 return NextResponse.json({ status: 'Audio Failed' });
             }
         } else {
-            const text = msgData?.conversation || msgData?.extendedTextMessage?.text || "";
-            if (!text) return NextResponse.json({ status: 'No Content' });
-            promptParts.push(text);
+            if (!messageContent) return NextResponse.json({ status: 'No Content' });
+            promptParts.push(messageContent);
         }
 
         console.log(`📩 Processando msg de: ${senderId}`);
 
-        // 2. BUSCA E VINCULAÇÃO (AQUI ESTÁ A LÓGICA DE VOLTA COMPLETA) 🔗
+        // =================================================================================
+        // 2. BUSCA E VINCULAÇÃO DE USUÁRIO (LÓGICA CORRIGIDA)
+        // =================================================================================
+        
+        // A. Tenta achar pelo ID exato do WhatsApp ou pelo telefone salvo
         let { data: userSettings } = await supabase
             .from('user_settings')
             .select('*')
             .or(`whatsapp_phone.eq.${senderId},whatsapp_id.eq.${senderId}`)
             .maybeSingle();
 
-        // Se não achou pelo ID exato, tenta "adivinhar" o formato do número (com/sem 9, com/sem 55)
-        if (!userSettings && senderId.length < 15) {
+        // B. Se não achou, tenta variações do número (com/sem 55, com/sem 9)
+        // REMOVIDO A TRAVA DE TAMANHO (senderId.length < 15) QUE ESTAVA BLOQUEANDO SEU NÚMERO
+        if (!userSettings) {
              const variations = [
-                 senderId, // 556299999999
-                 senderId.length > 12 ? senderId.replace('9', '') : senderId, // 556299999999 (remove o nono digito se tiver)
-                 senderId.length < 13 ? senderId.slice(0, 4) + '9' + senderId.slice(4) : senderId // Adiciona 9 se não tiver
+                 senderId, 
+                 senderId.replace(/^55/, ''), // Remove 55 inicial
+                 senderId.length > 12 ? senderId.replace('9', '') : senderId, // Remove nono digito hipotético
+                 `55${senderId}` // Adiciona 55 se faltar
              ];
              const { data: found } = await supabase.from('user_settings').select('*').in('whatsapp_phone', variations).maybeSingle();
-             userSettings = found;
+             
+             // Se achou alguém por variação, já vincula o ID certo
+             if (found) {
+                 userSettings = found;
+                 await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', found.user_id);
+             }
         }
 
-        // Se ainda não achou, pode ser a PRIMEIRA VEZ da pessoa mandando mensagem.
-        // Vamos verificar se ela digitou o código/número dela no texto (ex: "Sou o 5562...")
+        // C. Se AINDA não achou, verifica se o usuário ESCREVEU o número na mensagem
+        // Ex: Usuário manda: "Ativar meu numero 62999998888"
         if (!userSettings) {
-            const cleanMessage = JSON.stringify(body).replace(/\D/g, ''); // Pega todos os números do texto
+            // Limpa o texto da mensagem deixando só números
+            const numbersInText = messageContent.replace(/\D/g, ''); 
             
-            // Tenta achar alguém no banco que tenha esse número cadastrado manualmente
-            // Ex: O usuário cadastrou "6299999999" no site, e agora mandou mensagem desse número.
-            if (cleanMessage.length >= 10) {
-                const possiblePhones = [cleanMessage, `55${cleanMessage}`, cleanMessage.replace(/^55/, '')];
+            if (numbersInText.length >= 10) { // Mínimo DDD + Número
+                const possiblePhones = [
+                    numbersInText, 
+                    `55${numbersInText}`, 
+                    numbersInText.replace(/^55/, '')
+                ];
                 
-                // Procura alguém com esse telefone no campo whatsapp_phone
+                // Busca no banco se existe algum usuário que cadastrou esse número
                 const { data: userToLink } = await supabase
                     .from('user_settings')
                     .select('*')
@@ -123,23 +135,23 @@ export async function POST(req: Request) {
                     .maybeSingle();
 
                 if (userToLink) {
-                    // ACHOU! Vamos vincular o ID do WhatsApp (remoteJid) a esse usuário para sempre.
+                    // ACHOU! O usuário mandou o número dele por escrito.
+                    // Vamos vincular o ID que enviou a mensagem (senderId) ao usuário encontrado.
                     await supabase
                         .from('user_settings')
                         .update({ whatsapp_id: senderId })
                         .eq('user_id', userToLink.user_id);
                     
-                    await sendWhatsAppMessage(remoteJid, `✅ *Conta Conectada!* \nReconheci você. Agora posso lançar seus gastos.`);
+                    await sendWhatsAppMessage(remoteJid, `✅ *Dispositivo Vinculado!* \nReconheci seu número (${userToLink.whatsapp_phone}). Agora você pode lançar gastos por aqui.`);
                     return NextResponse.json({ success: true, action: "linked" });
                 }
             }
             
-            // Se não achou ninguém mesmo
-            // await sendWhatsAppMessage(remoteJid, "Olá! Não reconheci seu número. Cadastre seu telefone no site 'Meu Aliado' primeiro.");
+            // Se chegou aqui, realmente não achou ninguém.
             return NextResponse.json({ error: "User unknown" });
         }
         
-        // Se já achou o usuário, mas o ID do Zap (senderId) ainda não tá salvo (ex: mudou de celular), atualiza.
+        // Garante que o whatsapp_id esteja sempre atualizado
         if (senderId !== userSettings.whatsapp_phone && userSettings.whatsapp_id !== senderId) {
             await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userSettings.user_id);
             userSettings.whatsapp_id = senderId;
@@ -148,7 +160,7 @@ export async function POST(req: Request) {
         const targetPhone = userSettings.whatsapp_phone || senderId;
         const { data: workspace } = await supabase.from('workspaces').select('id').eq('user_id', userSettings.user_id).limit(1).single();
 
-        // 3. IA
+        // 3. IA (O RESTO SEGUE IGUAL)
         const systemPrompt = `
         ATUE COMO: Assistente Financeiro "Meu Aliado".
         DATA HOJE: ${new Date().toLocaleDateString('pt-BR')}.
