@@ -7,14 +7,15 @@ export async function POST(req: Request) {
   if (!apiKey) return NextResponse.json({ error: "Chave API faltando no servidor" }, { status: 500 });
 
   try {
-    const { prompt, contextData, userPlan, images } = await req.json();
+    // Recebemos o 'history' aqui agora
+    const { prompt, contextData, userPlan, images, history } = await req.json();
     
     const genAI = new GoogleGenerativeAI(apiKey);
     
     // Usando Gemini 2.0 Flash (Rápido, Inteligente e Multimodal)
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-    // --- 1. PREPARAÇÃO E LIMPEZA DAS IMAGENS (MANTIDO O CORRETOR) ---
+    // --- 1. PREPARAÇÃO E LIMPEZA DAS IMAGENS ---
     const imageParts = images?.map((img: any) => {
         let base64Data = img.base64;
         let mimeType = "image/jpeg"; // Padrão seguro
@@ -42,7 +43,7 @@ export async function POST(req: Request) {
     const targetName = viewingClient ? (contextData.client_name || "o Cliente") : "Você (Vitor)";
     const userRole = isConsultant ? "CONSULTOR FINANCEIRO" : "DONO DA CONTA";
 
-    // --- 3. PROMPT DE SISTEMA (RESTAUROU A PERSONALIDADE + MODO VISÃO) ---
+    // --- 3. PROMPT DE SISTEMA ---
     const systemInstruction = `
         ATUE COMO: "Meu Aliado", um estrategista financeiro de elite.
         
@@ -64,6 +65,8 @@ export async function POST(req: Request) {
         2. **ANÁLISE DE DADOS:** - Olhe atentamente os campos 'parcelamentos_ativos' e 'contas_fixas' no JSON acima.
            - Se houver dívidas ou consórcios, CITE-OS explicitamente.
            - Se o saldo for positivo, elogie e sugira investimentos. Se negativo, sugira cortes.
+        
+        3. **MEMÓRIA:** Lembre-se do contexto das mensagens anteriores desta conversa.
 
         --- MODO 1: OPERACIONAL (Adicionar/Lançar) ---
         Se o usuário pedir para registrar algo OU **ENVIAR UMA FOTO/PDF DE CONTA**:
@@ -92,15 +95,27 @@ export async function POST(req: Request) {
         1. Use Markdown rico (**Negrito**, Tabelas, Emojis).
         2. Seja direto e breve. Use Bullet points.
         3. Nunca invente dados. Use apenas o que está no JSON fornecido.
-
-        Entrada do Usuário: "${prompt || "Analise o arquivo em anexo e execute a ação necessária."}"
     `;
 
-    // Monta o payload
-    const promptParts = [systemInstruction, ...imageParts];
+    // INICIA O CHAT COM HISTÓRICO
+    const chat = model.startChat({
+        history: history || [], 
+        systemInstruction: systemInstruction 
+    });
+
+    // Monta a mensagem atual
+    let messageParts: any[] = [{ text: prompt }];
+
+    // Adiciona imagens se houver
+    if (imageParts.length > 0) {
+        messageParts = [
+            { text: prompt },
+            ...imageParts
+        ];
+    }
 
     // Chama a API
-    const result = await model.generateContent(promptParts);
+    const result = await chat.sendMessage(messageParts);
     const responseText = result.response.text();
 
     return NextResponse.json({ response: responseText });

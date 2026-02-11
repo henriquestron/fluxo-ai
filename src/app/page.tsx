@@ -909,32 +909,40 @@ export default function FinancialDashboard() {
 
     // Função para chamar a IA (Agora aceita arquivos!)
     // Função para chamar a IA (Agora aceita arquivos!)
-    const askGemini = async (text: string, fileBase64: string | null = null) => {
+   const askGemini = async (text: string, fileBase64: string | null = null) => {
         setIsAiLoading(true);
 
-        // Adiciona mensagem do usuário no chat
+        // Adiciona mensagem do usuário no chat (interface)
         const userMsg = { role: 'user', content: text, type: 'text' };
         setChatHistory(prev => [...prev, userMsg]);
 
         try {
-            // Prepara o contexto financeiro (USANDO AS VARIÁVEIS CERTAS DO SEU CÓDIGO)
+            // Prepara o contexto financeiro
             const contextData = {
-                saldo_atual: displayBalance, // Corrigido: totalBalance -> displayBalance
-                receita_mensal: currentMonthData.income, // Corrigido: totalIncome -> currentMonthData.income
-                despesa_mensal: currentMonthData.expenseTotal, // Corrigido: totalExpense -> currentMonthData.expenseTotal
+                saldo_atual: displayBalance,
+                receita_mensal: currentMonthData.income,
+                despesa_mensal: currentMonthData.expenseTotal,
                 transacoes_recentes: transactions.slice(0, 10),
                 contas_fixas: recurring,
                 parcelamentos_ativos: installments,
                 mes_visualizado: activeTab,
                 user_plan: userPlan,
-                // Dados para modo consultor
                 is_consultant: userPlan === 'agent',
-                viewing_as_client: viewingAs?.client_id !== user?.id, // Corrigido: selectedClientId -> viewingAs
+                viewing_as_client: viewingAs?.client_id !== user?.id,
                 client_name: viewingAs ? viewingAs.client_email : "Você"
             };
 
             // Prepara imagens (se houver)
             const images = fileBase64 ? [{ base64: fileBase64, mimeType: 'image/jpeg' }] : [];
+
+            // --- PREPARA O HISTÓRICO PARA A API ---
+            // Filtra mensagens válidas e mapeia para o formato do Gemini API
+            const historyForAi = chatHistory
+                .filter(msg => msg.type === 'text') // Ignora erros ou msg de sistema
+                .map(msg => ({
+                    role: msg.role === 'user' ? 'user' : 'model', // 'assistant' vira 'model'
+                    parts: [{ text: msg.content }]
+                }));
 
             const response = await fetch('/api/chat', {
                 method: 'POST',
@@ -943,10 +951,10 @@ export default function FinancialDashboard() {
                     prompt: text,
                     contextData,
                     userPlan,
-                    images
+                    images,
+                    history: historyForAi // <--- ENVIA O HISTÓRICO AQUI
                 })
             });
-
 
             const data = await response.json();
 
@@ -955,7 +963,7 @@ export default function FinancialDashboard() {
             // --- PROCESSADOR DE AÇÕES (AUTO-MAGIC) ---
             let aiResponseText = data.response;
 
-            // CORREÇÃO REGEX: Mudamos de /s (dotAll) para [\s\S]* (funciona em qualquer versão)
+            // Regex para capturar JSON de comandos
             const jsonMatch = aiResponseText.match(/\[[\s\S]*\]/);
 
             if (jsonMatch) {
@@ -964,7 +972,7 @@ export default function FinancialDashboard() {
 
                     if (Array.isArray(commands)) {
                         let actionsPerformed = 0;
-                        const activeId = getActiveUserId(); // Corrigido: selectedClientId -> função existente
+                        const activeId = getActiveUserId();
 
                         for (const cmd of commands) {
                             if (cmd.action === 'add') {
@@ -972,8 +980,8 @@ export default function FinancialDashboard() {
                                     .from(cmd.table)
                                     .insert([{
                                         ...cmd.data,
-                                        user_id: activeId, // Usa o ID do usuário ativo
-                                        context: currentWorkspace?.id // Adiciona ao workspace atual
+                                        user_id: activeId,
+                                        context: currentWorkspace?.id
                                     }]);
 
                                 if (!error) actionsPerformed++;
@@ -982,7 +990,6 @@ export default function FinancialDashboard() {
 
                         if (actionsPerformed > 0) {
                             aiResponseText = `✅ Feito! Adicionei ${actionsPerformed} item(s) para você automaticamente. Atualize a página para ver.`;
-                            // CORREÇÃO: fetchData -> loadData
                             if (user && activeId) loadData(activeId, currentWorkspace?.id);
                         }
                     }
@@ -991,7 +998,7 @@ export default function FinancialDashboard() {
                 }
             }
 
-            // Adiciona resposta da IA no chat
+            // Adiciona resposta da IA no chat (interface)
             setChatHistory(prev => [...prev, { role: 'assistant', content: aiResponseText, type: 'text' }]);
 
         } catch (error: any) {
