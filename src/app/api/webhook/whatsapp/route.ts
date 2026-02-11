@@ -29,41 +29,62 @@ async function downloadMedia(url: string) {
     } catch (error) { return null; }
 }
 
-// 🧠 CÁLCULO FINANCEIRO (Para a IA não ser cega)
+// 🧠 CÁLCULO FINANCEIRO CORRIGIDO (Agora vê parcelas!)
 async function getFinancialContext(supabase: any, userId: string, workspaceId: string) {
     const today = new Date();
     const monthStr = String(today.getMonth() + 1).padStart(2, '0');
     const yearStr = today.getFullYear();
     
-    // Busca transações do mês
+    // 1. Busca Transações do Mês (Gastos pontuais)
     const { data: transactions } = await supabase
         .from('transactions')
         .select('type, amount')
         .eq('user_id', userId)
         .eq('context', workspaceId)
-        .like('date', `%/${monthStr}/${yearStr}`);
+        .like('date', `%/${monthStr}/${yearStr}`)
+        .neq('status', 'delayed'); // Ignora Stand-by
 
-    // Busca fixos ativos
+    // 2. Busca Fixos Ativos (Aluguel, Luz, etc)
     const { data: recurring } = await supabase
         .from('recurring')
         .select('type, value')
         .eq('user_id', userId)
         .eq('context', workspaceId)
-        .eq('status', 'active');
+        .eq('status', 'active'); // Ignora Stand-by
+
+    // 3. NOVO: Busca Parcelamentos Ativos (Fatura do Cartão)
+    const { data: installments } = await supabase
+        .from('installments')
+        .select('value_per_month')
+        .eq('user_id', userId)
+        .eq('context', workspaceId)
+        .eq('status', 'active'); // Ignora Stand-by
 
     let totalEntradas = 0;
     let totalSaidas = 0;
 
+    // Soma Transações
     transactions?.forEach((t: any) => t.type === 'income' ? totalEntradas += t.amount : totalSaidas += t.amount);
+    
+    // Soma Recorrentes
     recurring?.forEach((r: any) => r.type === 'income' ? totalEntradas += r.value : totalSaidas += r.value);
+    
+    // Soma Parcelas (AQUI ESTAVA O ERRO! Agora somamos)
+    installments?.forEach((i: any) => totalSaidas += i.value_per_month);
 
     const saldo = totalEntradas - totalSaidas;
+
+    // Define o estado para facilitar pra IA
+    let estado = "ESTÁVEL";
+    if (saldo < 0) estado = "CRÍTICO (VERMELHO)";
+    else if (saldo < (totalEntradas * 0.1)) estado = "ALERTA (POUCA MARGEM)";
 
     return {
         saldo: saldo.toFixed(2),
         entradas: totalEntradas.toFixed(2),
         saidas: totalSaidas.toFixed(2),
-        resumo: `Receita: R$${totalEntradas} | Despesa: R$${totalSaidas} | Saldo Atual: R$${saldo}`
+        estado_conta: estado,
+        resumo_texto: `Receita: R$${totalEntradas.toFixed(2)} | Despesas Totais: R$${totalSaidas.toFixed(2)} | SALDO FINAL: R$${saldo.toFixed(2)}`
     };
 }
 
@@ -134,7 +155,6 @@ export async function POST(req: Request) {
         }
 
         if (!userSettings) {
-            // Tenta vincular se o usuário mandou o número no texto
             const numbersInText = messageContent.replace(/\D/g, ''); 
             if (numbersInText.length >= 10) { 
                 const possiblePhones = [numbersInText, `55${numbersInText}`, numbersInText.replace(/^55/, '')];
@@ -149,7 +169,6 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "User unknown" });
         }
         
-        // Garante ID atualizado
         if (senderId !== userSettings.whatsapp_phone && userSettings.whatsapp_id !== senderId) {
             await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userSettings.user_id);
         }
@@ -157,39 +176,40 @@ export async function POST(req: Request) {
         const targetPhone = userSettings.whatsapp_phone || senderId;
         const { data: workspace } = await supabase.from('workspaces').select('id').eq('user_id', userSettings.user_id).limit(1).single();
 
-        // 3. CONTEXTO FINANCEIRO (O Cérebro) 🧠
-        let contextInfo = { saldo: "0", resumo: "Sem dados" };
+        // 3. CONTEXTO FINANCEIRO CORRIGIDO 🧠
+        let contextInfo = { saldo: "0", resumo_texto: "Sem dados", estado_conta: "Indefinido" };
         if (workspace) {
             contextInfo = await getFinancialContext(supabase, userSettings.user_id, workspace.id);
         }
 
         // 4. PROMPT DA IA
         const systemPrompt = `
-        ATUE COMO: "Meu Aliado", assistente financeiro no WhatsApp.
+        ATUE COMO: "Meu Aliado", assistente financeiro.
         HOJE: ${new Date().toLocaleDateString('pt-BR')}.
         
-        SITUAÇÃO DO USUÁRIO:
+        --- DADOS FINANCEIROS REAIS ---
         ${JSON.stringify(contextInfo)}
+        -------------------------------
 
         SUA MISSÃO:
-        1. Se for para ADICIONAR conta, gere o JSON de ação. 
-           - SE o saldo do usuário for baixo e ele estiver gastando, adicione um ALERTA no texto da resposta (reply).
-        2. Se o usuário perguntar sobre a situação, analise o JSON de "SITUAÇÃO" acima e responda.
+        1. ADICIONAR CONTA: 
+           - Verifique o campo 'estado_conta' acima.
+           - SE estiver 'CRÍTICO' ou 'ALERTA' e o usuário adicionar um gasto (expense), VOCÊ DEVE INCLUIR UM ALERTA GRAVE na resposta.
+           - Ex: "Adicionei, mas CUIDADO! Seu saldo já está negativo em R$ ${contextInfo.saldo}."
 
-        FORMATO OBRIGATÓRIO (JSON ARRAY):
+        2. CONSULTA:
+           - Se perguntar "Como estou?", use o 'resumo_texto' para responder com precisão.
+
+        FORMATO (JSON ARRAY):
         [{"action": "add", ...}, {"reply": "Texto..."}]
 
         AÇÕES JSON:
         1. ADICIONAR (add):
            - transactions: [{"action":"add", "table":"transactions", "data":{ "title": "...", "amount": 0.00, "type": "expense", "date": "DD/MM/YYYY", "category": "Outros", "target_month": "Mês" }}]
            - installments: [{"action":"add", "table":"installments", "data":{ "title": "...", "total_value": 0.00, "installments_count": 1, "value_per_month": 0.00, "due_day": 10, "status": "active" }}]
-           - recurring: [{"action":"add", "table":"recurring", "data":{ "title": "...", "value": 0.00, "type": "expense", "category": "Fixa", "due_day": 10, "status": "active" }}]
         
-        2. EXCLUIR (remove):
-           - transactions: [{"action":"remove", "table":"transactions", "data":{ "title": "Nome" }}]
-
-        3. CONVERSAR (reply):
-           - [{"reply": "Sua resposta aqui..."}]
+        2. CONVERSAR (reply):
+           - [{"reply": "Sua resposta..."}]
 
         ${hasAudio ? "Transcrição do Áudio: O usuário falou algo. Entenda e execute." : ""}
         `;
@@ -197,21 +217,17 @@ export async function POST(req: Request) {
         const finalPrompt = [systemPrompt, ...promptParts];
         const result = await model.generateContent(finalPrompt);
         
-        // Limpeza do JSON (Cura Alucinação)
         let cleanJson = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-        const arrayMatch = cleanJson.match(/\[[\s\S]*\]/); // Pega só o que estiver entre colchetes
+        const arrayMatch = cleanJson.match(/\[[\s\S]*\]/);
         if (arrayMatch) cleanJson = arrayMatch[0];
 
         try {
             let commands = JSON.parse(cleanJson);
             if (!Array.isArray(commands)) commands = [commands];
-            const months = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
-            let replySent = false; // Controle para não repetir mensagens
+            let replySent = false;
 
             for (const cmd of commands) {
-                
-                // 1. EXECUTA AÇÃO NO BANCO (Prioridade Máxima)
                 if (cmd.action === 'add') {
                     let payload: any = { ...cmd.data, user_id: userSettings.user_id, context: workspace?.id, created_at: new Date(), message_id: messageId };
 
@@ -219,7 +235,6 @@ export async function POST(req: Request) {
                         payload.current_installment = 0; payload.status = 'active';
                         delete payload.date; delete payload.target_month;
                         const { error } = await supabase.from('installments').insert([payload]);
-                        // Se não tiver mensagem personalizada da IA, manda confirmação padrão
                         if (!error && !commands.some((c:any) => c.reply)) {
                              const total = (cmd.data.total_value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                              await sendWhatsAppMessage(targetPhone, `✅ Parcelado: ${cmd.data.title} (${total})`);
@@ -237,14 +252,9 @@ export async function POST(req: Request) {
                             const mStr = String(hoje.getMonth()+1).padStart(2,'0');
                             payload.date = `${dStr}/${mStr}/${hoje.getFullYear()}`;
                         }
-                        if (payload.date) {
-                             const [dia, mes] = payload.date.split('/');
-                             if (months[parseInt(mes)-1]) payload.target_month = months[parseInt(mes)-1];
-                        }
                         payload.is_paid = true; payload.status = 'paid';
                         const { error } = await supabase.from('transactions').insert([payload]);
                         
-                        // Se não tiver mensagem personalizada, manda padrão
                         if (!error && !commands.some((c:any) => c.reply)) {
                              const val = (cmd.data.amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                              await sendWhatsAppMessage(targetPhone, `✅ Lançado: ${cmd.data.title} (${val})`);
@@ -261,8 +271,6 @@ export async function POST(req: Request) {
                     }
                 }
 
-                // 2. ENVIA RESPOSTA DA IA (Se houver)
-                // Usamos um IF separado (sem else) para garantir que ele faça a ação E responda
                 if (cmd.reply && !replySent) {
                     await sendWhatsAppMessage(targetPhone, cmd.reply);
                     replySent = true;
@@ -270,8 +278,7 @@ export async function POST(req: Request) {
             }
         } catch (error) {
             console.error("❌ ERRO JSON:", error);
-            // Fallback: Se der erro no JSON, manda o texto cru (melhor que nada)
-            if (hasAudio) await sendWhatsAppMessage(targetPhone, "Entendi, mas tive um erro técnico. Tente digitar.");
+            if (hasAudio) await sendWhatsAppMessage(targetPhone, "Erro técnico. Tente texto.");
             else await sendWhatsAppMessage(targetPhone, result.response.text());
         }
 
