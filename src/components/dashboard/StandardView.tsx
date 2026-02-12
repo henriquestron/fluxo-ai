@@ -5,7 +5,7 @@ import {
     ShoppingCart, Home, Car, Utensils, Zap, GraduationCap,
     HeartPulse, Plane, Gamepad2, Smartphone, Check, X, Clock,
     FileText, Trash2, Pencil, List, CheckSquare, Square, AlertTriangle, ExternalLink,
-    ChevronDown, ChevronUp // Novos ícones para o Accordion
+    ChevronDown, ChevronUp 
 } from 'lucide-react';
 
 // --- MAPA DE ÍCONES ---
@@ -87,7 +87,7 @@ const BANK_STYLES: any = {
         bg: 'bg-emerald-900/10',
         border: 'border-emerald-500/30',
         text: 'text-emerald-400',
-        icon: null // Dinheiro usa ícone padrão do sistema
+        icon: null 
     },
     'outros': {
         label: 'Outros',
@@ -169,7 +169,6 @@ export default function StandardView({
 }: StandardViewProps) {
 
     // Estado para controlar quais bancos estão abertos (Accordion)
-    // Começa vazio ou com todos fechados. O usuário clica para ver detalhes.
     const [openBanks, setOpenBanks] = useState<string[]>([]);
 
     const toggleBank = (bankKey: string) => {
@@ -206,11 +205,6 @@ export default function StandardView({
         return acc;
     }, {});
     const sortedBanks = Object.keys(groupedInstallments).sort((a, b) => groupedInstallments[b].total - groupedInstallments[a].total);
-
-    const renderIconItem = (iconName: string) => {
-        const IconComp = ICON_MAP[iconName] || DollarSign;
-        return <IconComp size={16} className="text-cyan-500" />;
-    };
 
     const renderDelayed = () => {
         const delayedTrans = transactions.filter(t => t.status === 'delayed').map(t => ({ ...t, _source: 'trans', _amount: t.amount }));
@@ -265,7 +259,6 @@ export default function StandardView({
             </div>
 
             {/* --- LAYOUT COMPACTO 3 COLUNAS --- */}
-            {/* Adicionei 'h-fit' e alinhamento para o topo */}
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
 
                 {/* COLUNA 1: EXTRATO (COM ROLAGEM) */}
@@ -275,7 +268,6 @@ export default function StandardView({
                         <span className="text-xs text-gray-500 font-mono">{monthTransactions.length} itens</span>
                     </div>
 
-                    {/* AQUI: max-h-[600px] + overflow-y-auto cria a barra de rolagem interna */}
                     <div className="bg-[#0f0f10] border border-gray-800/50 rounded-3xl overflow-hidden max-h-[600px] flex flex-col">
                         <div className="overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent">
                             {monthTransactions.length === 0 ? (
@@ -323,7 +315,6 @@ export default function StandardView({
                         <h3 className="text-xl font-bold text-white flex items-center gap-2"><div className="w-1 h-6 bg-purple-500 rounded-full"></div> Cartões & Faturas</h3>
                     </div>
 
-                    {/* Também limitamos a altura para não estourar se tiver muitos bancos */}
                     <div className="space-y-3 max-h-[700px] overflow-y-auto scrollbar-thin scrollbar-thumb-purple-900/30 scrollbar-track-transparent pr-1">
                         {sortedBanks.length === 0 ? (
                             <div className="bg-[#0f0f10] border border-gray-800/50 rounded-3xl p-8 flex flex-col items-center justify-center text-center text-gray-600 gap-3 min-h-[200px]">
@@ -334,11 +325,11 @@ export default function StandardView({
                             sortedBanks.map(bankKey => {
                                 const group = groupedInstallments[bankKey];
                                 const style = BANK_STYLES[bankKey] || BANK_STYLES['outros'];
-                                const isOpen = openBanks.includes(bankKey); // Verifica se está aberto
+                                const isOpen = openBanks.includes(bankKey);
 
                                 return (
                                     <div key={bankKey} className={`rounded-2xl border overflow-hidden transition-all duration-300 ${style.bg} ${style.border} ${isOpen ? 'shadow-lg shadow-black/40' : 'opacity-90 hover:opacity-100'}`}>
-                                        {/* CABEÇALHO DO BANCO (CLICÁVEL) */}
+                                        {/* CABEÇALHO DO BANCO */}
                                         <div
                                             onClick={() => toggleBank(bankKey)}
                                             className="p-4 flex justify-between items-center cursor-pointer select-none hover:bg-white/5 active:bg-white/10 transition"
@@ -368,7 +359,7 @@ export default function StandardView({
                                             </div>
                                         </div>
 
-                                        {/* LISTA DE ITENS (SÓ APARECE SE isOpen FOR TRUE) */}
+                                        {/* LISTA DE ITENS */}
                                         {isOpen && (
                                             <div className="divide-y divide-gray-700/20 bg-black/20 animate-in slide-in-from-top-2 duration-200">
                                                 {group.items.map((item: any) => {
@@ -383,8 +374,13 @@ export default function StandardView({
                                                                 </div>
                                                                 <div className="overflow-hidden">
                                                                     <p className={`text-sm font-medium truncate max-w-[140px] ${isPaid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
+                                                                    
+                                                                    {/* 🚀 AQUI ESTÁ A ALTERAÇÃO: DATA ADICIONADA */}
                                                                     <p className="text-[10px] text-gray-500 flex items-center gap-1">
-                                                                        <Icon size={10} /> {item.actualInstallment}/{item.installments_count}
+                                                                        <Icon size={10} /> 
+                                                                        <span>{item.actualInstallment}/{item.installments_count}</span>
+                                                                        <span className="text-gray-600 mx-0.5">•</span>
+                                                                        <span className="text-gray-400">{item.due_day} {activeTab}</span>
                                                                     </p>
                                                                 </div>
                                                             </div>
@@ -392,7 +388,7 @@ export default function StandardView({
                                                                 <p className={`font-mono text-sm font-medium ${isPaid ? 'text-gray-600' : 'text-gray-300'}`}>
                                                                     R$ {item.value_per_month.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                                                 </p>
-<div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">                                                                    <button onClick={() => onToggleDelay('installments', item)} className="text-gray-500 hover:text-orange-400" title="Stand-by"><Clock size={12} /></button>
+                                                                <div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">                                                                    <button onClick={() => onToggleDelay('installments', item)} className="text-gray-500 hover:text-orange-400" title="Stand-by"><Clock size={12} /></button>
                                                                     <button onClick={() => onEdit(item, 'installment')} className="text-gray-500 hover:text-cyan-400" title="Editar"><Pencil size={12} /></button>
                                                                     <button onClick={() => onDelete('installments', item.id)} className="text-gray-500 hover:text-red-400" title="Excluir"><Trash2 size={12} /></button>
                                                                     {getReceipt(item, activeTab) && (
@@ -466,7 +462,7 @@ export default function StandardView({
 
                                                 <div className="text-right">
                                                     <p className={`font-mono font-bold text-sm ${isPaid ? 'text-gray-600' : 'text-gray-300'}`}>R$ {item.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-<div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">                                                        <button onClick={() => onToggleDelay('recurring', item)} title="Stand-by" className="text-gray-500 hover:text-orange-400"><Clock size={12} /></button>
+                                                    <div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">                                                        <button onClick={() => onToggleDelay('recurring', item)} title="Stand-by" className="text-gray-500 hover:text-orange-400"><Clock size={12} /></button>
                                                         <button onClick={() => onEdit(item, 'fixed_expense')} className="text-gray-500 hover:text-cyan-400"><Pencil size={12} /></button>
                                                         <button onClick={() => onDelete('recurring', item.id)} className="text-gray-500 hover:text-red-400"><Trash2 size={12} /></button>
                                                     </div>

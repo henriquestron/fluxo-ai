@@ -210,14 +210,23 @@ export default function FinancialDashboard() {
         driverObj.drive();
     };
 
+   // --- TUTORIAL / TOUR GUIADO (CORRIGIDO) ---
     useEffect(() => {
-        if (userPlan === 'agent' && (window as any).driver) {
-            const hasSeenTour = localStorage.getItem('has_seen_agent_tour_v1');
-            if (!hasSeenTour) {
-                setTimeout(() => { runTour(); localStorage.setItem('has_seen_agent_tour_v1', 'true'); }, 1500);
+        // Só roda se tiver USUÁRIO logado e se for o plano certo ou tour geral
+        if (user) { 
+            if (userPlan === 'agent' && (window as any).driver) {
+                const hasSeenTour = localStorage.getItem('has_seen_agent_tour_v1');
+                if (!hasSeenTour) {
+                    setTimeout(() => { runTour(); localStorage.setItem('has_seen_agent_tour_v1', 'true'); }, 1500);
+                }
+            } else {
+                const hasSeenTour = localStorage.getItem('hasSeenTour_v3');
+                if (!hasSeenTour) { 
+                    setTimeout(() => { runTour(); localStorage.setItem('hasSeenTour_v3', 'true'); }, 1500); 
+                }
             }
         }
-    }, [userPlan]);
+    }, [userPlan, transactions, user]); // Adicionei 'user' nas dependências
 
     useEffect(() => {
         const hasSeenTour = localStorage.getItem('hasSeenTour_v3');
