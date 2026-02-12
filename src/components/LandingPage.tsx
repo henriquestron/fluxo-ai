@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
     ShieldCheck, Sparkles, Smartphone, BarChart3, 
-    Zap, CheckCircle2, Lock, ArrowRight, MessageCircle,
+    Zap, CheckCircle2, Lock, ArrowRight, 
     LayoutDashboard, Layers, TrendingUp, Play, Briefcase, Users
 } from 'lucide-react';
 
@@ -10,12 +10,19 @@ interface LandingPageProps {
 }
 
 export default function LandingPage({ onLoginClick }: LandingPageProps) {
+    
+    // Rolar até o Vídeo
     const scrollToDemo = () => {
         const section = document.getElementById('demo-video');
-        if (section) {
-            section.scrollIntoView({ behavior: 'smooth' });
-        }
+        if (section) section.scrollIntoView({ behavior: 'smooth' });
     };
+
+    // Rolar até a área de Consultores (NOVO)
+    const scrollToConsultant = () => {
+        const section = document.getElementById('consultant-section');
+        if (section) section.scrollIntoView({ behavior: 'smooth' });
+    };
+
     return (
         <div className="min-h-screen bg-[#050505] text-white font-sans selection:bg-cyan-500 selection:text-black overflow-x-hidden">
             
@@ -27,7 +34,10 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                         <span className="text-2xl font-extrabold tracking-tighter">Meu<span className="text-cyan-500">Aliado.</span></span>
                     </div>
                     <div className="flex items-center gap-4">
-                        <button onClick={onLoginClick} className="hidden md:block text-sm text-gray-400 hover:text-white font-bold transition">Sou Consultor</button>
+                        {/* AGORA ESSE BOTÃO ROLA A PÁGINA 👇 */}
+                        <button onClick={scrollToConsultant} className="hidden md:block text-sm text-gray-400 hover:text-white font-bold transition">
+                            Sou Consultor
+                        </button>
                         <button 
                             onClick={onLoginClick}
                             className="bg-gray-800 hover:bg-gray-700 text-white px-6 py-2.5 rounded-full font-bold transition border border-gray-700 hover:border-gray-500"
@@ -40,7 +50,6 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
 
             {/* --- HERO SECTION --- */}
             <section className="relative pt-32 pb-10 md:pt-48 md:pb-20 px-6 overflow-hidden text-center">
-                {/* Efeitos de Fundo */}
                 <div className="absolute top-20 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-cyan-500/10 rounded-full blur-[120px] pointer-events-none"></div>
                 
                 <div className="max-w-5xl mx-auto relative z-10">
@@ -65,38 +74,27 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                         >
                             Começar Grátis <ArrowRight size={20} />
                         </button>
-                       <button 
-                            onClick={scrollToDemo} // <--- ADICIONE ISSO AQUI
-                            className="w-full md:w-auto px-8 py-4 bg-gray-900 border border-gray-800 hover:bg-gray-800 text-gray-300 rounded-xl font-bold text-lg transition flex items-center justify-center gap-2"
-                        >
+                        <button onClick={scrollToDemo} className="w-full md:w-auto px-8 py-4 bg-gray-900 border border-gray-800 hover:bg-gray-800 text-gray-300 rounded-xl font-bold text-lg transition flex items-center justify-center gap-2">
                             <Sparkles size={20} className="text-purple-500"/> Ver Demonstração
                         </button>
-                        
                     </div>
                 </div>
             </section>
 
-            {/* --- VÍDEO SECTION (NOVO) --- */}
+            {/* --- VÍDEO SECTION --- */}
             <section id="demo-video" className="px-6 pb-20 scroll-mt-32">
                 <div className="max-w-5xl mx-auto">
-                    {/* Moldura do Vídeo com Efeito Glow */}
                     <div className="relative rounded-3xl p-1 bg-gradient-to-b from-gray-700 to-gray-900 shadow-2xl shadow-cyan-900/20 group">
                         <div className="absolute inset-0 bg-cyan-500/20 blur-3xl opacity-20 group-hover:opacity-40 transition duration-1000 rounded-3xl"></div>
-                        
                         <div className="relative bg-[#050505] rounded-[22px] overflow-hidden aspect-video flex items-center justify-center border border-white/5 cursor-pointer group">
-                            
-                            {/* THUMBNAIL DO VÍDEO (Pode trocar a imagem no src) */}
                             <img 
                                 src="https://images.unsplash.com/photo-1642543492481-44e81e3914a7?q=80&w=2670&auto=format&fit=crop" 
                                 alt="Dashboard Preview" 
                                 className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-40 transition duration-500"
                             />
-                            
-                            {/* Botão de Play */}
                             <div className="w-24 h-24 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center border border-white/20 shadow-2xl group-hover:scale-110 transition duration-300 z-10 relative">
                                 <Play size={32} className="fill-white text-white ml-2" />
                             </div>
-
                             <div className="absolute bottom-8 left-0 right-0 text-center z-10">
                                 <p className="text-sm font-bold uppercase tracking-widest text-white/80">Assista como funciona (1:30)</p>
                             </div>
@@ -105,7 +103,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                 </div>
             </section>
 
-            {/* --- PILARES DO SISTEMA --- */}
+            {/* --- PILARES --- */}
             <section className="py-20 bg-[#0a0a0a] border-y border-white/5">
                 <div className="max-w-7xl mx-auto px-6">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -118,7 +116,6 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                                 Junte Nubank, Inter, Caixa e dinheiro vivo em um dashboard unificado. Pare de somar saldos de cabeça.
                             </p>
                         </div>
-
                         <div className="p-8 rounded-3xl bg-[#111] border border-gray-800 relative group hover:border-purple-500/30 transition">
                             <div className="w-14 h-14 bg-purple-900/20 text-purple-400 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition">
                                 <BarChart3 size={28} />
@@ -128,7 +125,6 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                                 Nosso sistema projeta seu saldo futuro, avisa sobre faturas e impede que você entre no vermelho antes que aconteça.
                             </p>
                         </div>
-
                         <div className="p-8 rounded-3xl bg-[#111] border border-gray-800 relative group hover:border-emerald-500/30 transition">
                             <div className="w-14 h-14 bg-emerald-900/20 text-emerald-400 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition">
                                 <Smartphone size={28} />
@@ -178,7 +174,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                                 </button>
                             </div>
                             
-                            {/* Abstração Visual do Gráfico */}
+                            {/* Visual do Gráfico */}
                             <div className="flex-1 w-full relative">
                                 <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 to-purple-500/20 blur-3xl rounded-full"></div>
                                 <div className="relative bg-[#111] border border-gray-800 rounded-2xl p-6 shadow-2xl">
@@ -206,7 +202,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                 </div>
             </section>
 
-            {/* --- PRICING B2C (PESSOAL) --- */}
+            {/* --- PRICING PESSOAL --- */}
             <section className="py-20 bg-[#0a0a0a] border-t border-white/5">
                 <div className="max-w-6xl mx-auto px-6 text-center">
                     <h2 className="text-3xl md:text-5xl font-black mb-4">Planos Pessoais</h2>
@@ -225,7 +221,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                             <button onClick={onLoginClick} className="w-full py-3 rounded-xl border border-gray-700 hover:bg-gray-800 text-white font-bold transition">Escolher Start</button>
                         </div>
 
-                        {/* PLUS (DESTAQUE) */}
+                        {/* PLUS */}
                         <div className="p-8 rounded-3xl bg-[#151515] border border-cyan-500/30 relative flex flex-col shadow-2xl shadow-cyan-900/10 scale-105 z-10">
                             <div className="absolute top-0 right-0 bg-cyan-600 text-white text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-2xl">RECOMENDADO</div>
                             <h3 className="text-cyan-500 font-bold mb-2 flex items-center gap-2"><Zap size={16}/> Plus</h3>
@@ -253,8 +249,8 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                 </div>
             </section>
 
-            {/* --- ÁREA PARA CONSULTORES (NOVA - B2B) --- */}
-            <section className="py-24 bg-[#08080c] relative overflow-hidden border-t border-white/5">
+            {/* --- ÁREA PARA CONSULTORES (ID ADICIONADO) --- */}
+            <section id="consultant-section" className="py-24 bg-[#08080c] relative overflow-hidden border-t border-white/5 scroll-mt-20">
                 <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-5 pointer-events-none"></div>
                 <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-amber-500/5 rounded-full blur-[120px] pointer-events-none"></div>
 
@@ -292,7 +288,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                             </div>
 
                             <button onClick={onLoginClick} className="px-8 py-4 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl transition shadow-lg shadow-amber-900/20">
-                                Conhecer Plano Agent
+                                Criar Conta de Consultor
                             </button>
                         </div>
                         
