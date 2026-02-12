@@ -210,29 +210,29 @@ export default function FinancialDashboard() {
         driverObj.drive();
     };
 
-   // --- TUTORIAL / TOUR GUIADO (CORRIGIDO) ---
-   // --- TUTORIAL / TOUR GUIADO (CORRIGIDO E ÚNICO) ---
+    // --- TUTORIAL / TOUR GUIADO (CORRIGIDO) ---
+    // --- TUTORIAL / TOUR GUIADO (CORRIGIDO E ÚNICO) ---
     useEffect(() => {
         // Só roda se tiver USUÁRIO logado. Se for Landing Page (!user), ignora.
-        if (user) { 
+        if (user) {
             // Lógica para o Consultor (Agent)
             if (userPlan === 'agent' && (window as any).driver) {
                 const hasSeenTour = localStorage.getItem('has_seen_agent_tour_v1');
                 if (!hasSeenTour) {
                     setTimeout(() => { runTour(); localStorage.setItem('has_seen_agent_tour_v1', 'true'); }, 1500);
                 }
-            } 
+            }
             // Lógica para usuários normais (Start, Free, Pro)
             else {
                 const hasSeenTour = localStorage.getItem('hasSeenTour_v3');
-                if (!hasSeenTour) { 
-                    setTimeout(() => { runTour(); localStorage.setItem('hasSeenTour_v3', 'true'); }, 1500); 
+                if (!hasSeenTour) {
+                    setTimeout(() => { runTour(); localStorage.setItem('hasSeenTour_v3', 'true'); }, 1500);
                 }
             }
         }
     }, [userPlan, transactions, user]);
 
-    
+
 
     const getReceiptForMonth = (item: any, month: string) => {
         if (!item.receipt_url) return null;
@@ -250,7 +250,7 @@ export default function FinancialDashboard() {
                 const { data, error } = await supabase.auth.getSession();
                 if (error) { await supabase.auth.signOut(); setUser(null); return; }
                 const currentUser = data.session?.user || null;
-                
+
                 setUser(currentUser);
                 if (currentUser) {
                     fetchUserProfile(currentUser.id);
@@ -258,9 +258,9 @@ export default function FinancialDashboard() {
                     fetchUserSettings(currentUser.id);
                 }
             } catch (e) { setUser(null); }
-            finally { 
+            finally {
                 // 👇 O SEGREDO: Avisa que terminou de carregar
-                setIsSessionLoading(false); 
+                setIsSessionLoading(false);
             }
         };
         checkUser();
@@ -360,7 +360,17 @@ export default function FinancialDashboard() {
 
     const handleCreateProfile = async () => {
         if (!user) { setIsNewProfileModalOpen(false); setIsAuthModalOpen(true); return; }
-        if (userPlan === 'free' && workspaces.length >= 1) { setIsNewProfileModalOpen(false); openPricingModal(); return; }
+
+        // 🔒 TRAVA: Free e Start não podem ter múltiplos perfis. Apenas Premium e acima.
+        if ((userPlan === 'free' || userPlan === 'start') && workspaces.length >= 1) {
+            toast.error("Limite de Perfis", {
+                description: "Para gerenciar múltiplas contas/perfis, faça o upgrade para o Premium."
+            });
+            setIsNewProfileModalOpen(false);
+            openPricingModal();
+            return;
+        }
+
         if (!newProfileName) return;
         const { data } = await supabase.from('workspaces').insert({ user_id: user.id, title: newProfileName }).select().single();
         if (data) {
@@ -373,10 +383,19 @@ export default function FinancialDashboard() {
     };
     const toggleWhatsappNotification = async () => {
         if (!user) return;
+
+        // 🔒 TRAVA: Apenas Pro e Agent podem usar WhatsApp
+        if (userPlan !== 'pro' && userPlan !== 'agent' && userPlan !== 'admin') {
+            toast.error("Recurso Pro Exclusivo", {
+                description: "Notificações e IA via WhatsApp estão disponíveis apenas no plano Pro."
+            });
+            openPricingModal();
+            return;
+        }
+
         const newValue = !whatsappEnabled;
         setWhatsappEnabled(newValue);
 
-        // Se não tiver user_settings, cria. Se tiver, atualiza.
         const { data } = await supabase.from('user_settings').select('id').eq('user_id', user.id).single();
 
         if (data) {
@@ -566,7 +585,7 @@ export default function FinancialDashboard() {
         if (overdueItems.length > 0) { setPastDueItems(overdueItems); setTimeout(() => setIsRolloverModalOpen(true), 1000); }
     };
 
-  const handleAuth = async () => {
+    const handleAuth = async () => {
         setLoadingAuth(true);
         setAuthMessage('');
 
@@ -580,13 +599,13 @@ export default function FinancialDashboard() {
         if (authMode === 'login') {
             const { error } = await supabase.auth.signInWithPassword({ email, password });
             if (error) setAuthMessage("❌ " + error.message);
-            else { 
-                setAuthMessage("✅ Login realizado!"); 
+            else {
+                setAuthMessage("✅ Login realizado!");
                 setTimeout(() => { setIsAuthModalOpen(false); window.location.reload(); }, 1000);
             }
         } else {
             const { error } = await supabase.auth.signUp({ email, password });
-            if (error) setAuthMessage("❌ " + error.message); 
+            if (error) setAuthMessage("❌ " + error.message);
             else setShowEmailCheck(true);
         }
         setLoadingAuth(false);
@@ -942,7 +961,7 @@ export default function FinancialDashboard() {
 
     // Função para chamar a IA (Agora aceita arquivos!)
     // Função para chamar a IA (Agora aceita arquivos!)
-   const askGemini = async (text: string, fileBase64: string | null = null) => {
+    const askGemini = async (text: string, fileBase64: string | null = null) => {
         setIsAiLoading(true);
 
         // Adiciona mensagem do usuário no chat (interface)
@@ -1044,7 +1063,7 @@ export default function FinancialDashboard() {
 
     // --- 1. DEFINIÇÃO DOS MODAIS DE AUTH (Para usar em ambas as telas) ---
     // Extraímos isso para uma variável para o código ficar limpo e funcionar na Landing Page também
-   // --- 1. DEFINIÇÃO DOS MODAIS DE AUTH (CORRIGIDO) ---
+    // --- 1. DEFINIÇÃO DOS MODAIS DE AUTH (CORRIGIDO) ---
     const AuthModals = (
         <>
             {/* MODAL DE RECUPERAR SENHA */}
@@ -1099,7 +1118,7 @@ export default function FinancialDashboard() {
                                     </div>
                                 </div>
                                 {authMessage && (<div className={`mt-4 p-3 rounded-lg text-xs flex items-center gap-2 ${authMessage.includes('❌') ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-green-500/10 text-green-400 border border-green-500/20'}`}>{authMessage}</div>)}
-                                
+
                                 {/* CHECKBOX DE TERMOS */}
                                 {authMode === 'signup' && (
                                     <div className="flex items-start gap-3 mt-4 mb-2 bg-gray-900/50 p-3 rounded-lg border border-gray-800">
@@ -1124,13 +1143,13 @@ export default function FinancialDashboard() {
             )}
 
             {/* --- AQUI ESTÃO OS MODAIS QUE FALTAVAM --- */}
-            
+
             {/* MODAL TERMOS DE USO */}
             {isTermsOpen && (
                 <div className="fixed inset-0 bg-black/95 backdrop-blur-xl flex items-center justify-center z-[300] p-4">
                     <div className="bg-[#111] border border-gray-800 p-8 rounded-3xl w-full max-w-2xl h-[80vh] flex flex-col shadow-2xl relative">
                         <button onClick={() => setIsTermsOpen(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white"><X size={24} /></button>
-                        <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2"><ShieldCheck className="text-cyan-500"/> Termos de Uso</h2>
+                        <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2"><ShieldCheck className="text-cyan-500" /> Termos de Uso</h2>
                         <div className="overflow-y-auto pr-4 text-gray-400 text-sm space-y-4 scrollbar-thin scrollbar-thumb-gray-700">
                             <p><strong>1. Aceitação:</strong> Ao criar uma conta no "Meu Aliado", você concorda com estes termos.</p>
                             <p><strong>2. Uso da IA:</strong> Nosso sistema utiliza Inteligência Artificial para processar seus dados. Você é responsável por conferir os lançamentos.</p>
@@ -1149,7 +1168,7 @@ export default function FinancialDashboard() {
                 <div className="fixed inset-0 bg-black/95 backdrop-blur-xl flex items-center justify-center z-[300] p-4">
                     <div className="bg-[#111] border border-gray-800 p-8 rounded-3xl w-full max-w-2xl h-[80vh] flex flex-col shadow-2xl relative">
                         <button onClick={() => setIsPrivacyOpen(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white"><X size={24} /></button>
-                        <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2"><Lock className="text-cyan-500"/> Privacidade e Dados</h2>
+                        <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2"><Lock className="text-cyan-500" /> Privacidade e Dados</h2>
                         <div className="overflow-y-auto pr-4 text-gray-400 text-sm space-y-4 scrollbar-thin scrollbar-thumb-gray-700">
                             <p><strong>1. LGPD:</strong> Respeitamos sua privacidade e seus direitos como titular dos dados.</p>
                             <p><strong>2. Dados Bancários:</strong> Não salvamos senhas bancárias. Apenas processamos os extratos e comprovantes enviados.</p>
@@ -1192,7 +1211,7 @@ export default function FinancialDashboard() {
     // --- 4. DASHBOARD / SISTEMA (SE TIVER USUÁRIO) ---
     return (
         <div className={`min-h-screen p-4 md:p-8 font-sans relative transition-colors duration-500 ${getThemeClasses()}`}>
-            
+
             {/* ... NAVBAR DO SISTEMA (Workspaces e Perfil) ... */}
             <div className="flex justify-between items-center mb-6">
                 <div className="flex items-center gap-2">
@@ -1209,11 +1228,15 @@ export default function FinancialDashboard() {
             </div>
 
             {/* ... HEADER PRINCIPAL ... */}
+            {/* ... HEADER PRINCIPAL (Visual Original + Travas Novas) ... */}
             <header className="flex flex-col xl:flex-row gap-6 justify-between items-center mb-10">
+
+                {/* LADO ESQUERDO: Logo + Consultor */}
                 <div id="logo-area" className="text-center md:text-left">
                     <h1 className="text-4xl font-extrabold text-white flex items-center justify-center md:justify-start gap-2 tracking-tighter">
                         <ShieldCheck className="text-cyan-500" size={32} /> Meu<span className="text-cyan-500">Aliado.</span>
                     </h1>
+
                     <div id="menu-clientes" className="flex items-center gap-2 mt-2 justify-center md:justify-start">
                         {(userPlan === 'agent' || userPlan === 'admin') && (
                             <div id="agent-bar" className="w-full bg-purple-950/30 border-b border-purple-500/20 p-2 mb-4 overflow-x-auto">
@@ -1240,14 +1263,36 @@ export default function FinancialDashboard() {
                     </div>
                 </div>
 
+                {/* LADO DIREITO: Botões de Ação */}
                 <div className="flex flex-wrap justify-center xl:justify-end gap-3 w-full xl:w-auto items-center">
-                    {/* BOTÃO HISTÓRICO */}
-                    <button id="btn-history" onClick={() => setIsHistoryOpen(true)} className="h-12 w-12 flex items-center justify-center rounded-xl bg-gray-900 text-cyan-500 border border-cyan-900/30 hover:bg-cyan-900/20 hover:text-cyan-300 transition shadow-lg" title="Ver Gráfico Anual"><BarChart3 size={20} /></button>
-                    
-                    {/* BOTÃO EXPORTAR */}
-                    <button id="btn-export" onClick={() => { if (userPlan === 'free' || userPlan === 'start') { toast.error("Recurso Premium (Plus)", { description: "Faça o upgrade para Plus ou Pro para exportar relatórios." }); openPricingModal(); return; } setIsExportModalOpen(true); }} className={`h-12 w-12 flex items-center justify-center rounded-xl transition shadow-lg border relative ${(userPlan === 'free' || userPlan === 'start') ? 'bg-gray-900 text-gray-500 border-gray-800 hover:bg-gray-800' : 'bg-gray-900 text-emerald-500 border-emerald-900/30 hover:bg-emerald-900/20'}`} title="Exportar Relatório Excel">
+
+                    {/* BOTÃO HISTÓRICO (Liberado Start+) */}
+                    <button
+                        id="btn-history"
+                        onClick={() => setIsHistoryOpen(true)}
+                        className="h-12 w-12 flex items-center justify-center rounded-xl bg-gray-900 text-cyan-500 border border-cyan-900/30 hover:bg-cyan-900/20 hover:text-cyan-300 transition shadow-lg"
+                        title="Ver Gráfico Anual"
+                    >
+                        <BarChart3 size={20} />
+                    </button>
+
+                    {/* BOTÃO EXPORTAR (Liberado Start+) */}
+                    <button
+                        id="btn-export"
+                        onClick={() => {
+                            // 🔒 TRAVA: Free bloqueado. Start, Premium e Pro liberados.
+                            if (userPlan === 'free') {
+                                toast.error("Recurso Premium", { description: "Assine o plano Start ou superior para exportar." });
+                                openPricingModal();
+                                return;
+                            }
+                            setIsExportModalOpen(true);
+                        }}
+                        className={`h-12 w-12 flex items-center justify-center rounded-xl transition shadow-lg border relative ${userPlan === 'free' ? 'bg-gray-900 text-gray-500 border-gray-800 hover:bg-gray-800 cursor-not-allowed' : 'bg-gray-900 text-emerald-500 border-emerald-900/30 hover:bg-emerald-900/20'}`}
+                        title="Exportar Relatório Excel"
+                    >
                         <FileSpreadsheet size={20} />
-                        {(userPlan === 'free' || userPlan === 'start') && (<div className="absolute -top-1 -right-1 bg-gray-800 rounded-full p-0.5 border border-gray-700"><Lock size={10} className="text-amber-500" /></div>)}
+                        {userPlan === 'free' && (<div className="absolute -top-1 -right-1 bg-gray-800 rounded-full p-0.5 border border-gray-700"><Lock size={10} className="text-amber-500" /></div>)}
                     </button>
 
                     {/* MENU DO USUÁRIO & NOTIFICAÇÕES */}
@@ -1274,15 +1319,16 @@ export default function FinancialDashboard() {
                                                 </div>
                                                 <button onClick={() => { setIsUserMenuOpen(false); setIsProfileModalOpen(true); }} className="w-full text-left px-3 py-2.5 rounded-lg text-xs flex items-center gap-2 text-gray-300 hover:bg-gray-800 hover:text-white transition font-medium"><User size={14} className="text-cyan-500" /> Meu Perfil</button>
                                                 {userPlan !== 'free' && (<button onClick={() => { setIsUserMenuOpen(false); handleManageSubscription(); }} className="w-full text-left px-3 py-2.5 rounded-lg text-xs flex items-center gap-2 text-gray-300 hover:bg-gray-800 hover:text-white transition font-medium"><CreditCard size={14} className="text-emerald-500" /> Gerenciar Assinatura</button>)}
-                                                
-                                                {/* TOGGLE WHATSAPP */}
-                                                <div className="px-3 py-2.5 flex items-center justify-between">
-                                                    <div className="flex items-center gap-2 text-xs text-gray-300 font-medium">
+
+                                                {/* TOGGLE WHATSAPP (SÓ PRO/AGENT) */}
+                                                <div className="px-3 py-2.5 flex items-center justify-between group cursor-pointer" onClick={(e) => { e.stopPropagation(); toggleWhatsappNotification(); }}>
+                                                    <div className="flex items-center gap-2 text-xs text-gray-300 font-medium group-hover:text-white transition">
                                                         <Smartphone size={14} className="text-emerald-500" /> Notificar no Zap
+                                                        {(userPlan !== 'pro' && userPlan !== 'agent' && userPlan !== 'admin') && <Lock size={10} className="text-amber-500" />}
                                                     </div>
-                                                    <button onClick={(e) => { e.stopPropagation(); toggleWhatsappNotification(); }} className={`w-8 h-4 rounded-full transition-colors relative ${whatsappEnabled ? 'bg-emerald-600' : 'bg-gray-700'}`}>
+                                                    <div className={`w-8 h-4 rounded-full transition-colors relative ${whatsappEnabled ? 'bg-emerald-600' : 'bg-gray-700'}`}>
                                                         <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${whatsappEnabled ? 'translate-x-4' : 'translate-x-0'}`}></div>
-                                                    </button>
+                                                    </div>
                                                 </div>
 
                                                 {(userPlan === 'pro' || userPlan === 'agent') && (<button onClick={() => { setIsUserMenuOpen(false); setIsCustomizationOpen(true); }} className="w-full text-left px-3 py-2.5 rounded-lg text-xs flex items-center gap-2 text-gray-300 hover:bg-gray-800 hover:text-white transition font-medium"><Palette size={14} className="text-purple-500" /> Personalizar Visual</button>)}
@@ -1297,12 +1343,31 @@ export default function FinancialDashboard() {
                         </div>
                     </div>
 
-                    <button id="btn-ai" onClick={() => setIsAIOpen(true)} className={`h-12 bg-gradient-to-r ${userPlan === 'premium' || userPlan === 'agent' || userPlan === 'pro' ? 'from-cyan-600 to-blue-600' : 'from-gray-800 to-gray-700'} text-white px-6 rounded-xl font-bold hover:scale-105 transition border border-white/10 flex items-center justify-center gap-2 whitespace-nowrap shadow-lg`}>
-                        <Sparkles size={18} className={userPlan === 'premium' || userPlan === 'agent' || userPlan === 'pro' ? "text-cyan-200" : "text-gray-400"} />
-                        {userPlan === 'premium' || userPlan === 'agent' || userPlan === 'pro' ? 'Agente IA' : 'IA Lite'}
+                    {/* BOTÃO IA (Texto muda conforme Plano) */}
+                    <button
+                        id="btn-ai"
+                        onClick={() => setIsAIOpen(true)}
+                        className={`h-12 bg-gradient-to-r ${['premium', 'pro', 'agent', 'admin'].includes(userPlan) ? 'from-cyan-600 to-blue-600' : 'from-gray-800 to-gray-700'} text-white px-6 rounded-xl font-bold hover:scale-105 transition border border-white/10 flex items-center justify-center gap-2 whitespace-nowrap shadow-lg`}
+                    >
+                        <Sparkles size={18} className={['premium', 'pro', 'agent', 'admin'].includes(userPlan) ? "text-cyan-200" : "text-gray-400"} />
+                        {/* IA Lite para Start/Free, Agente IA para Premium+ */}
+                        {['premium', 'pro', 'agent', 'admin'].includes(userPlan) ? 'Agente IA' : 'IA Lite'}
                     </button>
 
-                    <button onClick={() => { if (userPlan === 'free' || userPlan === 'start') { toast.error("Recurso de Produtividade (Plus)", { description: "Assine o Plus para lançar faturas em lote!" }); openPricingModal(); return; } setIsCreditCardModalOpen(true); }} className={`h-12 px-6 rounded-xl font-bold transition flex items-center justify-center gap-2 shadow-lg whitespace-nowrap ${(userPlan === 'free' || userPlan === 'start') ? 'bg-gray-800 text-gray-500 border border-gray-700 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-500 text-white shadow-purple-900/20'}`} title="Lançamento Rápido de Fatura">
+                    {/* BOTÃO FATURA (Liberado Premium+) */}
+                    <button
+                        onClick={() => {
+                            // 🔒 TRAVA: Free e Start bloqueados.
+                            if (userPlan === 'free' || userPlan === 'start') {
+                                toast.error("Recurso de Produtividade (Premium)", { description: "Assine o Premium (Plus) para lançar faturas em lote!" });
+                                openPricingModal();
+                                return;
+                            }
+                            setIsCreditCardModalOpen(true);
+                        }}
+                        className={`h-12 px-6 rounded-xl font-bold transition flex items-center justify-center gap-2 shadow-lg whitespace-nowrap ${(userPlan === 'free' || userPlan === 'start') ? 'bg-gray-800 text-gray-500 border border-gray-700 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-500 text-white shadow-purple-900/20'}`}
+                        title="Lançamento Rápido de Fatura"
+                    >
                         <CreditCard size={18} /> Fatura {(userPlan === 'free' || userPlan === 'start') && <Lock size={12} className="ml-1" />}
                     </button>
 
@@ -1311,128 +1376,166 @@ export default function FinancialDashboard() {
                 </div>
             </header>
 
-         {/* 1. VISÃO PADRÃO (Standard) */}
-            {currentLayout === 'standard' && (
-                <StandardView 
-                    transactions={transactions} installments={installments} recurring={recurring} 
-                    activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab} 
-                    currentMonthData={currentMonthData} previousSurplus={previousSurplus} 
-                    displayBalance={displayBalance} viewingAs={viewingAs} 
-                    onTogglePaid={togglePaid} onToggleSkip={toggleSkipMonth} onToggleDelay={toggleDelay} 
-                    onDelete={handleDelete} onEdit={handleEdit} onTogglePaidMonth={togglePaidMonth} 
-                    getReceipt={getReceiptForMonth} 
+            {/* --- RENDERIZAÇÃO DOS LAYOUTS (Sintaxe Corrigida) --- */}
+
+            {(currentLayout === 'standard') && (
+                <StandardView
+                    transactions={transactions} installments={installments} recurring={recurring}
+                    activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab}
+                    currentMonthData={currentMonthData} previousSurplus={previousSurplus}
+                    displayBalance={displayBalance} viewingAs={viewingAs}
+                    onTogglePaid={togglePaid} onToggleSkip={toggleSkipMonth} onToggleDelay={toggleDelay}
+                    onDelete={handleDelete} onEdit={handleEdit} onTogglePaidMonth={togglePaidMonth}
+                    getReceipt={getReceiptForMonth}
                 />
             )}
 
-            {/* 2. VISÃO TRADER */}
             {currentLayout === 'trader' && (
-                <TraderView 
-                    transactions={transactions} installments={installments} recurring={recurring} 
-                    activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab} 
-                    currentMonthData={currentMonthData} previousSurplus={previousSurplus} 
-                    displayBalance={displayBalance} onTogglePaid={togglePaid} 
-                    onToggleDelay={toggleDelay} onDelete={handleDelete} 
-                    onTogglePaidMonth={togglePaidMonth} 
+                <TraderView
+                    transactions={transactions} installments={installments} recurring={recurring}
+                    activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab}
+                    currentMonthData={currentMonthData} previousSurplus={previousSurplus}
+                    displayBalance={displayBalance} onTogglePaid={togglePaid}
+                    onToggleDelay={toggleDelay} onDelete={handleDelete}
+                    onTogglePaidMonth={togglePaidMonth}
                 />
             )}
 
-            {/* 3. VISÃO CALENDÁRIO */}
             {currentLayout === 'calendar' && (
-                <CalendarView 
-                    transactions={transactions} installments={installments} recurring={recurring} 
-                    activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab} 
+                <CalendarView
+                    transactions={transactions} installments={installments} recurring={recurring}
+                    activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab}
                 />
             )}
 
-            {/* 4. VISÃO ZEN */}
             {currentLayout === 'zen' && (
-                <ZenView 
-                    displayBalance={displayBalance} currentMonthData={currentMonthData} 
-                    activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab} 
+                <ZenView
+                    displayBalance={displayBalance} currentMonthData={currentMonthData}
+                    activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab}
                 />
             )}
 
-            {/* 5. VISÃO TIMELINE */}
             {currentLayout === 'timeline' && (
-                <TimelineView 
-                    transactions={transactions} installments={installments} recurring={recurring} 
-                    activeTab={activeTab} 
+                <TimelineView
+                    transactions={transactions} installments={installments} recurring={recurring}
+                    activeTab={activeTab}
                 />
             )}
 
-            {/* 6. VISÃO BENTO GRID */}
             {currentLayout === 'bento' && (
-                <BentoView 
-                    currentMonthData={currentMonthData} transactions={transactions} 
-                    installments={installments} recurring={recurring} 
-                    onOpenCalendar={() => setCurrentLayout('calendar')} 
-                    onOpenRollover={() => setIsRolloverModalOpen(true)} 
+                <BentoView
+                    currentMonthData={currentMonthData} transactions={transactions}
+                    installments={installments} recurring={recurring}
+                    onOpenCalendar={() => setCurrentLayout('calendar')}
+                    onOpenRollover={() => setIsRolloverModalOpen(true)}
                 />
             )}
 
-            {/* --- MODAIS DE FUNCIONALIDADES (Onde estava o erro) --- */}
-            
-            <ProfileModal 
-                isOpen={isProfileModalOpen} 
-                onClose={() => setIsProfileModalOpen(false)} 
-                user={user} 
+            {/* --- MODAIS DE FUNCIONALIDADES --- */}
+
+            <ProfileModal
+                isOpen={isProfileModalOpen}
+                onClose={() => setIsProfileModalOpen(false)}
+                user={user}
+                userPlan={userPlan} // <--- ADICIONE ESTA LINHA
             />
 
-            <ExportModal 
-                isOpen={isExportModalOpen} 
-                onClose={() => setIsExportModalOpen(false)} 
-                user={user} 
-                userPlan={userPlan} 
-                clients={clients} 
-                activeTab={activeTab} 
-            />
+            <ExportModal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} user={user} userPlan={userPlan} clients={clients} activeTab={activeTab} />
 
-            <CreditCardModal 
-                isOpen={isCreditCardModalOpen} 
-                onClose={() => setIsCreditCardModalOpen(false)} 
-                user={user} 
-                activeTab={activeTab} 
-                contextId={currentWorkspace?.id} 
-                onSuccess={() => loadData(getActiveUserId(), currentWorkspace?.id)} 
-            />
+            <CreditCardModal isOpen={isCreditCardModalOpen} onClose={() => setIsCreditCardModalOpen(false)} user={user} activeTab={activeTab} contextId={currentWorkspace?.id} onSuccess={() => loadData(getActiveUserId(), currentWorkspace?.id)} />
 
-            <HistoryModal 
-                isOpen={isHistoryOpen} 
-                onClose={() => setIsHistoryOpen(false)} 
-                transactions={transactions} 
-                installments={installments} 
-                recurring={recurring} 
-            />
-            
-            <CustomizationModal 
-                isOpen={isCustomizationOpen} 
-                onClose={() => setIsCustomizationOpen(false)} 
-                currentLayout={currentLayout} 
-                currentTheme={currentTheme} 
-                onSelectLayout={(l) => handleSavePreferences('layout', l)} 
-                onSelectTheme={(t) => handleSavePreferences('theme', t)} 
-                userPlan={userPlan} 
-            />
-            {/* Modal de Novo Perfil */}
-            {/* MODAL NOVO CLIENTE (CONSULTOR) - ESTAVA FALTANDO AQUI 👇 */}
+            <HistoryModal isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} transactions={transactions} installments={installments} recurring={recurring} />
+
+            <CustomizationModal isOpen={isCustomizationOpen} onClose={() => setIsCustomizationOpen(false)} currentLayout={currentLayout} currentTheme={currentTheme} onSelectLayout={(l) => handleSavePreferences('layout', l)} onSelectTheme={(t) => handleSavePreferences('theme', t)} userPlan={userPlan} />
+
+            {/* MODAL DE PREÇOS (O QUE TINHA SUMIDO!) */}
+            {isPricingOpen && (
+                <div className="fixed inset-0 bg-black/95 backdrop-blur-xl flex items-center justify-center z-[200] p-4 overflow-y-auto">
+                    <div className="relative w-full max-w-6xl animate-in zoom-in duration-300 my-10">
+                        <button onClick={() => setIsPricingOpen(false)} className="absolute top-0 right-0 md:-right-8 md:-top-8 text-gray-500 hover:text-white p-2"><X size={32} /></button>
+
+                        <div className="text-center mb-12">
+                            <h2 className="text-4xl md:text-5xl font-black text-white mb-4">Evolua seu Controle 🚀</h2>
+                            <p className="text-gray-400 text-lg">Desbloqueie automação, IA avançada e gestão profissional.</p>
+                        </div>
+
+                        {/* PLANOS PESSOAIS */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+                            {/* START */}
+                            <div className="bg-[#111] border border-gray-800 p-8 rounded-3xl flex flex-col hover:border-gray-600 transition group">
+                                <h3 className="text-gray-400 font-bold uppercase tracking-wider mb-2">Start</h3>
+                                <div className="text-3xl font-black text-white mb-6">R$ 10<span className="text-sm font-normal text-gray-500">/mês</span></div>
+                                <ul className="space-y-4 mb-8 flex-1 text-sm text-gray-300">
+                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-gray-600" /> Lançamentos Ilimitados</li>
+                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-gray-600" /> Acesso ao Painel Completo</li>
+                                    <li className="flex gap-3 text-gray-600 line-through"><Zap size={18} /> Automação WhatsApp</li>
+                                </ul>
+                                <button id="checkout-btn-START" onClick={() => handleCheckout('START')} className="w-full py-3 rounded-xl border border-gray-700 hover:bg-gray-800 text-white font-bold transition">Escolher Start</button>
+                            </div>
+
+                            {/* PREMIUM (PLUS) */}
+                            <div className="bg-[#151515] border border-cyan-500/30 p-8 rounded-3xl flex flex-col relative shadow-2xl shadow-cyan-900/20 scale-105 z-10">
+                                <div className="absolute top-0 right-0 bg-cyan-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl rounded-tr-2xl">POPULAR</div>
+                                <h3 className="text-cyan-400 font-bold uppercase tracking-wider mb-2 flex items-center gap-2"><Zap size={16} /> Plus</h3>
+                                <div className="text-4xl font-black text-white mb-6">R$ 29,90<span className="text-sm font-normal text-gray-500">/mês</span></div>
+                                <ul className="space-y-4 mb-8 flex-1 text-sm text-white">
+                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500" /> Tudo do Start</li>
+                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500" /> WhatsApp Integrado</li>
+                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500" /> Leitura de Comprovantes</li>
+                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500" /> Exportação Excel</li>
+                                </ul>
+                                <button id="checkout-btn-PREMIUM" onClick={() => handleCheckout('PREMIUM')} className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:to-blue-500 text-white font-bold transition shadow-lg">Quero Automação</button>
+                            </div>
+
+                            {/* PRO */}
+                            <div className="bg-[#111] border border-purple-500/20 p-8 rounded-3xl flex flex-col hover:border-purple-500/40 transition group">
+                                <h3 className="text-purple-400 font-bold uppercase tracking-wider mb-2">Pro</h3>
+                                <div className="text-3xl font-black text-white mb-6">R$ 39,90<span className="text-sm font-normal text-gray-500">/mês</span></div>
+                                <ul className="space-y-4 mb-8 flex-1 text-sm text-gray-300">
+                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-purple-500" /> Tudo do Plus</li>
+                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-purple-500" /> IA Consultora (GPT-4)</li>
+                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-purple-500" /> Múltiplos Perfis</li>
+                                </ul>
+                                <button id="checkout-btn-PRO" onClick={() => handleCheckout('PRO')} className="w-full py-3 rounded-xl border border-purple-900/50 hover:bg-purple-900/20 text-white font-bold transition">Escolher Pro</button>
+                            </div>
+                        </div>
+
+                        {/* PLANO CONSULTOR (BARRA INFERIOR) */}
+                        <div className="bg-[#0f0f13] border border-amber-900/30 p-8 rounded-3xl relative overflow-hidden flex flex-col md:flex-row items-center gap-8 shadow-2xl">
+                            <div className="absolute top-0 right-0 w-64 h-64 bg-amber-600/10 rounded-full blur-3xl pointer-events-none"></div>
+                            <div className="flex-1 relative z-10">
+                                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-900/20 border border-amber-500/30 text-amber-500 text-xs font-bold uppercase tracking-wider mb-4">
+                                    <Briefcase size={12} /> Área Profissional
+                                </div>
+                                <h3 className="text-3xl font-black text-white mb-2">Plano Agent (Consultor)</h3>
+                                <p className="text-gray-400 mb-6">Gerencie a carteira de múltiplos clientes, tenha acesso administrativo e ofereça o app como sua ferramenta oficial.</p>
+                                <div className="flex flex-wrap gap-4 text-sm text-gray-300 font-bold">
+                                    <span className="flex items-center gap-2"><Users size={16} className="text-amber-500" /> Gestão de Carteira</span>
+                                    <span className="flex items-center gap-2"><Lock size={16} className="text-amber-500" /> Acesso Admin</span>
+                                    <span className="flex items-center gap-2"><FileSpreadsheet size={16} className="text-amber-500" /> Relatórios White-label</span>
+                                </div>
+                            </div>
+                            <div className="flex flex-col items-center gap-2 min-w-[200px] relative z-10">
+                                <div className="text-4xl font-black text-white">R$ 99,90<span className="text-sm font-normal text-gray-500">/mês</span></div>
+                                <button id="checkout-btn-AGENT" onClick={() => handleCheckout('AGENT')} className="w-full px-8 py-4 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl transition shadow-lg shadow-amber-900/20 whitespace-nowrap">
+                                    Assinar Agent
+                                </button>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL NOVO CLIENTE (CONSULTOR) */}
             {isClientModalOpen && (
                 <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
                     <div className="bg-[#111] border border-gray-800 p-6 rounded-3xl w-full max-w-sm">
                         <h3 className="text-lg font-bold text-white mb-4">Novo Cliente</h3>
-                        <input 
-                            type="email" 
-                            placeholder="E-mail do cliente" 
-                            value={newClientEmail} 
-                            onChange={(e) => setNewClientEmail(e.target.value)} 
-                            className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white outline-none mb-4" 
-                        />
+                        <input type="email" placeholder="E-mail do cliente" value={newClientEmail} onChange={(e) => setNewClientEmail(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white outline-none mb-4" />
                         <div className="flex gap-2">
-                            <button onClick={() => setIsClientModalOpen(false)} className="flex-1 bg-gray-800 text-white py-3 rounded-xl">
-                                Cancelar
-                            </button>
-                            <button onClick={handleAddClient} disabled={addingClient} className="flex-1 bg-cyan-600 text-white py-3 rounded-xl font-bold">
-                                {addingClient ? '...' : 'Adicionar'}
-                            </button>
+                            <button onClick={() => setIsClientModalOpen(false)} className="flex-1 bg-gray-800 text-white py-3 rounded-xl">Cancelar</button>
+                            <button onClick={handleAddClient} disabled={addingClient} className="flex-1 bg-cyan-600 text-white py-3 rounded-xl font-bold">{addingClient ? '...' : 'Adicionar'}</button>
                         </div>
                     </div>
                 </div>
@@ -1444,7 +1547,7 @@ export default function FinancialDashboard() {
                     <div className="bg-[#111] border border-gray-700 p-8 rounded-3xl w-full max-w-md shadow-2xl relative max-h-[90vh] overflow-y-auto">
                         <button onClick={() => setIsFormOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white"><X size={24} /></button>
                         <h2 className="text-2xl font-bold mb-6 text-white">{editingId ? 'Editar' : 'Novo Lançamento'}</h2>
-                        
+
                         <div className="bg-gray-900 p-4 rounded-xl border border-gray-800 mb-6 flex items-center justify-between">
                             <label className="text-gray-400 text-sm">Mês de Referência:</label>
                             <select value={formData.targetMonth} onChange={(e) => setFormData({ ...formData, targetMonth: e.target.value })} className="bg-black text-white p-2 rounded-lg border border-gray-700 outline-none">{MONTHS.map(m => <option key={m} value={m}>{m}</option>)}</select>
@@ -1460,7 +1563,7 @@ export default function FinancialDashboard() {
                         <div className="space-y-4">
                             {formMode === 'income' && (<div className="flex items-center gap-3 bg-gray-900 p-3 rounded-lg"><input type="checkbox" id="fixo" checked={formData.isFixedIncome} onChange={(e) => setFormData({ ...formData, isFixedIncome: e.target.checked })} className="w-5 h-5 rounded accent-emerald-500" /><label htmlFor="fixo" className="text-gray-300 text-sm cursor-pointer select-none">Fixo mensal?</label></div>)}
                             <input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none" placeholder="Descrição" />
-                            
+
                             {/* Ícones */}
                             <div className="my-4">
                                 <label className="text-gray-500 text-xs uppercase font-bold mb-2 block ml-1">Escolha um Ícone</label>
@@ -1537,16 +1640,7 @@ export default function FinancialDashboard() {
                 </div>
             )}
 
-            {/* OUTROS MODAIS (Preços, Nudge, Rollover, AI) */}
-            {/* Vou omitir o código interno dos outros modais para poupar espaço, pois eles não mudam. Eles continuam aqui exatamente como antes. */}
-            {isPricingOpen && (
-                <div className="fixed inset-0 bg-black/95 backdrop-blur-xl flex items-center justify-center z-[200] p-4 overflow-y-auto">
-                    {/* ... (Conteúdo do Modal de Preços) ... */}
-                    {/* (Mantenha o código original do seu modal de preços aqui) */}
-                    <div className="w-full max-w-6xl text-center"><h2 className="text-3xl font-bold text-white">Evolua seu Controle</h2><button onClick={() => setIsPricingOpen(false)} className="text-gray-500 mt-4 underline">Fechar</button></div>
-                </div>
-            )}
-
+            {/* MODAL NUDGE (CUTUCÃO DE AUTOMAÇÃO) */}
             {isNudgeOpen && (
                 <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[250] p-6 animate-in fade-in duration-300">
                     <div className="bg-[#111] border border-gray-800 p-8 rounded-3xl w-full max-w-sm relative shadow-2xl overflow-hidden">
@@ -1559,23 +1653,17 @@ export default function FinancialDashboard() {
             )}
 
             {/* MODAL IA */}
-          {isAIOpen && (
+            {isAIOpen && (
                 <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[200] p-4 animate-in fade-in duration-300">
                     <div className="bg-[#0f0f13] border border-gray-700 w-full max-w-2xl h-[600px] rounded-3xl shadow-2xl flex flex-col relative overflow-hidden">
-                        
-                        {/* 1. CABEÇALHO */}
                         <div className="p-6 border-b border-gray-800 bg-[#111] flex justify-between items-center z-10">
                             <h2 className="text-xl font-bold text-white">Consultor IA</h2>
                             <button onClick={() => setIsAIOpen(false)} className="text-gray-500 hover:text-white"><X size={20} /></button>
                         </div>
-
-                        {/* 2. ÁREA DE MENSAGENS */}
                         <div className="flex-1 p-6 overflow-y-auto space-y-4 scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent">
-                            {/* Mensagens do Histórico */}
                             {chatHistory.map((msg, idx) => (
                                 <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                     <div className={`max-w-[85%] p-4 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-200'}`}>
-                                        {/* Se for mensagem de anexo do usuário, mostra ícone */}
                                         {msg.content === 'Analisar comprovante...' && (
                                             <div className="flex items-center gap-2 mb-2 text-purple-200 bg-purple-700/50 p-2 rounded-lg text-xs">
                                                 <FileText size={14} /> Comprovante enviado
@@ -1585,19 +1673,15 @@ export default function FinancialDashboard() {
                                     </div>
                                 </div>
                             ))}
-                            
-                            {/* Bolha de Carregamento (Importante para UX) */}
                             {isAiLoading && (
                                 <div className="flex justify-start">
                                     <div className="bg-gray-800 text-gray-200 rounded-2xl p-4 flex items-center gap-2">
-                                        <Loader2 size={18} className="animate-spin text-purple-500" /> 
+                                        <Loader2 size={18} className="animate-spin text-purple-500" />
                                         <span className="animate-pulse">Analisando...</span>
                                     </div>
                                 </div>
                             )}
                         </div>
-
-                        {/* 3. SUGESTÕES RÁPIDAS (AQUI ESTAVAM FALTANDO!) */}
                         <div className="px-6 py-2 border-t border-gray-800 bg-[#111]">
                             {userPlan !== 'free' ? (
                                 <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-2">
@@ -1624,10 +1708,7 @@ export default function FinancialDashboard() {
                                 </div>
                             )}
                         </div>
-
-                        {/* 4. ÁREA DE INPUT (DIGITAÇÃO E ANEXO) */}
                         <div className="p-4 border-t border-gray-800 bg-[#111]">
-                            {/* Preview do Anexo */}
                             {attachment && (
                                 <div className="mb-3 flex items-start animate-in slide-in-from-bottom-2">
                                     <div className="relative group">
@@ -1644,44 +1725,13 @@ export default function FinancialDashboard() {
                                     </div>
                                 </div>
                             )}
-
                             <div className="flex gap-2 items-end">
                                 <input type="file" ref={fileInputRef} className="hidden" accept="image/*,application/pdf" onChange={handleFileSelect} />
                                 <button onClick={() => fileInputRef.current?.click()} className={`p-3 rounded-xl border transition mb-[2px] ${attachment ? 'bg-emerald-900/20 text-emerald-500 border-emerald-500/50' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white hover:bg-gray-700'}`} title="Anexar Comprovante"><Paperclip size={20} /></button>
-                                
                                 <div className="flex-1 relative">
-                                    <textarea 
-                                        value={aiInput} 
-                                        onChange={(e) => setAiInput(e.target.value)} 
-                                        placeholder={attachment ? "Descreva o gasto (opcional)..." : "Digite ou envie comprovante..."} 
-                                        className="w-full bg-gray-900 text-white placeholder-gray-500 border border-gray-800 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 resize-none h-12 max-h-32 scrollbar-hide"
-                                        style={{ minHeight: '48px' }}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter' && !e.shiftKey) {
-                                                e.preventDefault();
-                                                if (aiInput.trim() || attachment) { 
-                                                    askGemini(aiInput, attachment?.base64 || null); 
-                                                    setAiInput(''); 
-                                                    setAttachment(null); 
-                                                    if (fileInputRef.current) fileInputRef.current.value = '';
-                                                }
-                                            }
-                                        }}
-                                    />
+                                    <textarea value={aiInput} onChange={(e) => setAiInput(e.target.value)} placeholder={attachment ? "Descreva o gasto (opcional)..." : "Digite ou envie comprovante..."} className="w-full bg-gray-900 text-white placeholder-gray-500 border border-gray-800 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 resize-none h-12 max-h-32 scrollbar-hide" style={{ minHeight: '48px' }} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (aiInput.trim() || attachment) { askGemini(aiInput, attachment?.base64 || null); setAiInput(''); setAttachment(null); if (fileInputRef.current) fileInputRef.current.value = ''; } } }} />
                                 </div>
-                                
-                                <button 
-                                    onClick={() => { 
-                                        if (aiInput.trim() || attachment) { 
-                                            askGemini(aiInput, attachment?.base64 || null); 
-                                            setAiInput(''); 
-                                            setAttachment(null); 
-                                            if (fileInputRef.current) fileInputRef.current.value = '';
-                                        } 
-                                    }} 
-                                    disabled={isAiLoading || (!aiInput.trim() && !attachment)} 
-                                    className="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white p-3 rounded-xl transition shadow-lg shadow-purple-900/20 mb-[2px]"
-                                >
+                                <button onClick={() => { if (aiInput.trim() || attachment) { askGemini(aiInput, attachment?.base64 || null); setAiInput(''); setAttachment(null); if (fileInputRef.current) fileInputRef.current.value = ''; } }} disabled={isAiLoading || (!aiInput.trim() && !attachment)} className="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white p-3 rounded-xl transition shadow-lg shadow-purple-900/20 mb-[2px]">
                                     {isAiLoading ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
                                 </button>
                             </div>
@@ -1690,7 +1740,6 @@ export default function FinancialDashboard() {
                 </div>
             )}
 
-            {/* MODAL ROLLOVER */}
             {isRolloverModalOpen && (
                 <div className="fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center z-[300] p-6 animate-in zoom-in duration-300">
                     <div className="bg-[#111] border border-red-900/30 p-8 rounded-3xl w-full max-w-lg shadow-2xl relative overflow-hidden">
@@ -1713,18 +1762,11 @@ export default function FinancialDashboard() {
                 </div>
             )}
 
-            {/* AUTH MODALS QUE JÁ DEFINIMOS NO TOPO (REPETIDOS AQUI PARA GARANTIR) */}
-            {/* Como já definimos a variável AuthModals lá em cima, podemos usá-la aqui também se necessário, mas como eles são globais, geralmente ficam fora do switch principal ou duplicados. 
-                Neste layout, eles já foram renderizados no topo SE !user.
-                Se USER existe, eles podem ser necessários (ex: mudar senha, ou re-logar).
-                Então, renderizamos de novo aqui. O React lida bem com isso pois o estado 'isOpen' controla tudo.
-            */}
-            
             {AuthModals}
-
-           
 
             <Toaster richColors position="top-center" theme={currentTheme === 'light' ? 'light' : 'dark'} />
         </div>
     );
+
+
 }

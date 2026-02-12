@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Lock, Camera, Save, Loader2, Mail, Phone, Shield, Link as LinkIcon, ExternalLink, Copy, Check } from 'lucide-react'; 
-import { supabase } from '@/supabase';
+import { X, User, Lock, Camera, Save, Loader2, Mail, Phone, Shield, Link as LinkIcon, ExternalLink, Copy, Check, Zap } from 'lucide-react'; 
+import { supabase } from '@/supabase'; // Ajuste o caminho se for diferente (ex: '@/supabase')
 import { toast } from 'sonner';
 
 // --- CONFIGURAÇÃO DO BOT ---
@@ -10,9 +10,10 @@ interface ProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
   user: any;
+  userPlan: string; // <--- ADICIONEI ISSO (IMPORTANTE)
 }
 
-export default function ProfileModal({ isOpen, onClose, user }: ProfileModalProps) {
+export default function ProfileModal({ isOpen, onClose, user, userPlan }: ProfileModalProps) {
   if (!isOpen || !user) return null;
 
   const [activeTab, setActiveTab] = useState<'details' | 'security'>('details');
@@ -26,7 +27,11 @@ export default function ProfileModal({ isOpen, onClose, user }: ProfileModalProp
   
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [copied, setCopied] = useState(false); // Estado para o ícone de copiado
+  const [copied, setCopied] = useState(false);
+
+  // 🔒 VERIFICAÇÃO DE PLANO PARA WHATSAPP
+  // Apenas Pro, Agent e Admin podem usar a automação
+  const canUseWhatsapp = ['pro', 'agent', 'admin'].includes(userPlan || '');
 
   // 1. BUSCAR TELEFONE AO ABRIR
   useEffect(() => {
@@ -62,7 +67,7 @@ export default function ProfileModal({ isOpen, onClose, user }: ProfileModalProp
 
       const { data } = supabase.storage.from('comprovantes').getPublicUrl(filePath);
       setAvatarUrl(data.publicUrl);
-      toast.success("Foto carregada! Clique em Salvar.");
+      toast.success("Foto carregada! Clique em Salvar para confirmar.");
 
     } catch (error: any) {
       toast.error("Erro no upload: " + error.message);
@@ -81,7 +86,7 @@ export default function ProfileModal({ isOpen, onClose, user }: ProfileModalProp
       });
       if (authError) throw authError;
 
-      // 2. Tabela user_settings
+      // 2. Tabela user_settings (Salva o telefone mesmo se não for Pro)
       const cleanPhone = whatsapp.replace(/\D/g, ''); 
       
       const { error: dbError } = await supabase
@@ -93,8 +98,12 @@ export default function ProfileModal({ isOpen, onClose, user }: ProfileModalProp
 
       if (dbError) throw dbError;
 
-      toast.success("Perfil atualizado!");
-      window.location.reload(); 
+      toast.success("Perfil atualizado com sucesso!");
+      
+      // Pequeno delay para atualizar a UI
+      setTimeout(() => {
+          window.location.reload();
+      }, 1000);
 
     } catch (error: any) {
       toast.error("Erro: " + error.message);
@@ -113,35 +122,46 @@ export default function ProfileModal({ isOpen, onClose, user }: ProfileModalProp
 
     if (error) toast.error("Erro: " + error.message);
     else {
-      toast.success("Senha alterada!");
+      toast.success("Senha alterada com sucesso!");
       setPassword('');
       setConfirmPassword('');
     }
     setLoading(false);
   };
 
-  // --- FUNÇÃO DO LINK MÁGICO ---
+  // --- FUNÇÃO DO LINK MÁGICO (COM TRAVA) ---
   const handleConnectWhatsapp = () => {
+    // Trava de segurança no clique
+    if (!canUseWhatsapp) {
+        toast.error("Recurso Bloqueado 🔒", { 
+            description: "A IA no WhatsApp é exclusiva dos planos Pro e Agent." 
+        });
+        return;
+    }
+
     const cleanPhone = whatsapp.replace(/\D/g, '');
     if (cleanPhone.length < 10) return toast.error("Número incompleto.");
     
-    // Tenta forçar o protocolo whatsapp:// que as vezes ajuda a escolher o app
-    // Mas o wa.me é mais seguro para web.
     const message = `Ativar ${cleanPhone}`;
     const link = `https://wa.me/${BOT_NUMBER}?text=${encodeURIComponent(message)}`;
     window.open(link, '_blank');
   };
 
-  // --- FUNÇÃO DE COPIAR CÓDIGO (NOVA) ---
+  // --- FUNÇÃO DE COPIAR CÓDIGO (COM TRAVA) ---
   const handleCopyCode = () => {
+    if (!canUseWhatsapp) {
+        toast.error("Recurso Bloqueado 🔒", { description: "Faça o upgrade para ativar." });
+        return;
+    }
+
     const cleanPhone = whatsapp.replace(/\D/g, '');
-    if (cleanPhone.length < 10) return toast.error("Salve seu número primeiro.");
+    if (cleanPhone.length < 10) return toast.error("Digite um número válido primeiro.");
 
     const message = `Ativar ${cleanPhone}`;
     navigator.clipboard.writeText(message);
     
     setCopied(true);
-    toast.success("Código copiado! Abra seu WhatsApp pessoal e cole na conversa com o Bot.");
+    toast.success("Código copiado! Envie para o Bot no WhatsApp.");
     
     setTimeout(() => setCopied(false), 3000);
   };
@@ -213,14 +233,21 @@ export default function ProfileModal({ isOpen, onClose, user }: ProfileModalProp
                 </div>
 
                 {/* WhatsApp Input */}
-                <div>
-                  <div className="flex justify-between items-center mb-1 ml-1">
-                    <label className="text-xs text-gray-500 font-bold flex items-center gap-1">
+                <div className="bg-gray-900/30 p-4 rounded-xl border border-gray-800">
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="text-xs text-gray-400 font-bold flex items-center gap-1">
                       <Phone size={12} /> WhatsApp (IA)
                     </label>
-                    <span className="bg-yellow-500/20 text-yellow-500 border border-yellow-500/50 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                      <Shield size={10} /> PRO
-                    </span>
+                    
+                    {canUseWhatsapp ? (
+                        <span className="bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                            <Zap size={10} /> Ativo
+                        </span>
+                    ) : (
+                        <span className="bg-gray-800 text-gray-500 border border-gray-700 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                            <Lock size={10} /> Exclusivo Pro
+                        </span>
+                    )}
                   </div>
                   
                   <div className="relative">
@@ -229,30 +256,40 @@ export default function ProfileModal({ isOpen, onClose, user }: ProfileModalProp
                       value={whatsapp}
                       onChange={(e) => setWhatsapp(e.target.value)}
                       placeholder="55 + DDD + Número"
-                      className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-purple-500 outline-none transition placeholder:text-gray-600"
+                      className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white focus:border-purple-500 outline-none transition placeholder:text-gray-600"
                     />
                   </div>
-                  <p className="text-[10px] text-gray-500 mt-1 ml-1 mb-2">Digite seu número para liberar a conexão.</p>
+                  <p className="text-[10px] text-gray-500 mt-2 mb-3">
+                    Salve seu número para integrar com a IA. {canUseWhatsapp ? "Clique abaixo para ativar." : "Faça upgrade para ativar."}
+                  </p>
 
                   {/* --- ÁREA DE CONEXÃO --- */}
                   {whatsapp.length > 8 && (
                     <div className="flex gap-2">
                         {/* Botão Principal (Link) */}
                         <button 
-                        onClick={handleConnectWhatsapp}
-                        className="flex-1 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/50 text-emerald-400 font-bold py-2.5 rounded-xl transition flex items-center justify-center gap-2 mb-2 group"
+                            onClick={handleConnectWhatsapp}
+                            className={`flex-1 py-2.5 rounded-xl font-bold transition flex items-center justify-center gap-2 ${
+                                canUseWhatsapp 
+                                ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/20' 
+                                : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
+                            }`}
                         >
-                        <LinkIcon size={16} /> 
-                        Conectar
+                            {canUseWhatsapp ? <LinkIcon size={16} /> : <Lock size={16} />}
+                            {canUseWhatsapp ? "Conectar Agora" : "Bloqueado"}
                         </button>
 
                         {/* Botão Copiar (Backup) */}
                         <button 
-                        onClick={handleCopyCode}
-                        className="w-12 bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 font-bold py-2.5 rounded-xl transition flex items-center justify-center mb-2"
-                        title="Copiar código de ativação"
+                            onClick={handleCopyCode}
+                            className={`w-12 py-2.5 rounded-xl transition flex items-center justify-center ${
+                                canUseWhatsapp
+                                ? 'bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300'
+                                : 'bg-gray-800 text-gray-600 cursor-not-allowed border border-gray-700'
+                            }`}
+                            title="Copiar código de ativação"
                         >
-                        {copied ? <Check size={16} className="text-green-500"/> : <Copy size={16} />} 
+                            {copied ? <Check size={16} className="text-green-500"/> : <Copy size={16} />} 
                         </button>
                     </div>
                   )}
@@ -274,14 +311,13 @@ export default function ProfileModal({ isOpen, onClose, user }: ProfileModalProp
                 disabled={loading || uploading}
                 className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl transition shadow-lg flex items-center justify-center gap-2"
               >
-                {loading ? <Loader2 className="animate-spin"/> : <><Save size={18}/> Salvar</>}
+                {loading ? <Loader2 className="animate-spin"/> : <><Save size={18}/> Salvar Alterações</>}
               </button>
             </div>
           )}
 
           {activeTab === 'security' && (
             <div className="space-y-6">
-               {/* (Mantive igual) */}
                <div className="bg-orange-500/10 border border-orange-500/20 p-4 rounded-xl flex items-start gap-3">
                  <Lock className="text-orange-500 mt-1" size={20}/>
                  <div>
