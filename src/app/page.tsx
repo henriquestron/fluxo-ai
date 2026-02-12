@@ -211,27 +211,28 @@ export default function FinancialDashboard() {
     };
 
    // --- TUTORIAL / TOUR GUIADO (CORRIGIDO) ---
+   // --- TUTORIAL / TOUR GUIADO (CORRIGIDO E ÚNICO) ---
     useEffect(() => {
-        // Só roda se tiver USUÁRIO logado e se for o plano certo ou tour geral
+        // Só roda se tiver USUÁRIO logado. Se for Landing Page (!user), ignora.
         if (user) { 
+            // Lógica para o Consultor (Agent)
             if (userPlan === 'agent' && (window as any).driver) {
                 const hasSeenTour = localStorage.getItem('has_seen_agent_tour_v1');
                 if (!hasSeenTour) {
                     setTimeout(() => { runTour(); localStorage.setItem('has_seen_agent_tour_v1', 'true'); }, 1500);
                 }
-            } else {
+            } 
+            // Lógica para usuários normais (Start, Free, Pro)
+            else {
                 const hasSeenTour = localStorage.getItem('hasSeenTour_v3');
                 if (!hasSeenTour) { 
                     setTimeout(() => { runTour(); localStorage.setItem('hasSeenTour_v3', 'true'); }, 1500); 
                 }
             }
         }
-    }, [userPlan, transactions, user]); // Adicionei 'user' nas dependências
+    }, [userPlan, transactions, user]);
 
-    useEffect(() => {
-        const hasSeenTour = localStorage.getItem('hasSeenTour_v3');
-        if (!hasSeenTour) { setTimeout(() => { runTour(); localStorage.setItem('hasSeenTour_v3', 'true'); }, 1500); }
-    }, [userPlan, transactions]);
+    
 
     const getReceiptForMonth = (item: any, month: string) => {
         if (!item.receipt_url) return null;
@@ -1310,24 +1311,108 @@ export default function FinancialDashboard() {
                 </div>
             </header>
 
-            {/* --- RENDERIZAÇÃO DOS LAYOUTS --- */}
-            {(currentLayout === 'standard' || currentLayout === 'zen' || currentLayout === 'calendar') && (
-                <StandardView transactions={transactions} installments={installments} recurring={recurring} activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab} currentMonthData={currentMonthData} previousSurplus={previousSurplus} displayBalance={displayBalance} viewingAs={viewingAs} onTogglePaid={togglePaid} onToggleSkip={toggleSkipMonth} onToggleDelay={toggleDelay} onDelete={handleDelete} onEdit={handleEdit} onTogglePaidMonth={togglePaidMonth} getReceipt={getReceiptForMonth} />
+         {/* 1. VISÃO PADRÃO (Standard) */}
+            {currentLayout === 'standard' && (
+                <StandardView 
+                    transactions={transactions} installments={installments} recurring={recurring} 
+                    activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab} 
+                    currentMonthData={currentMonthData} previousSurplus={previousSurplus} 
+                    displayBalance={displayBalance} viewingAs={viewingAs} 
+                    onTogglePaid={togglePaid} onToggleSkip={toggleSkipMonth} onToggleDelay={toggleDelay} 
+                    onDelete={handleDelete} onEdit={handleEdit} onTogglePaidMonth={togglePaidMonth} 
+                    getReceipt={getReceiptForMonth} 
+                />
             )}
 
-            {currentLayout === 'trader' && (<TraderView transactions={transactions} installments={installments} recurring={recurring} activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab} currentMonthData={currentMonthData} previousSurplus={previousSurplus} displayBalance={displayBalance} onTogglePaid={togglePaid} onToggleDelay={toggleDelay} onDelete={handleDelete} onTogglePaidMonth={togglePaidMonth} />)}
-            {currentLayout === 'calendar' && (<CalendarView transactions={transactions} installments={installments} recurring={recurring} activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab} />)}
-            {currentLayout === 'zen' && (<ZenView displayBalance={displayBalance} currentMonthData={currentMonthData} activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab} />)}
-            {currentLayout === 'timeline' && (<TimelineView transactions={transactions} installments={installments} recurring={recurring} activeTab={activeTab} />)}
-            {currentLayout === 'bento' && (<BentoView currentMonthData={currentMonthData} transactions={transactions} installments={installments} recurring={recurring} onOpenCalendar={() => setCurrentLayout('calendar')} onOpenRollover={() => setIsRolloverModalOpen(true)} />)}
+            {/* 2. VISÃO TRADER */}
+            {currentLayout === 'trader' && (
+                <TraderView 
+                    transactions={transactions} installments={installments} recurring={recurring} 
+                    activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab} 
+                    currentMonthData={currentMonthData} previousSurplus={previousSurplus} 
+                    displayBalance={displayBalance} onTogglePaid={togglePaid} 
+                    onToggleDelay={toggleDelay} onDelete={handleDelete} 
+                    onTogglePaidMonth={togglePaidMonth} 
+                />
+            )}
 
-            {/* --- MODAIS DE FUNCIONALIDADES (JÁ EXISTENTES) --- */}
-            <ProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} user={user} />
-            <ExportModal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} user={user} userPlan={userPlan} clients={clients} activeTab={activeTab} />
-            <CreditCardModal isOpen={isCreditCardModalOpen} onClose={() => setIsCreditCardModalOpen(false)} user={user} activeTab={activeTab} contextId={currentWorkspace?.id} onSuccess={() => loadData(getActiveUserId(), currentWorkspace?.id)} />
-            <HistoryModal isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} transactions={transactions} installments={installments} recurring={recurring} />
-            <CustomizationModal isOpen={isCustomizationOpen} onClose={() => setIsCustomizationOpen(false)} currentLayout={currentLayout} currentTheme={currentTheme} onSelectLayout={(l) => handleSavePreferences('layout', l)} onSelectTheme={(t) => handleSavePreferences('theme', t)} userPlan={userPlan} />
+            {/* 3. VISÃO CALENDÁRIO */}
+            {currentLayout === 'calendar' && (
+                <CalendarView 
+                    transactions={transactions} installments={installments} recurring={recurring} 
+                    activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab} 
+                />
+            )}
 
+            {/* 4. VISÃO ZEN */}
+            {currentLayout === 'zen' && (
+                <ZenView 
+                    displayBalance={displayBalance} currentMonthData={currentMonthData} 
+                    activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab} 
+                />
+            )}
+
+            {/* 5. VISÃO TIMELINE */}
+            {currentLayout === 'timeline' && (
+                <TimelineView 
+                    transactions={transactions} installments={installments} recurring={recurring} 
+                    activeTab={activeTab} 
+                />
+            )}
+
+            {/* 6. VISÃO BENTO GRID */}
+            {currentLayout === 'bento' && (
+                <BentoView 
+                    currentMonthData={currentMonthData} transactions={transactions} 
+                    installments={installments} recurring={recurring} 
+                    onOpenCalendar={() => setCurrentLayout('calendar')} 
+                    onOpenRollover={() => setIsRolloverModalOpen(true)} 
+                />
+            )}
+
+            {/* --- MODAIS DE FUNCIONALIDADES (Onde estava o erro) --- */}
+            
+            <ProfileModal 
+                isOpen={isProfileModalOpen} 
+                onClose={() => setIsProfileModalOpen(false)} 
+                user={user} 
+            />
+
+            <ExportModal 
+                isOpen={isExportModalOpen} 
+                onClose={() => setIsExportModalOpen(false)} 
+                user={user} 
+                userPlan={userPlan} 
+                clients={clients} 
+                activeTab={activeTab} 
+            />
+
+            <CreditCardModal 
+                isOpen={isCreditCardModalOpen} 
+                onClose={() => setIsCreditCardModalOpen(false)} 
+                user={user} 
+                activeTab={activeTab} 
+                contextId={currentWorkspace?.id} 
+                onSuccess={() => loadData(getActiveUserId(), currentWorkspace?.id)} 
+            />
+
+            <HistoryModal 
+                isOpen={isHistoryOpen} 
+                onClose={() => setIsHistoryOpen(false)} 
+                transactions={transactions} 
+                installments={installments} 
+                recurring={recurring} 
+            />
+            
+            <CustomizationModal 
+                isOpen={isCustomizationOpen} 
+                onClose={() => setIsCustomizationOpen(false)} 
+                currentLayout={currentLayout} 
+                currentTheme={currentTheme} 
+                onSelectLayout={(l) => handleSavePreferences('layout', l)} 
+                onSelectTheme={(t) => handleSavePreferences('theme', t)} 
+                userPlan={userPlan} 
+            />
             {/* Modal de Novo Perfil */}
             {/* MODAL NOVO CLIENTE (CONSULTOR) - ESTAVA FALTANDO AQUI 👇 */}
             {isClientModalOpen && (

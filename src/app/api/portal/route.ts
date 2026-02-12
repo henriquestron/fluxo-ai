@@ -41,7 +41,7 @@ export async function POST(req: Request) {
     }
 
     // 5. Gerar Link do Portal
-    const origin = req.headers.get('origin') || 'http://localhost:3000';
+    const origin = req.headers.get('origin') || 'https://usealiado.com.br/';
     const session = await stripe.billingPortal.sessions.create({
       customer: profile.stripe_customer_id,
       return_url: `${origin}`,
