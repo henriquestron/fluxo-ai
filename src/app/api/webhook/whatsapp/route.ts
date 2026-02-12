@@ -169,6 +169,24 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "User unknown" });
         }
         
+        // 🔒 TRAVA DE SEGURANÇA: VERIFICAÇÃO DE PLANO
+        // Busca o plano do usuário na tabela 'profiles' usando o user_id encontrado
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('plan_tier')
+            .eq('id', userSettings.user_id)
+            .single();
+
+        const plan = profile?.plan_tier || 'free';
+        
+        // Se NÃO for Pro, Agent ou Admin, BLOQUEIA e avisa.
+        if (!['pro', 'agent', 'admin'].includes(plan)) {
+            console.log(`🚫 Acesso negado para ${senderId} (Plano: ${plan})`);
+            await sendWhatsAppMessage(remoteJid, "🚫 *Recurso Bloqueado*\n\nA Inteligência Artificial via WhatsApp é exclusiva dos planos **Pro** e **Agent**.\n\nAcesse seu painel para fazer o upgrade e liberar essa função! 🚀");
+            return NextResponse.json({ status: 'Blocked by Plan' });
+        }
+        // ---------------------------------------------------------
+
         if (senderId !== userSettings.whatsapp_phone && userSettings.whatsapp_id !== senderId) {
             await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userSettings.user_id);
         }

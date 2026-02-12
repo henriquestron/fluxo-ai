@@ -1449,58 +1449,66 @@ export default function FinancialDashboard() {
             <CustomizationModal isOpen={isCustomizationOpen} onClose={() => setIsCustomizationOpen(false)} currentLayout={currentLayout} currentTheme={currentTheme} onSelectLayout={(l) => handleSavePreferences('layout', l)} onSelectTheme={(t) => handleSavePreferences('theme', t)} userPlan={userPlan} />
 
             {/* MODAL DE PREÇOS (O QUE TINHA SUMIDO!) */}
+         
+            {/* MODAL DE PREÇOS (LIMPO E ATUALIZADO) */}
             {isPricingOpen && (
                 <div className="fixed inset-0 bg-black/95 backdrop-blur-xl flex items-center justify-center z-[200] p-4 overflow-y-auto">
                     <div className="relative w-full max-w-6xl animate-in zoom-in duration-300 my-10">
-                        <button onClick={() => setIsPricingOpen(false)} className="absolute top-0 right-0 md:-right-8 md:-top-8 text-gray-500 hover:text-white p-2"><X size={32} /></button>
-
+                        <button onClick={() => setIsPricingOpen(false)} className="absolute top-0 right-0 md:-right-8 md:-top-8 text-gray-500 hover:text-white p-2"><X size={32}/></button>
+                        
                         <div className="text-center mb-12">
                             <h2 className="text-4xl md:text-5xl font-black text-white mb-4">Evolua seu Controle 🚀</h2>
-                            <p className="text-gray-400 text-lg">Desbloqueie automação, IA avançada e gestão profissional.</p>
+                            <p className="text-gray-400 text-lg">Escolha o poder de fogo ideal para sua vida financeira.</p>
                         </div>
 
-                        {/* PLANOS PESSOAIS */}
+                        {/* GRIDS DOS PLANOS PESSOAIS */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-                            {/* START */}
+                            
+                            {/* 1. PLANO START */}
                             <div className="bg-[#111] border border-gray-800 p-8 rounded-3xl flex flex-col hover:border-gray-600 transition group">
                                 <h3 className="text-gray-400 font-bold uppercase tracking-wider mb-2">Start</h3>
                                 <div className="text-3xl font-black text-white mb-6">R$ 10<span className="text-sm font-normal text-gray-500">/mês</span></div>
                                 <ul className="space-y-4 mb-8 flex-1 text-sm text-gray-300">
-                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-gray-600" /> Lançamentos Ilimitados</li>
-                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-gray-600" /> Acesso ao Painel Completo</li>
-                                    <li className="flex gap-3 text-gray-600 line-through"><Zap size={18} /> Automação WhatsApp</li>
+                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-gray-600"/> Lançamentos Ilimitados</li>
+                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-gray-600"/> Gráficos & Histórico</li>
+                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-gray-600"/> Exportação Excel</li>
+                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-gray-600"/> IA Lite (Dicas Básicas)</li>
+                                    <li className="flex gap-3 text-gray-600 line-through opacity-50"><Smartphone size={18}/> Integração WhatsApp</li>
                                 </ul>
                                 <button id="checkout-btn-START" onClick={() => handleCheckout('START')} className="w-full py-3 rounded-xl border border-gray-700 hover:bg-gray-800 text-white font-bold transition">Escolher Start</button>
                             </div>
 
-                            {/* PREMIUM (PLUS) */}
+                            {/* 2. PLANO PREMIUM (PLUS) */}
                             <div className="bg-[#151515] border border-cyan-500/30 p-8 rounded-3xl flex flex-col relative shadow-2xl shadow-cyan-900/20 scale-105 z-10">
-                                <div className="absolute top-0 right-0 bg-cyan-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl rounded-tr-2xl">POPULAR</div>
-                                <h3 className="text-cyan-400 font-bold uppercase tracking-wider mb-2 flex items-center gap-2"><Zap size={16} /> Plus</h3>
+                                <div className="absolute top-0 right-0 bg-cyan-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl rounded-tr-2xl">CUSTO-BENEFÍCIO</div>
+                                <h3 className="text-cyan-400 font-bold uppercase tracking-wider mb-2 flex items-center gap-2"><Zap size={16}/> Plus</h3>
                                 <div className="text-4xl font-black text-white mb-6">R$ 29,90<span className="text-sm font-normal text-gray-500">/mês</span></div>
                                 <ul className="space-y-4 mb-8 flex-1 text-sm text-white">
-                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500" /> Tudo do Start</li>
-                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500" /> WhatsApp Integrado</li>
-                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500" /> Leitura de Comprovantes</li>
-                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500" /> Exportação Excel</li>
+                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500"/> Tudo do Start</li>
+                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500"/> Agente IA Completo</li>
+                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500"/> Múltiplos Perfis de Conta</li>
+                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500"/> Leitura de Comprovantes</li>
+                                    <li className="flex gap-3 text-gray-500 line-through opacity-50"><Smartphone size={18}/> Integração WhatsApp</li>
                                 </ul>
-                                <button id="checkout-btn-PREMIUM" onClick={() => handleCheckout('PREMIUM')} className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:to-blue-500 text-white font-bold transition shadow-lg">Quero Automação</button>
+                                <button id="checkout-btn-PREMIUM" onClick={() => handleCheckout('PREMIUM')} className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:to-blue-500 text-white font-bold transition shadow-lg">Quero o Plus</button>
                             </div>
 
-                            {/* PRO */}
-                            <div className="bg-[#111] border border-purple-500/20 p-8 rounded-3xl flex flex-col hover:border-purple-500/40 transition group">
-                                <h3 className="text-purple-400 font-bold uppercase tracking-wider mb-2">Pro</h3>
+                            {/* 3. PLANO PRO (NOVO PREÇO R$ 39,90) */}
+                            <div className="bg-[#111] border border-purple-500/20 p-8 rounded-3xl flex flex-col hover:border-purple-500/40 transition group relative overflow-hidden">
+                                <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-purple-600 to-pink-600"></div>
+                                <h3 className="text-purple-400 font-bold uppercase tracking-wider mb-2 flex items-center gap-2"><Crown size={16}/> Pro</h3>
                                 <div className="text-3xl font-black text-white mb-6">R$ 39,90<span className="text-sm font-normal text-gray-500">/mês</span></div>
                                 <ul className="space-y-4 mb-8 flex-1 text-sm text-gray-300">
-                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-purple-500" /> Tudo do Plus</li>
-                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-purple-500" /> IA Consultora (GPT-4)</li>
-                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-purple-500" /> Múltiplos Perfis</li>
+                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-purple-500"/> Tudo do Plus</li>
+                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-purple-500"/> <b>IA no WhatsApp</b> (Áudio/Texto)</li>
+                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-purple-500"/> Notificações via WhatsApp</li>
+                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-purple-500"/> Prioridade no Suporte</li>
                                 </ul>
-                                <button id="checkout-btn-PRO" onClick={() => handleCheckout('PRO')} className="w-full py-3 rounded-xl border border-purple-900/50 hover:bg-purple-900/20 text-white font-bold transition">Escolher Pro</button>
+                                <button id="checkout-btn-PRO" onClick={() => handleCheckout('PRO')} className="w-full py-3 rounded-xl border border-purple-900/50 hover:bg-purple-900/20 text-white font-bold transition shadow-lg shadow-purple-900/10">Virar Pro</button>
                             </div>
                         </div>
 
-                        {/* PLANO CONSULTOR (BARRA INFERIOR) */}
+                        {/* 4. PLANO CONSULTOR */}
                         <div className="bg-[#0f0f13] border border-amber-900/30 p-8 rounded-3xl relative overflow-hidden flex flex-col md:flex-row items-center gap-8 shadow-2xl">
                             <div className="absolute top-0 right-0 w-64 h-64 bg-amber-600/10 rounded-full blur-3xl pointer-events-none"></div>
                             <div className="flex-1 relative z-10">
@@ -1510,9 +1518,9 @@ export default function FinancialDashboard() {
                                 <h3 className="text-3xl font-black text-white mb-2">Plano Agent (Consultor)</h3>
                                 <p className="text-gray-400 mb-6">Gerencie a carteira de múltiplos clientes, tenha acesso administrativo e ofereça o app como sua ferramenta oficial.</p>
                                 <div className="flex flex-wrap gap-4 text-sm text-gray-300 font-bold">
-                                    <span className="flex items-center gap-2"><Users size={16} className="text-amber-500" /> Gestão de Carteira</span>
-                                    <span className="flex items-center gap-2"><Lock size={16} className="text-amber-500" /> Acesso Admin</span>
-                                    <span className="flex items-center gap-2"><FileSpreadsheet size={16} className="text-amber-500" /> Relatórios White-label</span>
+                                    <span className="flex items-center gap-2"><Users size={16} className="text-amber-500"/> Gestão de Carteira</span>
+                                    <span className="flex items-center gap-2"><Lock size={16} className="text-amber-500"/> Acesso Admin</span>
+                                    <span className="flex items-center gap-2"><FileSpreadsheet size={16} className="text-amber-500"/> Relatórios White-label</span>
                                 </div>
                             </div>
                             <div className="flex flex-col items-center gap-2 min-w-[200px] relative z-10">
@@ -1526,7 +1534,6 @@ export default function FinancialDashboard() {
                     </div>
                 </div>
             )}
-
             {/* MODAL NOVO CLIENTE (CONSULTOR) */}
             {isClientModalOpen && (
                 <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-4">
