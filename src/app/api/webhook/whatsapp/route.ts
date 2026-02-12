@@ -29,52 +29,46 @@ async function downloadMedia(url: string) {
     } catch (error) { return null; }
 }
 
-// 🧠 CÁLCULO FINANCEIRO CORRIGIDO (Agora vê parcelas!)
+// 🧠 CÁLCULO FINANCEIRO
 async function getFinancialContext(supabase: any, userId: string, workspaceId: string) {
     const today = new Date();
     const monthStr = String(today.getMonth() + 1).padStart(2, '0');
     const yearStr = today.getFullYear();
     
-    // 1. Busca Transações do Mês (Gastos pontuais)
+    // 1. Busca Transações do Mês
     const { data: transactions } = await supabase
         .from('transactions')
         .select('type, amount')
         .eq('user_id', userId)
         .eq('context', workspaceId)
         .like('date', `%/${monthStr}/${yearStr}`)
-        .neq('status', 'delayed'); // Ignora Stand-by
+        .neq('status', 'delayed');
 
-    // 2. Busca Fixos Ativos (Aluguel, Luz, etc)
+    // 2. Busca Fixos Ativos
     const { data: recurring } = await supabase
         .from('recurring')
         .select('type, value')
         .eq('user_id', userId)
         .eq('context', workspaceId)
-        .eq('status', 'active'); // Ignora Stand-by
+        .eq('status', 'active');
 
-    // 3. NOVO: Busca Parcelamentos Ativos (Fatura do Cartão)
+    // 3. Busca Parcelamentos Ativos
     const { data: installments } = await supabase
         .from('installments')
         .select('value_per_month')
         .eq('user_id', userId)
         .eq('context', workspaceId)
-        .eq('status', 'active'); // Ignora Stand-by
+        .eq('status', 'active');
 
     let totalEntradas = 0;
     let totalSaidas = 0;
 
-    // Soma Transações
     transactions?.forEach((t: any) => t.type === 'income' ? totalEntradas += t.amount : totalSaidas += t.amount);
-    
-    // Soma Recorrentes
     recurring?.forEach((r: any) => r.type === 'income' ? totalEntradas += r.value : totalSaidas += r.value);
-    
-    // Soma Parcelas (AQUI ESTAVA O ERRO! Agora somamos)
     installments?.forEach((i: any) => totalSaidas += i.value_per_month);
 
     const saldo = totalEntradas - totalSaidas;
 
-    // Define o estado para facilitar pra IA
     let estado = "ESTÁVEL";
     if (saldo < 0) estado = "CRÍTICO (VERMELHO)";
     else if (saldo < (totalEntradas * 0.1)) estado = "ALERTA (POUCA MARGEM)";
@@ -102,7 +96,7 @@ export async function POST(req: Request) {
 
         const body = await req.json();
 
-        // 1. FILTROS
+        // 1. FILTROS BÁSICOS
         if (body.event && body.event !== "messages.upsert") return NextResponse.json({ status: 'Ignored Event' });
         const key = body.data?.key;
         if (!key?.remoteJid || key.fromMe) return NextResponse.json({ status: 'Ignored' });
@@ -112,7 +106,7 @@ export async function POST(req: Request) {
         const senderId = remoteJid.split('@')[0];
         const messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
 
-        // --- ÁUDIO ---
+        // --- PROCESSAMENTO DE ÁUDIO ---
         let promptParts: any[] = [];
         let hasAudio = false;
         const msgData = body.data?.message;
@@ -162,15 +156,17 @@ export async function POST(req: Request) {
 
                 if (userToLink) {
                     await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userToLink.user_id);
-                    await sendWhatsAppMessage(remoteJid, `✅ *Vinculado!*`);
+                    await sendWhatsAppMessage(remoteJid, `✅ *Vinculado!* Agora você pode usar a IA.`);
                     return NextResponse.json({ success: true, action: "linked" });
                 }
             }
             return NextResponse.json({ error: "User unknown" });
         }
         
-        // 🔒 TRAVA DE SEGURANÇA: VERIFICAÇÃO DE PLANO
-        // Busca o plano do usuário na tabela 'profiles' usando o user_id encontrado
+        // =================================================================================
+        // 🔒 1. TRAVA DE SEGURANÇA: VERIFICAÇÃO DE PLANO
+        // =================================================================================
+        
         const { data: profile } = await supabase
             .from('profiles')
             .select('plan_tier')
@@ -181,11 +177,17 @@ export async function POST(req: Request) {
         
         // Se NÃO for Pro, Agent ou Admin, BLOQUEIA e avisa.
         if (!['pro', 'agent', 'admin'].includes(plan)) {
-            console.log(`🚫 Acesso negado para ${senderId} (Plano: ${plan})`);
-            await sendWhatsAppMessage(remoteJid, "🚫 *Recurso Bloqueado*\n\nA Inteligência Artificial via WhatsApp é exclusiva dos planos **Pro** e **Agent**.\n\nAcesse seu painel para fazer o upgrade e liberar essa função! 🚀");
-            return NextResponse.json({ status: 'Blocked by Plan' });
+            console.log(`🚫 Bloqueado: ${senderId} é plano '${plan}'`);
+            
+            await sendWhatsAppMessage(remoteJid, 
+                "🚫 *Acesso Exclusivo PRO*\n\n" +
+                "A Inteligência Artificial no WhatsApp está disponível apenas nos planos **Pro** e **Consultor**.\n\n" +
+                "Faça o upgrade no seu painel para desbloquear: lançamentos por áudio, consultas e muito mais! 🚀"
+            );
+            
+            return NextResponse.json({ status: 'Blocked by Plan', plan: plan });
         }
-        // ---------------------------------------------------------
+        // =================================================================================
 
         if (senderId !== userSettings.whatsapp_phone && userSettings.whatsapp_id !== senderId) {
             await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userSettings.user_id);
@@ -194,7 +196,7 @@ export async function POST(req: Request) {
         const targetPhone = userSettings.whatsapp_phone || senderId;
         const { data: workspace } = await supabase.from('workspaces').select('id').eq('user_id', userSettings.user_id).limit(1).single();
 
-        // 3. CONTEXTO FINANCEIRO CORRIGIDO 🧠
+        // 3. CONTEXTO FINANCEIRO
         let contextInfo = { saldo: "0", resumo_texto: "Sem dados", estado_conta: "Indefinido" };
         if (workspace) {
             contextInfo = await getFinancialContext(supabase, userSettings.user_id, workspace.id);
@@ -212,11 +214,11 @@ export async function POST(req: Request) {
         SUA MISSÃO:
         1. ADICIONAR CONTA: 
            - Verifique o campo 'estado_conta' acima.
-           - SE estiver 'CRÍTICO' ou 'ALERTA' e o usuário adicionar um gasto (expense), VOCÊ DEVE INCLUIR UM ALERTA GRAVE na resposta.
+           - SE estiver 'CRÍTICO' ou 'ALERTA' e o usuário adicionar um gasto, INCLUA UM ALERTA GRAVE.
            - Ex: "Adicionei, mas CUIDADO! Seu saldo já está negativo em R$ ${contextInfo.saldo}."
 
         2. CONSULTA:
-           - Se perguntar "Como estou?", use o 'resumo_texto' para responder com precisão.
+           - Se perguntar "Como estou?", use o 'resumo_texto'.
 
         FORMATO (JSON ARRAY):
         [{"action": "add", ...}, {"reply": "Texto..."}]
@@ -253,6 +255,16 @@ export async function POST(req: Request) {
                         payload.current_installment = 0; payload.status = 'active';
                         delete payload.date; delete payload.target_month;
                         const { error } = await supabase.from('installments').insert([payload]);
+                        
+                        // 🔁 CORREÇÃO DE DUPLICIDADE: Se já existir (erro 23505), SILENCIA o bot
+                        if (error) {
+                            if (error.code === '23505') { 
+                                console.log("🔁 Duplicidade detectada (Installment). Silenciando resposta.");
+                                replySent = true; 
+                                continue; 
+                            }
+                        }
+
                         if (!error && !commands.some((c:any) => c.reply)) {
                              const total = (cmd.data.total_value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                              await sendWhatsAppMessage(targetPhone, `✅ Parcelado: ${cmd.data.title} (${total})`);
@@ -261,6 +273,16 @@ export async function POST(req: Request) {
                     else if (cmd.table === 'recurring') {
                         payload.status = 'active';
                         const { error } = await supabase.from('recurring').insert([payload]);
+                        
+                        // 🔁 CORREÇÃO DE DUPLICIDADE
+                        if (error) {
+                            if (error.code === '23505') { 
+                                console.log("🔁 Duplicidade detectada (Recurring). Silenciando resposta.");
+                                replySent = true; 
+                                continue; 
+                            }
+                        }
+
                         if (!error && !commands.some((c:any) => c.reply)) await sendWhatsAppMessage(targetPhone, `✅ Fixo: ${cmd.data.title}`);
                     }
                     else if (cmd.table === 'transactions') {
@@ -273,6 +295,15 @@ export async function POST(req: Request) {
                         payload.is_paid = true; payload.status = 'paid';
                         const { error } = await supabase.from('transactions').insert([payload]);
                         
+                        // 🔁 CORREÇÃO DE DUPLICIDADE
+                        if (error) {
+                            if (error.code === '23505') { 
+                                console.log("🔁 Duplicidade detectada (Transaction). Silenciando resposta.");
+                                replySent = true; 
+                                continue; 
+                            }
+                        }
+                        
                         if (!error && !commands.some((c:any) => c.reply)) {
                              const val = (cmd.data.amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                              await sendWhatsAppMessage(targetPhone, `✅ Lançado: ${cmd.data.title} (${val})`);
@@ -280,6 +311,7 @@ export async function POST(req: Request) {
                     }
                 }
                 else if (cmd.action === 'remove') {
+                    // Lógica de remoção permanece a mesma
                     const { data: items } = await supabase.from(cmd.table).select('id, title').eq('user_id', userSettings.user_id).ilike('title', `%${cmd.data.title}%`).order('created_at', { ascending: false }).limit(1);
                     if (items?.length) {
                         await supabase.from(cmd.table).delete().eq('id', items[0].id);
