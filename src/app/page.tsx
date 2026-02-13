@@ -163,50 +163,147 @@ export default function FinancialDashboard() {
     // --- TUTORIAL / TOUR GUIADO ---
     // --- TUTORIAL / TOUR GUIADO (ATUALIZADO) ---
     const runTour = () => {
-        const driver = (window as any).driver?.js?.driver;
-        if (!driver) return;
+        // Verifica se a biblioteca driver.js foi carregada
+        const driverLib = (window as any).driver?.js?.driver;
+        if (!driverLib) return;
 
-        // Define a explicação do menu baseada no plano
-        const isPro = ['premium', 'pro', 'agent'].includes(userPlan);
-        const menuDescription = isPro
-            ? 'Acesse seu Perfil, Gerencie sua Assinatura e Personalize o visual (Temas) do sistema por aqui.'
-            : 'Acesse seu Perfil e configurações. Assinantes Plus e Pro desbloqueiam Temas e Gerenciamento aqui.';
-
+        // --- 1. DEFINIÇÃO DOS PASSOS ---
         const agentSteps = [
-            { element: '#agent-bar', popover: { title: '🕵️ Painel do Consultor', description: 'Esta barra roxa é sua central de comando. Só você vê isso.', side: "bottom", align: 'start' } },
-            { element: '#client-selector', popover: { title: '📂 Seus Clientes', description: 'Aqui ficam as carteiras dos seus clientes. Clique para entrar na conta deles.', side: "bottom", align: 'start' } },
-            { element: '#btn-add-client', popover: { title: '➕ Adicionar Cliente', description: 'Cadastre um novo cliente pelo e-mail.', side: "left", align: 'start' } },
-            { element: '#card-saldo', popover: { title: '👁️ Visão Dinâmica', description: 'Quando você seleciona um cliente, o saldo mostra a realidade DELE.', side: "bottom", align: 'start' } },
-            { element: '#btn-export', popover: { title: '📊 Relatórios em Excel', description: 'Gere planilhas detalhadas para análise offline.', side: "bottom", align: 'end' } }
+            {
+                element: '#agent-bar',
+                popover: {
+                    title: '🕵️ Central do Consultor',
+                    description: 'Esta é sua central de controle. Aqui você gerencia sua carteira, alterna entre clientes e acompanha toda a operação em tempo real.',
+                    side: "bottom",
+                    align: 'start'
+                }
+            },
+            {
+                element: '#client-selector',
+                popover: {
+                    title: '📂 Gestão de Carteira',
+                    description: 'Selecione aqui o cliente que deseja analisar. Ao trocar, todos os dados do sistema são atualizados automaticamente para aquela conta.',
+                    side: "bottom",
+                    align: 'start'
+                }
+            },
+            {
+                element: '#btn-add-client',
+                popover: {
+                    title: '➕ Adicionar Novo Cliente',
+                    description: 'Cadastre um novo cliente na sua carteira para começar a organizar finanças, acompanhar indicadores e gerar relatórios personalizados.',
+                    side: "left",
+                    align: 'start'
+                }
+            }
         ];
 
-        const standardSteps = [
-            { element: '#logo-area', popover: { title: 'Olá! Sou seu Aliado 🛡️', description: 'Vou te ajudar a dominar suas finanças.' } },
-            ...(document.getElementById('btn-login') ? [{ element: '#btn-login', popover: { title: 'Salve na Nuvem ☁️', description: 'Crie sua conta para acessar em qualquer lugar.' } }] : []),
+        const commonSteps = [
+            {
+                element: '#logo-area',
+                popover: {
+                    title: '🛡️ Bem-vindo ao Meu Aliado',
+                    description: 'Eu vou te guiar para que você tenha controle total das suas finanças — com clareza, estratégia e visão de crescimento.'
+                }
+            },
 
-            { element: '#btn-novo', popover: { title: 'Lançar Contas', description: 'Clique aqui para adicionar gastos, salários ou parcelas.' } },
+            // Ações Principais
+            {
+                element: '#btn-novo',
+                popover: {
+                    title: '🚀 Novo Lançamento',
+                    description: 'Aqui você registra Ganhos, Despesas ou Parcelamentos. Tudo começa por este botão.',
+                    side: "bottom"
+                }
+            },
+            {
+                element: '#btn-ai',
+                popover: {
+                    title: '🧠 Inteligência Financeira',
+                    description: 'Converse com o Aliado para lançar gastos por texto, tirar dúvidas ou receber orientações estratégicas.',
+                    side: "bottom"
+                }
+            },
+            {
+                element: '#btn-fatura',
+                popover: {
+                    title: '💳 Gestão de Fatura',
+                    description: 'Faça lançamentos em lote para organizar sua fatura mensal de forma rápida e eficiente.',
+                    side: "bottom"
+                }
+            },
 
-            // NOVOS PASSOS ADICIONADOS 👇
-            { element: '#btn-history', popover: { title: 'Raio-X Anual 📅', description: 'Veja sua evolução financeira mês a mês neste gráfico detalhado.' } },
+            // Ferramentas
+            {
+                element: '#btn-history',
+                popover: {
+                    title: '📅 Histórico e Evolução',
+                    description: 'Acompanhe sua performance financeira mês a mês através de gráficos claros e comparativos.',
+                    side: "bottom"
+                }
+            },
+            {
+                element: '#btn-export',
+                popover: {
+                    title: '📊 Exportar Relatórios',
+                    description: 'Baixe seus dados em Excel para análises mais detalhadas ou envio para contadores e parceiros.',
+                    side: "bottom"
+                }
+            },
 
-            { element: '#btn-export', popover: { title: '📊 Relatórios em Excel', description: 'Exporte seus dados para planilhas profissionais.', side: "bottom", align: 'end' } },
+            // Dashboard
+            {
+                element: '#card-saldo',
+                popover: {
+                    title: '💰 Seu Termômetro Financeiro',
+                    description: 'Aqui você vê seu saldo atual. Verde indica resultado positivo. Vermelho sinaliza atenção e necessidade de ajuste.',
+                    side: "top"
+                }
+            },
 
-            { element: '#card-saldo', popover: { title: 'Seu Termômetro 🌡️', description: 'Aqui fica o saldo final. Verde é lucro, Vermelho é alerta!' } },
-
-            { element: '#btn-ai', popover: { title: 'Cérebro Financeiro 🧠', description: 'Fale com a IA para analisar gastos, pedir dicas ou lançar por áudio.' } },
-
-            // NOVOS PASSOS ADICIONADOS 👇
-            { element: '#btn-notifications', popover: { title: 'Central de Alertas 🔔', description: 'Avisos de contas vencendo hoje e dicas do sistema aparecem aqui.' } },
-            { element: '#btn-menu', popover: { title: 'Menu Principal ☰', description: menuDescription, side: "left" } }
+            // Menu
+            {
+                element: '#btn-notifications',
+                popover: {
+                    title: '🔔 Central de Alertas',
+                    description: 'Receba avisos importantes como contas próximas do vencimento e atualizações do sistema.',
+                }
+            },
+            {
+                element: '#btn-menu',
+                popover: {
+                    title: '👤 Perfil e Configurações',
+                    description: 'Gerencie sua assinatura, personalize o tema e ajuste preferências do sistema.',
+                    side: "left"
+                }
+            }
         ];
 
-        const firstActionGroup = document.getElementById('action-group-0');
-        if (firstActionGroup) {
-            standardSteps.push({ element: '#action-group-0', popover: { title: 'Controles 🎮', description: 'Use os ícones na lista para pagar, adiar ou editar contas.' } });
-        }
 
-        const steps = (userPlan === 'agent') ? agentSteps : standardSteps;
-        const driverObj = driver({ showProgress: true, animate: true, steps: steps, nextBtnText: 'Próximo ->', prevBtnText: 'Anterior', doneBtnText: 'Entendi!', overlayColor: 'rgba(0,0,0,0.8)' });
+        // --- 2. LÓGICA DE MONTAGEM ---
+        let finalSteps = (userPlan === 'agent') ? [...agentSteps, ...commonSteps] : commonSteps;
+
+        // Filtra elementos que não existem na tela para não quebrar o tour
+        finalSteps = finalSteps.filter(step => document.querySelector(step.element));
+
+        // --- 3. EXECUÇÃO ---
+        const driverObj = driverLib({
+            showProgress: true,
+            animate: true,
+            allowClose: true,        // <--- Garante que o X funcione
+            overlayClickNext: false, // Evita pular passos ao clicar fora (opcional)
+            keyboardControl: true,   // Permite fechar com ESC
+
+            // Textos dos botões
+            nextBtnText: 'Próximo →',
+            prevBtnText: '← Voltar',
+            doneBtnText: 'Concluir 🚀',
+
+            steps: finalSteps,
+
+            // ⚠️ Removi o 'onDestroyStarted' que estava travando o fechamento
+        });
+
         driverObj.drive();
     };
 
@@ -1229,33 +1326,39 @@ export default function FinancialDashboard() {
 
             {/* ... HEADER PRINCIPAL ... */}
             {/* ... HEADER PRINCIPAL (Visual Original + Travas Novas) ... */}
-            <header className="flex flex-col xl:flex-row gap-6 justify-between items-center mb-10">
+            <header className="flex flex-col xl:flex-row gap-6 justify-between items-center mb-6 xl:mb-10 relative z-30">
 
-                {/* LADO ESQUERDO: Logo + Consultor */}
-                <div id="logo-area" className="text-center md:text-left">
+                {/* ==========================================================
+        LADO ESQUERDO: Logo + Consultor (Intacto)
+       ========================================================== */}
+                <div id="logo-area" className="w-full xl:w-auto text-center md:text-left flex flex-col items-center xl:items-start">
                     <h1 className="text-4xl font-extrabold text-white flex items-center justify-center md:justify-start gap-2 tracking-tighter">
-                        <ShieldCheck className="text-cyan-500" size={32} /> Meu<span className="text-cyan-500">Aliado.</span>
+                        <ShieldCheck className="text-cyan-500" size={32} />
+                        Meu<span className="text-cyan-500">Aliado.</span>
                     </h1>
 
-                    <div id="menu-clientes" className="flex items-center gap-2 mt-2 justify-center md:justify-start">
+                    <div id="menu-clientes" className="w-full mt-2 flex justify-center xl:justify-start">
                         {(userPlan === 'agent' || userPlan === 'admin') && (
-                            <div id="agent-bar" className="w-full bg-purple-950/30 border-b border-purple-500/20 p-2 mb-4 overflow-x-auto">
-                                <div className="max-w-7xl mx-auto flex items-center gap-4 px-2">
-                                    <div className="flex items-center gap-2 text-purple-400 min-w-fit font-bold uppercase text-xs tracking-wider"><Briefcase size={16} /> Painel Consultor</div>
-                                    <div className="h-6 w-px bg-purple-500/20"></div>
-                                    <div id="client-selector" className="flex items-center gap-2 overflow-x-auto scrollbar-hide flex-1">
-                                        <button onClick={() => switchView(null)} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition whitespace-nowrap ${!viewingAs ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/50' : 'text-purple-300 hover:bg-purple-900/40'}`}>
-                                            <User size={12} /> Minha Carteira
+                            <div id="agent-bar" className="w-full max-w-md xl:max-w-none bg-purple-950/20 border border-purple-500/20 rounded-lg p-1.5 overflow-x-auto scrollbar-hide backdrop-blur-sm">
+                                <div className="flex items-center gap-3 px-1 min-w-max">
+                                    <div className="flex items-center gap-1.5 text-purple-400 font-bold uppercase text-[10px] tracking-wider whitespace-nowrap">
+                                        <Briefcase size={14} /> Painel
+                                    </div>
+                                    <div className="h-4 w-px bg-purple-500/20"></div>
+
+                                    <div id="client-selector" className="flex items-center gap-2">
+                                        <button onClick={() => switchView(null)} className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs transition whitespace-nowrap ${!viewingAs ? 'bg-purple-600 text-white shadow-md' : 'text-purple-300 hover:bg-purple-500/10'}`}>
+                                            <User size={12} /> Carteira
                                         </button>
                                         {clients.map(client => (
-                                            <button key={client.id} onClick={() => switchView(client)} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition whitespace-nowrap ${viewingAs?.id === client.id ? 'bg-purple-600 text-white shadow-lg' : 'text-purple-300 hover:bg-purple-900/40'}`}>
+                                            <button key={client.id} onClick={() => switchView(client)} className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs transition whitespace-nowrap ${viewingAs?.id === client.id ? 'bg-purple-600 text-white shadow-md' : 'text-purple-300 hover:bg-purple-500/10'}`}>
                                                 <div className={`w-1.5 h-1.5 rounded-full ${client.client_id ? 'bg-emerald-400' : 'bg-orange-500'}`}></div>
                                                 {client.client_email.split('@')[0]}
                                             </button>
                                         ))}
                                     </div>
-                                    <button id="btn-add-client" onClick={() => setIsClientModalOpen(true)} className="ml-auto flex items-center gap-1 text-xs bg-purple-600 hover:bg-purple-500 text-white px-3 py-1.5 rounded-lg transition shadow-lg shadow-purple-900/20 whitespace-nowrap">
-                                        <UserPlus size={12} /> <span className="hidden md:inline">Novo Cliente</span>
+                                    <button id="btn-add-client" onClick={() => setIsClientModalOpen(true)} className="ml-auto flex items-center gap-1 text-[10px] bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white px-2 py-1 rounded border border-purple-500/30 transition whitespace-nowrap">
+                                        <UserPlus size={10} /> Add
                                     </button>
                                 </div>
                             </div>
@@ -1263,116 +1366,156 @@ export default function FinancialDashboard() {
                     </div>
                 </div>
 
-                {/* LADO DIREITO: Botões de Ação */}
-                <div className="flex flex-wrap justify-center xl:justify-end gap-3 w-full xl:w-auto items-center">
+                {/* ==========================================================
+        LADO DIREITO: Organizado para Mobile e Desktop
+       ========================================================== */}
+                <div className="flex flex-col xl:flex-row gap-3 w-full xl:w-auto">
 
-                    {/* BOTÃO HISTÓRICO (Liberado Start+) */}
-                    <button
-                        id="btn-history"
-                        onClick={() => setIsHistoryOpen(true)}
-                        className="h-12 w-12 flex items-center justify-center rounded-xl bg-gray-900 text-cyan-500 border border-cyan-900/30 hover:bg-cyan-900/20 hover:text-cyan-300 transition shadow-lg"
-                        title="Ver Gráfico Anual"
-                    >
-                        <BarChart3 size={20} />
-                    </button>
+                    {/* GRUPO 1: Utilitários e Menu (Linha de Cima no Mobile / Esquerda no Desktop) */}
+                    <div className="flex items-center justify-between xl:justify-start gap-2 w-full xl:w-auto order-1 xl:order-none">
 
-                    {/* BOTÃO EXPORTAR (Liberado Start+) */}
-                    <button
-                        id="btn-export"
-                        onClick={() => {
-                            // 🔒 TRAVA: Free bloqueado. Start, Premium e Pro liberados.
-                            if (userPlan === 'free') {
-                                toast.error("Recurso Premium", { description: "Assine o plano Start ou superior para exportar." });
-                                openPricingModal();
-                                return;
-                            }
-                            setIsExportModalOpen(true);
-                        }}
-                        className={`h-12 w-12 flex items-center justify-center rounded-xl transition shadow-lg border relative ${userPlan === 'free' ? 'bg-gray-900 text-gray-500 border-gray-800 hover:bg-gray-800 cursor-not-allowed' : 'bg-gray-900 text-emerald-500 border-emerald-900/30 hover:bg-emerald-900/20'}`}
-                        title="Exportar Relatório Excel"
-                    >
-                        <FileSpreadsheet size={20} />
-                        {userPlan === 'free' && (<div className="absolute -top-1 -right-1 bg-gray-800 rounded-full p-0.5 border border-gray-700"><Lock size={10} className="text-amber-500" /></div>)}
-                    </button>
-
-                    {/* MENU DO USUÁRIO & NOTIFICAÇÕES */}
-                    <div id="btn-notifications" className="flex items-center gap-3">
-                        <NotificationBell userId={user.id} />
-                        <div id="btn-menu" className="relative">
-                            <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className={`h-12 bg-gray-900 border border-gray-800 text-gray-400 px-6 rounded-xl hover:bg-gray-800 hover:text-white flex items-center justify-center gap-2 whitespace-nowrap transition ${isUserMenuOpen ? 'border-gray-600 text-white' : ''}`}>
-                                {user.user_metadata?.avatar_url ? (<img src={user.user_metadata.avatar_url} className="w-5 h-5 rounded-full object-cover border border-gray-600" />) : (<User size={18} />)} Menu
+                        {/* Ícones de Ferramentas */}
+                        <div className="flex items-center gap-2 bg-gray-900/50 p-1 rounded-xl border border-gray-800">
+                            {/* Histórico */}
+                            <button
+                                id="btn-history"
+                                onClick={() => setIsHistoryOpen(true)}
+                                className="h-10 w-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-cyan-400 hover:bg-gray-800 transition"
+                                title="Ver Gráfico Anual"
+                            >
+                                <BarChart3 size={20} />
                             </button>
-                            {isUserMenuOpen && (
-                                <>
-                                    <div className="fixed inset-0 z-40" onClick={() => setIsUserMenuOpen(false)}></div>
-                                    <div className="absolute top-full right-0 pt-2 w-56 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                                        <div className="bg-[#111] border border-gray-800 rounded-xl shadow-2xl overflow-hidden relative">
-                                            <div className="p-2 space-y-1">
-                                                <div className="px-3 py-3 border-b border-gray-800 mb-1">
+
+                            {/* Exportar */}
+                            <button
+                                id="btn-export"
+                                onClick={() => {
+                                    if (userPlan === 'free') {
+                                        toast.error("Recurso Premium", { description: "Assine o plano Start ou superior para exportar." });
+                                        openPricingModal();
+                                        return;
+                                    }
+                                    setIsExportModalOpen(true);
+                                }}
+                                className={`h-10 w-10 flex items-center justify-center rounded-lg transition relative ${userPlan === 'free' ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-emerald-400 hover:bg-gray-800'}`}
+                            >
+                                <FileSpreadsheet size={20} />
+                                {userPlan === 'free' && <Lock size={10} className="absolute top-2 right-2 text-amber-500" />}
+                            </button>
+
+                            {/* Ajuda */}
+                            <button onClick={runTour} className="h-10 w-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition">
+                                <HelpCircle size={20} />
+                            </button>
+                        </div>
+
+                        {/* Separador (Só Desktop) */}
+                        <div className="hidden xl:block w-px h-8 bg-gray-800 mx-1"></div>
+
+                        {/* Notificações e Menu */}
+                        <div className="flex items-center gap-2 pl-0 xl:pl-2 xl:border-none">
+                            <NotificationBell userId={user.id} />
+
+                            <div id="btn-menu" className="relative z-50">
+                                <button
+                                    onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                                    className={`h-11 px-3 xl:px-4 bg-gray-900 border border-gray-800 rounded-xl hover:bg-gray-800 flex items-center justify-center gap-2 transition ${isUserMenuOpen ? 'ring-2 ring-cyan-500/50 border-cyan-500/50' : ''}`}
+                                >
+                                    {user.user_metadata?.avatar_url
+                                        ? (<img src={user.user_metadata.avatar_url} className="w-6 h-6 rounded-full object-cover ring-2 ring-gray-700" alt="Avatar" />)
+                                        : (<div className="w-6 h-6 rounded-full bg-gray-700 flex items-center justify-center text-gray-300"><User size={14} /></div>)
+                                    }
+                                    {/* Texto "Menu" some no mobile para economizar espaço */}
+                                    <span className="hidden md:inline text-gray-400 text-sm font-medium">Menu</span>
+                                    <ChevronDown size={14} className="text-gray-500 hidden md:block" />
+                                </button>
+
+                                {/* DROPDOWN DO MENU (Código Original Mantido) */}
+                                {isUserMenuOpen && (
+                                    <>
+                                        <div className="fixed inset-0 z-40" onClick={() => setIsUserMenuOpen(false)}></div>
+                                        <div className="absolute top-full right-0 mt-2 w-64 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                                            <div className="bg-[#0f0f0f] border border-gray-800 rounded-2xl shadow-2xl overflow-hidden ring-1 ring-white/10">
+                                                <div className="p-4 border-b border-gray-800 bg-gray-900/50">
                                                     <div className="flex items-center gap-3">
-                                                        {user.user_metadata?.avatar_url ? (<img src={user.user_metadata.avatar_url} className="w-9 h-9 rounded-full border border-gray-600 object-cover shadow-sm" />) : (<div className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center text-gray-400 border border-gray-700"><User size={16} /></div>)}
+                                                        {user.user_metadata?.avatar_url
+                                                            ? (<img src={user.user_metadata.avatar_url} className="w-10 h-10 rounded-full border border-gray-700" />)
+                                                            : (<div className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center border border-gray-700"><User size={20} className="text-gray-400" /></div>)
+                                                        }
                                                         <div className="overflow-hidden">
-                                                            <p className="text-white text-xs font-bold truncate max-w-[120px]" title={user.user_metadata?.full_name}>{user.user_metadata?.full_name || "Usuário"}</p>
-                                                            <p className="text-gray-500 text-[10px] truncate max-w-[120px]" title={user.email}>{user.email}</p>
+                                                            <p className="text-white text-sm font-bold truncate">{user.user_metadata?.full_name || "Usuário"}</p>
+                                                            <p className="text-gray-500 text-xs truncate">{user.email}</p>
                                                         </div>
                                                     </div>
-                                                </div>
-                                                <button onClick={() => { setIsUserMenuOpen(false); setIsProfileModalOpen(true); }} className="w-full text-left px-3 py-2.5 rounded-lg text-xs flex items-center gap-2 text-gray-300 hover:bg-gray-800 hover:text-white transition font-medium"><User size={14} className="text-cyan-500" /> Meu Perfil</button>
-                                                {userPlan !== 'free' && (<button onClick={() => { setIsUserMenuOpen(false); handleManageSubscription(); }} className="w-full text-left px-3 py-2.5 rounded-lg text-xs flex items-center gap-2 text-gray-300 hover:bg-gray-800 hover:text-white transition font-medium"><CreditCard size={14} className="text-emerald-500" /> Gerenciar Assinatura</button>)}
-
-                                                {/* TOGGLE WHATSAPP (SÓ PRO/AGENT) */}
-                                                <div className="px-3 py-2.5 flex items-center justify-between group cursor-pointer" onClick={(e) => { e.stopPropagation(); toggleWhatsappNotification(); }}>
-                                                    <div className="flex items-center gap-2 text-xs text-gray-300 font-medium group-hover:text-white transition">
-                                                        <Smartphone size={14} className="text-emerald-500" /> Notificar no Zap
-                                                        {(userPlan !== 'pro' && userPlan !== 'agent' && userPlan !== 'admin') && <Lock size={10} className="text-amber-500" />}
-                                                    </div>
-                                                    <div className={`w-8 h-4 rounded-full transition-colors relative ${whatsappEnabled ? 'bg-emerald-600' : 'bg-gray-700'}`}>
-                                                        <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${whatsappEnabled ? 'translate-x-4' : 'translate-x-0'}`}></div>
+                                                    <div className="mt-3 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-gray-800 border border-gray-700 text-[10px] font-medium text-gray-300 uppercase tracking-wide">
+                                                        {userPlan === 'agent' ? 'Consultor' : `Plano ${userPlan}`}
                                                     </div>
                                                 </div>
-
-                                                {(userPlan === 'pro' || userPlan === 'agent') && (<button onClick={() => { setIsUserMenuOpen(false); setIsCustomizationOpen(true); }} className="w-full text-left px-3 py-2.5 rounded-lg text-xs flex items-center gap-2 text-gray-300 hover:bg-gray-800 hover:text-white transition font-medium"><Palette size={14} className="text-purple-500" /> Personalizar Visual</button>)}
-                                                {userPlan !== 'agent' && (<button onClick={() => { setIsUserMenuOpen(false); handleCheckout('AGENT'); }} className="w-full text-left px-3 py-2.5 rounded-lg text-xs flex items-center gap-2 text-gray-300 hover:bg-gray-800 hover:text-white transition font-medium"><Briefcase size={14} className="text-amber-500" /> Virar Consultor</button>)}
-                                                <div className="h-px bg-gray-800 my-1 mx-2"></div>
-                                                <button onClick={handleLogout} className="w-full text-left px-3 py-2.5 rounded-lg text-xs flex items-center gap-2 text-red-400 hover:bg-red-950/20 font-medium"><LogOut size={14} /> Sair da Conta</button>
+                                                <div className="p-2 space-y-1">
+                                                    <button onClick={() => { setIsUserMenuOpen(false); setIsProfileModalOpen(true); }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition"><User size={16} className="text-cyan-500" /> Meu Perfil</button>
+                                                    {userPlan !== 'free' && (<button onClick={() => { setIsUserMenuOpen(false); handleManageSubscription(); }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition"><CreditCard size={16} className="text-emerald-500" /> Assinatura</button>)}
+                                                    <div className="px-3 py-2.5 flex items-center justify-between group cursor-pointer hover:bg-gray-800 rounded-lg transition" onClick={(e) => { e.stopPropagation(); toggleWhatsappNotification(); }}>
+                                                        <div className="flex items-center gap-3 text-sm text-gray-300 group-hover:text-white"><Smartphone size={16} className="text-emerald-500" /> Notificações Zap {(userPlan !== 'pro' && userPlan !== 'agent' && userPlan !== 'admin') && <Lock size={12} className="text-amber-500" />}</div>
+                                                        <div className={`w-9 h-5 rounded-full transition-colors relative ${whatsappEnabled ? 'bg-emerald-600' : 'bg-gray-700'}`}><div className={`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform ${whatsappEnabled ? 'translate-x-4' : 'translate-x-0'}`}></div></div>
+                                                    </div>
+                                                    {(userPlan === 'pro' || userPlan === 'agent') && (<button onClick={() => { setIsUserMenuOpen(false); setIsCustomizationOpen(true); }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition"><Palette size={16} className="text-purple-500" /> Tema e Cores</button>)}
+                                                    {userPlan !== 'agent' && (<button onClick={() => { setIsUserMenuOpen(false); handleCheckout('AGENT'); }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition"><Briefcase size={16} className="text-amber-500" /> Virar Consultor</button>)}
+                                                    <div className="h-px bg-gray-800 my-1 mx-2"></div>
+                                                    <button onClick={handleLogout} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-red-400 hover:bg-red-950/30 transition font-medium"><LogOut size={16} /> Sair da Conta</button>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                </>
-                            )}
+                                    </>
+                                )}
+                            </div>
                         </div>
                     </div>
 
-                    {/* BOTÃO IA (Texto muda conforme Plano) */}
-                    <button
-                        id="btn-ai"
-                        onClick={() => setIsAIOpen(true)}
-                        className={`h-12 bg-gradient-to-r ${['premium', 'pro', 'agent', 'admin'].includes(userPlan) ? 'from-cyan-600 to-blue-600' : 'from-gray-800 to-gray-700'} text-white px-6 rounded-xl font-bold hover:scale-105 transition border border-white/10 flex items-center justify-center gap-2 whitespace-nowrap shadow-lg`}
-                    >
-                        <Sparkles size={18} className={['premium', 'pro', 'agent', 'admin'].includes(userPlan) ? "text-cyan-200" : "text-gray-400"} />
-                        {/* IA Lite para Start/Free, Agente IA para Premium+ */}
-                        {['premium', 'pro', 'agent', 'admin'].includes(userPlan) ? 'Agente IA' : 'IA Lite'}
-                    </button>
+                    {/* GRUPO 2: Ações Principais (Linha de Baixo no Mobile / Direita no Desktop) */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 xl:flex gap-2 xl:gap-3 w-full xl:w-auto order-2 xl:order-none">
 
-                    {/* BOTÃO FATURA (Liberado Premium+) */}
-                    <button
-                        onClick={() => {
-                            // 🔒 TRAVA: Free e Start bloqueados.
-                            if (userPlan === 'free' || userPlan === 'start') {
-                                toast.error("Recurso de Produtividade (Premium)", { description: "Assine o Premium (Plus) para lançar faturas em lote!" });
-                                openPricingModal();
-                                return;
-                            }
-                            setIsCreditCardModalOpen(true);
-                        }}
-                        className={`h-12 px-6 rounded-xl font-bold transition flex items-center justify-center gap-2 shadow-lg whitespace-nowrap ${(userPlan === 'free' || userPlan === 'start') ? 'bg-gray-800 text-gray-500 border border-gray-700 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-500 text-white shadow-purple-900/20'}`}
-                        title="Lançamento Rápido de Fatura"
-                    >
-                        <CreditCard size={18} /> Fatura {(userPlan === 'free' || userPlan === 'start') && <Lock size={12} className="ml-1" />}
-                    </button>
+                        {/* Botão IA (Ocupa 2 colunas no mobile muito pequeno, ou 1 normal) */}
+                        <button
+                            id="btn-ai"
+                            onClick={() => setIsAIOpen(true)}
+                            className={`h-11 px-3 xl:px-5 rounded-xl font-bold transition flex items-center justify-center gap-2 text-sm shadow-lg border border-white/5 whitespace-nowrap
+                ${['premium', 'pro', 'agent', 'admin'].includes(userPlan)
+                                    ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white hover:brightness-110'
+                                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}
+                        >
+                            <Sparkles size={16} className={['premium', 'pro', 'agent', 'admin'].includes(userPlan) ? "text-cyan-200 fill-cyan-200" : ""} />
+                            {['premium', 'pro', 'agent', 'admin'].includes(userPlan) ? 'Aliado IA' : 'IA Lite'}
+                        </button>
 
-                    <button id="btn-novo" onClick={openNewTransactionModal} className="h-12 bg-white text-black px-6 rounded-xl font-bold hover:bg-gray-200 transition flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(255,255,255,0.1)] whitespace-nowrap"><Plus size={18} /> Novo</button>
-                    <button onClick={runTour} className="h-12 w-12 flex items-center justify-center bg-gray-900 text-gray-400 hover:text-white rounded-xl border border-gray-800" title="Ajuda / Tour"><HelpCircle size={18} /></button>
+                        {/* Botão Fatura */}
+                        <button
+                            id="btn-fatura"
+                            onClick={() => {
+                                if (userPlan === 'free' || userPlan === 'start') {
+                                    toast.error("Recurso Premium", { description: "Assine o Premium para lançar faturas em lote!" });
+                                    openPricingModal();
+                                    return;
+                                }
+                                setIsCreditCardModalOpen(true);
+                            }}
+                            className={`h-11 px-3 xl:px-5 rounded-xl font-bold transition flex items-center justify-center gap-2 text-sm shadow-lg border border-white/5 whitespace-nowrap
+                ${(userPlan === 'free' || userPlan === 'start')
+                                    ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                                    : 'bg-indigo-600 hover:bg-indigo-500 text-white'}`}
+                        >
+                            <CreditCard size={16} /> Fatura
+                            {(userPlan === 'free' || userPlan === 'start') && <Lock size={12} className="text-gray-500" />}
+                        </button>
+
+                        {/* Botão NOVO (Destaque - Ocupa linha inteira se for tela muito pequena, ou canto) */}
+                        <button
+                            id="btn-novo"
+                            onClick={openNewTransactionModal}
+                            className="h-11 col-span-2 sm:col-span-1 bg-white text-black px-4 xl:px-6 rounded-xl font-bold hover:bg-gray-100 transition flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.15)] text-sm active:scale-95 whitespace-nowrap"
+                        >
+                            <Plus size={18} strokeWidth={3} /> Novo
+                        </button>
+                    </div>
                 </div>
             </header>
 
@@ -1449,88 +1592,100 @@ export default function FinancialDashboard() {
             <CustomizationModal isOpen={isCustomizationOpen} onClose={() => setIsCustomizationOpen(false)} currentLayout={currentLayout} currentTheme={currentTheme} onSelectLayout={(l) => handleSavePreferences('layout', l)} onSelectTheme={(t) => handleSavePreferences('theme', t)} userPlan={userPlan} />
 
             {/* MODAL DE PREÇOS (O QUE TINHA SUMIDO!) */}
-         
+
             {/* MODAL DE PREÇOS (LIMPO E ATUALIZADO) */}
             {isPricingOpen && (
-                <div className="fixed inset-0 bg-black/95 backdrop-blur-xl flex items-center justify-center z-[200] p-4 overflow-y-auto">
-                    <div className="relative w-full max-w-6xl animate-in zoom-in duration-300 my-10">
-                        <button onClick={() => setIsPricingOpen(false)} className="absolute top-0 right-0 md:-right-8 md:-top-8 text-gray-500 hover:text-white p-2"><X size={32}/></button>
-                        
-                        <div className="text-center mb-12">
-                            <h2 className="text-4xl md:text-5xl font-black text-white mb-4">Evolua seu Controle 🚀</h2>
-                            <p className="text-gray-400 text-lg">Escolha o poder de fogo ideal para sua vida financeira.</p>
-                        </div>
+                <div className="fixed inset-0 z-[200] overflow-y-auto bg-black/95 backdrop-blur-xl">
+                    {/* Wrapper flexível que garante o scroll correto em qualquer tela */}
+                    <div className="flex min-h-full items-center justify-center p-4 text-center md:text-left">
 
-                        {/* GRIDS DOS PLANOS PESSOAIS */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-                            
-                            {/* 1. PLANO START */}
-                            <div className="bg-[#111] border border-gray-800 p-8 rounded-3xl flex flex-col hover:border-gray-600 transition group">
-                                <h3 className="text-gray-400 font-bold uppercase tracking-wider mb-2">Start</h3>
-                                <div className="text-3xl font-black text-white mb-6">R$ 10<span className="text-sm font-normal text-gray-500">/mês</span></div>
-                                <ul className="space-y-4 mb-8 flex-1 text-sm text-gray-300">
-                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-gray-600"/> Lançamentos Ilimitados</li>
-                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-gray-600"/> Gráficos & Histórico</li>
-                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-gray-600"/> Exportação Excel</li>
-                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-gray-600"/> IA Lite (Dicas Básicas)</li>
-                                    <li className="flex gap-3 text-gray-600 line-through opacity-50"><Smartphone size={18}/> Integração WhatsApp</li>
-                                </ul>
-                                <button id="checkout-btn-START" onClick={() => handleCheckout('START')} className="w-full py-3 rounded-xl border border-gray-700 hover:bg-gray-800 text-white font-bold transition">Escolher Start</button>
+                        <div className="relative w-full max-w-6xl animate-in zoom-in duration-300 bg-[#0a0a0a] md:bg-transparent rounded-3xl md:rounded-none p-6 md:p-0 border border-gray-800 md:border-none shadow-2xl md:shadow-none my-8">
+
+                            {/* Botão Fechar */}
+                            <button
+                                onClick={() => setIsPricingOpen(false)}
+                                className="absolute top-2 right-2 md:-right-12 md:-top-4 text-gray-400 hover:text-white p-2 bg-gray-900/50 md:bg-transparent rounded-full z-50 transition"
+                            >
+                                <X size={24} className="md:w-8 md:h-8" />
+                            </button>
+
+                            {/* Cabeçalho do Modal */}
+                            <div className="text-center mb-8 md:mb-12">
+                                <h2 className="text-3xl md:text-5xl font-black text-white mb-3">Evolua seu Controle 🚀</h2>
+                                <p className="text-gray-400 text-sm md:text-lg px-4">Escolha o poder de fogo ideal para sua vida financeira.</p>
                             </div>
 
-                            {/* 2. PLANO PREMIUM (PLUS) */}
-                            <div className="bg-[#151515] border border-cyan-500/30 p-8 rounded-3xl flex flex-col relative shadow-2xl shadow-cyan-900/20 scale-105 z-10">
-                                <div className="absolute top-0 right-0 bg-cyan-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl rounded-tr-2xl">CUSTO-BENEFÍCIO</div>
-                                <h3 className="text-cyan-400 font-bold uppercase tracking-wider mb-2 flex items-center gap-2"><Zap size={16}/> Plus</h3>
-                                <div className="text-4xl font-black text-white mb-6">R$ 29,90<span className="text-sm font-normal text-gray-500">/mês</span></div>
-                                <ul className="space-y-4 mb-8 flex-1 text-sm text-white">
-                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500"/> Tudo do Start</li>
-                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500"/> Agente IA Completo</li>
-                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500"/> Múltiplos Perfis de Conta</li>
-                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500"/> Leitura de Comprovantes</li>
-                                    <li className="flex gap-3 text-gray-500 line-through opacity-50"><Smartphone size={18}/> Integração WhatsApp</li>
-                                </ul>
-                                <button id="checkout-btn-PREMIUM" onClick={() => handleCheckout('PREMIUM')} className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:to-blue-500 text-white font-bold transition shadow-lg">Quero o Plus</button>
-                            </div>
+                            {/* GRIDS DOS PLANOS PESSOAIS */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 md:mb-12 text-left">
 
-                            {/* 3. PLANO PRO (NOVO PREÇO R$ 39,90) */}
-                            <div className="bg-[#111] border border-purple-500/20 p-8 rounded-3xl flex flex-col hover:border-purple-500/40 transition group relative overflow-hidden">
-                                <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-purple-600 to-pink-600"></div>
-                                <h3 className="text-purple-400 font-bold uppercase tracking-wider mb-2 flex items-center gap-2"><Crown size={16}/> Pro</h3>
-                                <div className="text-3xl font-black text-white mb-6">R$ 39,90<span className="text-sm font-normal text-gray-500">/mês</span></div>
-                                <ul className="space-y-4 mb-8 flex-1 text-sm text-gray-300">
-                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-purple-500"/> Tudo do Plus</li>
-                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-purple-500"/> <b>IA no WhatsApp</b> (Áudio/Texto)</li>
-                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-purple-500"/> Notificações via WhatsApp</li>
-                                    <li className="flex gap-3"><CheckCircle2 size={18} className="text-purple-500"/> Prioridade no Suporte</li>
-                                </ul>
-                                <button id="checkout-btn-PRO" onClick={() => handleCheckout('PRO')} className="w-full py-3 rounded-xl border border-purple-900/50 hover:bg-purple-900/20 text-white font-bold transition shadow-lg shadow-purple-900/10">Virar Pro</button>
-                            </div>
-                        </div>
-
-                        {/* 4. PLANO CONSULTOR */}
-                        <div className="bg-[#0f0f13] border border-amber-900/30 p-8 rounded-3xl relative overflow-hidden flex flex-col md:flex-row items-center gap-8 shadow-2xl">
-                            <div className="absolute top-0 right-0 w-64 h-64 bg-amber-600/10 rounded-full blur-3xl pointer-events-none"></div>
-                            <div className="flex-1 relative z-10">
-                                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-900/20 border border-amber-500/30 text-amber-500 text-xs font-bold uppercase tracking-wider mb-4">
-                                    <Briefcase size={12} /> Área Profissional
+                                {/* 1. PLANO START */}
+                                <div className="bg-[#111] border border-gray-800 p-6 md:p-8 rounded-3xl flex flex-col hover:border-gray-600 transition group order-1">
+                                    <h3 className="text-gray-400 font-bold uppercase tracking-wider mb-2 text-sm">Start</h3>
+                                    <div className="text-3xl font-black text-white mb-6">R$ 10<span className="text-sm font-normal text-gray-500">/mês</span></div>
+                                    <ul className="space-y-4 mb-8 flex-1 text-sm text-gray-300">
+                                        <li className="flex gap-3"><CheckCircle2 size={18} className="text-gray-600 shrink-0" /> Lançamentos Ilimitados</li>
+                                        <li className="flex gap-3"><CheckCircle2 size={18} className="text-gray-600 shrink-0" /> Gráficos & Histórico</li>
+                                        <li className="flex gap-3"><CheckCircle2 size={18} className="text-gray-600 shrink-0" /> Exportação Excel</li>
+                                        <li className="flex gap-3"><CheckCircle2 size={18} className="text-gray-600 shrink-0" /> IA Lite (Dicas Básicas)</li>
+                                        <li className="flex gap-3 text-gray-600 line-through opacity-50"><Smartphone size={18} className="shrink-0" /> Integração WhatsApp</li>
+                                    </ul>
+                                    <button id="checkout-btn-START" onClick={() => handleCheckout('START')} className="w-full py-3 rounded-xl border border-gray-700 hover:bg-gray-800 text-white font-bold transition">Escolher Start</button>
                                 </div>
-                                <h3 className="text-3xl font-black text-white mb-2">Plano Agent (Consultor)</h3>
-                                <p className="text-gray-400 mb-6">Gerencie a carteira de múltiplos clientes, tenha acesso administrativo e ofereça o app como sua ferramenta oficial.</p>
-                                <div className="flex flex-wrap gap-4 text-sm text-gray-300 font-bold">
-                                    <span className="flex items-center gap-2"><Users size={16} className="text-amber-500"/> Gestão de Carteira</span>
-                                    <span className="flex items-center gap-2"><Lock size={16} className="text-amber-500"/> Acesso Admin</span>
-                                    <span className="flex items-center gap-2"><FileSpreadsheet size={16} className="text-amber-500"/> Relatórios White-label</span>
+
+                                {/* 2. PLANO PREMIUM (PLUS) */}
+                                <div className="bg-[#151515] border border-cyan-500/30 p-6 md:p-8 rounded-3xl flex flex-col relative shadow-2xl shadow-cyan-900/20 z-10 order-first md:order-2 transform md:scale-105 my-2 md:my-0 ring-1 ring-cyan-500/20">
+                                    <div className="absolute top-0 right-0 bg-cyan-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl rounded-tr-2xl">CUSTO-BENEFÍCIO</div>
+                                    <h3 className="text-cyan-400 font-bold uppercase tracking-wider mb-2 flex items-center gap-2 text-sm"><Zap size={16} /> Plus</h3>
+                                    <div className="text-4xl font-black text-white mb-6">R$ 29,90<span className="text-sm font-normal text-gray-500">/mês</span></div>
+                                    <ul className="space-y-4 mb-8 flex-1 text-sm text-white">
+                                        <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500 shrink-0" /> Tudo do Start</li>
+                                        <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500 shrink-0" /> Agente IA Completo</li>
+                                        <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500 shrink-0" /> Múltiplos Perfis</li>
+                                        <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500 shrink-0" /> Leitura de Comprovantes</li>
+                                        <li className="flex gap-3 text-gray-500 line-through opacity-50"><Smartphone size={18} className="shrink-0" /> Integração WhatsApp</li>
+                                    </ul>
+                                    <button id="checkout-btn-PREMIUM" onClick={() => handleCheckout('PREMIUM')} className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:to-blue-500 text-white font-bold transition shadow-lg">Quero o Plus</button>
+                                </div>
+
+                                {/* 3. PLANO PRO */}
+                                <div className="bg-[#111] border border-purple-500/20 p-6 md:p-8 rounded-3xl flex flex-col hover:border-purple-500/40 transition group relative overflow-hidden order-3">
+                                    <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-purple-600 to-pink-600"></div>
+                                    <h3 className="text-purple-400 font-bold uppercase tracking-wider mb-2 flex items-center gap-2 text-sm"><Crown size={16} /> Pro</h3>
+                                    <div className="text-3xl font-black text-white mb-6">R$ 39,90<span className="text-sm font-normal text-gray-500">/mês</span></div>
+                                    <ul className="space-y-4 mb-8 flex-1 text-sm text-gray-300">
+                                        <li className="flex gap-3"><CheckCircle2 size={18} className="text-purple-500 shrink-0" /> Tudo do Plus</li>
+                                        <li className="flex gap-3"><CheckCircle2 size={18} className="text-purple-500 shrink-0" /> <b>IA no WhatsApp</b> (Áudio)</li>
+                                        <li className="flex gap-3"><CheckCircle2 size={18} className="text-purple-500 shrink-0" /> Notificações via Zap</li>
+                                        <li className="flex gap-3"><CheckCircle2 size={18} className="text-purple-500 shrink-0" /> Prioridade no Suporte</li>
+                                    </ul>
+                                    <button id="checkout-btn-PRO" onClick={() => handleCheckout('PRO')} className="w-full py-3 rounded-xl border border-purple-900/50 hover:bg-purple-900/20 text-white font-bold transition shadow-lg shadow-purple-900/10">Virar Pro</button>
                                 </div>
                             </div>
-                            <div className="flex flex-col items-center gap-2 min-w-[200px] relative z-10">
-                                <div className="text-4xl font-black text-white">R$ 99,90<span className="text-sm font-normal text-gray-500">/mês</span></div>
-                                <button id="checkout-btn-AGENT" onClick={() => handleCheckout('AGENT')} className="w-full px-8 py-4 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl transition shadow-lg shadow-amber-900/20 whitespace-nowrap">
-                                    Assinar Agent
-                                </button>
-                            </div>
-                        </div>
 
+                            {/* 4. PLANO CONSULTOR */}
+                            <div className="bg-[#0f0f13] border border-amber-900/30 p-6 md:p-8 rounded-3xl relative overflow-hidden flex flex-col md:flex-row items-center gap-6 md:gap-8 shadow-2xl mb-8 text-left">
+                                <div className="absolute top-0 right-0 w-64 h-64 bg-amber-600/10 rounded-full blur-3xl pointer-events-none"></div>
+                                <div className="flex-1 relative z-10 text-center md:text-left">
+                                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-900/20 border border-amber-500/30 text-amber-500 text-xs font-bold uppercase tracking-wider mb-4">
+                                        <Briefcase size={12} /> Área Profissional
+                                    </div>
+                                    <h3 className="text-2xl md:text-3xl font-black text-white mb-2">Plano Agent</h3>
+                                    <p className="text-gray-400 mb-6 text-sm md:text-base">Gerencie a carteira de múltiplos clientes, tenha acesso administrativo e ofereça o app como sua ferramenta oficial.</p>
+                                    <div className="flex flex-wrap justify-center md:justify-start gap-3 md:gap-4 text-sm text-gray-300 font-bold">
+                                        <span className="flex items-center gap-2"><Users size={16} className="text-amber-500" /> Gestão de Carteira</span>
+                                        <span className="flex items-center gap-2"><Lock size={16} className="text-amber-500" /> Acesso Admin</span>
+                                        <span className="flex items-center gap-2"><FileSpreadsheet size={16} className="text-amber-500" /> White-label</span>
+                                    </div>
+                                </div>
+                                <div className="flex flex-col items-center gap-2 w-full md:w-auto min-w-[200px] relative z-10">
+                                    <div className="text-3xl md:text-4xl font-black text-white">R$ 99,90<span className="text-sm font-normal text-gray-500">/mês</span></div>
+                                    <button id="checkout-btn-AGENT" onClick={() => handleCheckout('AGENT')} className="w-full px-8 py-4 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl transition shadow-lg shadow-amber-900/20 whitespace-nowrap">
+                                        Assinar Agent
+                                    </button>
+                                </div>
+                            </div>
+
+                        </div>
                     </div>
                 </div>
             )}
@@ -1648,16 +1803,57 @@ export default function FinancialDashboard() {
             )}
 
             {/* MODAL NUDGE (CUTUCÃO DE AUTOMAÇÃO) */}
-            {isNudgeOpen && (
-                <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[250] p-6 animate-in fade-in duration-300">
-                    <div className="bg-[#111] border border-gray-800 p-8 rounded-3xl w-full max-w-sm relative shadow-2xl overflow-hidden">
-                        <button onClick={() => setIsNudgeOpen(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white transition"><X size={20} /></button>
-                        <h3 className="text-xl font-bold text-white mb-2">Cansado de digitar?</h3>
-                        <p className="text-gray-400 text-sm mb-4">Você já fez <b>{addCounter} lançamentos</b>. Automatize com o Aliado Plus.</p>
-                        <button onClick={() => { setIsNudgeOpen(false); openPricingModal(); }} className="w-full bg-gradient-to-r from-amber-600 to-orange-600 text-white font-bold py-3 rounded-xl transition">Quero Automatizar</button>
-                    </div>
+           {isNudgeOpen && (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[250] p-4 animate-in fade-in duration-300">
+        <div className="relative w-full max-w-sm bg-[#0f0f0f] border border-gray-800 rounded-3xl p-6 shadow-2xl overflow-hidden group">
+            
+            {/* Efeito de Glow no fundo */}
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-32 bg-cyan-500/20 rounded-full blur-[60px] pointer-events-none"></div>
+
+            {/* Botão Fechar */}
+            <button 
+                onClick={() => setIsNudgeOpen(false)} 
+                className="absolute top-3 right-3 p-2 text-gray-500 hover:text-white hover:bg-white/10 rounded-full transition z-20"
+            >
+                <X size={20} />
+            </button>
+
+            {/* Conteúdo */}
+            <div className="relative z-10 text-center flex flex-col items-center">
+                
+                {/* Ícone Animado */}
+                <div className="w-16 h-16 bg-gradient-to-br from-cyan-900/50 to-blue-900/50 rounded-2xl flex items-center justify-center mb-5 border border-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.15)]">
+                    <Sparkles size={32} className="text-cyan-400 animate-pulse" />
                 </div>
-            )}
+
+                <h3 className="text-2xl font-black text-white mb-2">
+                    Cansado de digitar?
+                </h3>
+                
+                <p className="text-gray-400 text-sm mb-6 leading-relaxed px-2">
+                    Você já fez <b>{addCounter} lançamentos</b> manuais hoje. <br/>
+                    Imagine mandar um áudio no <b>WhatsApp</b> e a IA lançar tudo sozinha para você?
+                </p>
+
+                {/* Botão Principal */}
+                <button 
+                    onClick={() => { setIsNudgeOpen(false); openPricingModal(); }} 
+                    className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold py-3.5 rounded-xl transition shadow-lg shadow-cyan-900/20 flex items-center justify-center gap-2 group-hover:scale-[1.02] active:scale-95"
+                >
+                    <Zap size={18} className="fill-white" /> Quero Automatizar
+                </button>
+
+                {/* Botão Secundário (Psicológico) */}
+                <button 
+                    onClick={() => setIsNudgeOpen(false)} 
+                    className="mt-3 text-xs text-gray-600 hover:text-gray-400 transition"
+                >
+                    Prefiro continuar digitando manualmente
+                </button>
+            </div>
+        </div>
+    </div>
+)}
 
             {/* MODAL IA */}
             {isAIOpen && (
