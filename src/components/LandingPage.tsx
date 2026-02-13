@@ -246,7 +246,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                         {/* PRO */}
                         <div className="p-6 md:p-8 rounded-3xl bg-[#111] border border-purple-500/20 flex flex-col hover:border-purple-500/40 transition h-full">
                             <h3 className="text-purple-400 font-bold mb-2">Pro</h3>
-                            <div className="text-3xl font-black text-white mb-6">R$ 59,90<span className="text-sm font-normal text-gray-500">/mês</span></div>
+                            <div className="text-3xl font-black text-white mb-6">R$ 39,90<span className="text-sm font-normal text-gray-500">/mês</span></div>
                             <ul className="space-y-4 mb-8 flex-1">
                                 <li className="flex gap-3 text-sm text-gray-300"><CheckCircle2 size={18} className="text-purple-500 shrink-0"/> Tudo do Plus</li>
                                 <li className="flex gap-3 text-sm text-gray-300"><CheckCircle2 size={18} className="text-purple-500 shrink-0"/> IA Consultora (GPT-4)</li>

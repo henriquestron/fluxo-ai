@@ -8,21 +8,26 @@ export async function POST(req: Request) {
 
   try {
     const { prompt, contextData, userPlan, images, history } = await req.json();
+
+    // --- 1. VERIFICAÇÃO DE PLANO ---
+    // Apenas estes planos recebem o "Manual de Instruções" de como gerar JSON
+    const canPerformActions = ['premium', 'pro', 'agent', 'admin'].includes(userPlan);
+
+    // --- 2. MONTAGEM DO PROMPT ---
     
-    // --- 1. DEFINIR O SYSTEM PROMPT (ANTES DE TUDO) ---
-    // Precisamos definir isso antes de iniciar o modelo
+    // PARTE A: Contexto Geral (Todo mundo recebe)
     const isConsultant = contextData?.is_consultant || false;
     const viewingClient = contextData?.viewing_as_client || false;
     const targetName = viewingClient ? (contextData.client_name || "o Cliente") : "Você";
     const userRole = isConsultant ? "CONSULTOR FINANCEIRO" : "DONO DA CONTA";
 
-    const systemInstructionText = `
+    let systemInstructionText = `
         ATUE COMO: "Meu Aliado", um estrategista financeiro de elite.
         
         --- CONTEXTO DA SESSÃO ---
         QUEM ESTÁ FALANDO COM VOCÊ: ${userRole}.
         QUEM É O DONO DOS DADOS ANALISADOS: ${targetName}.
-        PLANO ATUAL: ${userPlan}.
+        PLANO ATUAL: ${userPlan.toUpperCase()}.
         DATA DE HOJE: ${new Date().toLocaleDateString('pt-BR')}.
         MÊS DO SISTEMA: ${contextData.mes_visualizado || 'Atual'}.
 
@@ -39,7 +44,12 @@ export async function POST(req: Request) {
            - Se o saldo for positivo, elogie e sugira investimentos. Se negativo, sugira cortes.
         
         3. **MEMÓRIA:** Lembre-se do contexto das mensagens anteriores desta conversa.
+    `;
 
+    // PARTE B: O "Divisor de Águas" (Ações vs Bloqueio)
+    if (canPerformActions) {
+        // --- SE FOR PREMIUM: Cola o seu prompt original de ações ---
+        systemInstructionText += `
         --- MODO 1: OPERACIONAL (Adicionar/Lançar) ---
         Se o usuário pedir para registrar algo OU **ENVIAR UMA FOTO/PDF DE CONTA**:
         
@@ -61,7 +71,24 @@ export async function POST(req: Request) {
         3. FIXOS/RECORRENTES (Tabela: "recurring"):
         Ex: "Aluguel", "Netflix", "Salário".
         [{"action":"add", "table":"recurring", "data":{ "title": "Nome", "value": 0.00, "type": "expense", "category": "Fixa", "due_day": 10, "status": "active", "icon": "home" }}]
+        `;
+    } else {
+        // --- SE FOR FREE/START: Bloqueio total de JSON ---
+        systemInstructionText += `
+        --- MODO RESTRITO (SEM AÇÕES DE BANCO DE DADOS) ---
+        ⚠️ **ATENÇÃO:** O usuário está no plano ${userPlan}. Você **NÃO TEM PERMISSÃO** para gerar JSONs de ação (add/edit/delete).
+        
+        Se o usuário pedir para lançar um gasto, adicionar uma conta, ou enviar uma foto de comprovante para registro:
+        1. Identifique a intenção (ex: "Entendi que você quer lançar um gasto de R$ 50 no Uber...").
+        2. Explique educadamente: "Como você está no plano ${userPlan}, eu só posso analisar seus dados, mas não posso fazer lançamentos automáticos."
+        3. Sugira o upgrade: "No plano Premium, eu lanço isso pra você em segundos, inclusive lendo fotos de comprovantes."
+        
+        NUNCA gere o bloco de código JSON. Apenas converse e analise.
+        `;
+    }
 
+    // PARTE C: Finalização (Estratégia) - Todo mundo recebe
+    systemInstructionText += `
         --- MODO 2: ESTRATÉGICO (Análise/Consultoria) ---
         Se for apenas conversa ou pedido de análise (sem intenção de lançamento):
         1. Use Markdown rico (**Negrito**, Tabelas, Emojis).
@@ -69,46 +96,35 @@ export async function POST(req: Request) {
         3. Nunca invente dados. Use apenas o que está no JSON fornecido.
     `;
 
-    // --- 2. INICIALIZAR O MODELO COM A INSTRUÇÃO ---
-    // A CORREÇÃO ESTÁ AQUI: Passamos systemInstruction na criação do modelo, não no chat.
+    // --- 3. INICIALIZAR O MODELO ---
     const genAI = new GoogleGenerativeAI(apiKey);
-    
-    // Mudei para gemini-1.5-flash para garantir estabilidade máxima com systemInstruction
     const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.0-flash", 
+        model: "gemini-flash-latest", 
         systemInstruction: systemInstructionText 
     });
 
-    // --- 3. PREPARAÇÃO DAS IMAGENS ---
-    const imageParts = images?.map((img: any) => {
-        let base64Data = img.base64;
-        let mimeType = "image/jpeg"; 
-
-        const mimeMatch = base64Data.match(/^data:(.*);base64,/);
-        if (mimeMatch && mimeMatch[1]) {
-            mimeType = mimeMatch[1];
-        }
-
-        base64Data = base64Data.replace(/^data:.*;base64,/, "").trim();
-
+    // --- 4. TRATAMENTO DE IMAGENS ---
+    const imageParts = (images || []).map((img: any) => {
+        // Remove cabeçalho do base64 se existir
+        const base64Data = img.base64.replace(/^data:.*;base64,/, "").trim();
+        // Tenta descobrir o mimeType ou assume jpeg
+        const mimeType = img.base64.match(/^data:(.*);base64,/)?.[1] || "image/jpeg";
+        
         return {
             inlineData: {
                 data: base64Data,
                 mimeType: mimeType
             }
         };
-    }) || [];
+    });
 
-    // --- 4. INICIA O CHAT (APENAS COM O HISTÓRICO) ---
-    // Removemos systemInstruction daqui pois já está no modelo
+    // --- 5. EXECUÇÃO DO CHAT ---
     const chat = model.startChat({
         history: history || []
     });
 
-    // Monta a mensagem atual
     let messageParts: any[] = [{ text: prompt }];
-
-    // Adiciona imagens se houver
+    
     if (imageParts.length > 0) {
         messageParts = [
             { text: prompt },
@@ -116,7 +132,6 @@ export async function POST(req: Request) {
         ];
     }
 
-    // Chama a API
     const result = await chat.sendMessage(messageParts);
     const responseText = result.response.text();
 

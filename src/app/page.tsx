@@ -13,6 +13,7 @@ import {
     ShoppingCart, Home, Car, Utensils, GraduationCap, HeartPulse, Plane, Gamepad2, Smartphone
 
 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import { supabase } from '@/supabase';
 import { driver } from "driver.js";
 import "driver.js/dist/driver.css";
@@ -650,6 +651,22 @@ export default function FinancialDashboard() {
             if (user) checkUpcomingBills(user.id); // <--- ADICIONE ISSO
         }
     }, [transactions, installments, recurring, user]);
+
+    // 👇 ADICIONE ESTE BLOCO AQUI 👇
+  
+  // 1. Cria a referência para o final do chat
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // 2. Faz o scroll automático sempre que chega mensagem nova
+  useEffect(() => {
+    if (isAIOpen) {
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [chatHistory, isAIOpen]); // Roda quando o histórico ou o modal mudam
+
+  // 👆 FIM DO BLOCO 👆
+
+  // ... resto do código ...
 
     const loadData = async (userId: string, workspaceId: string) => {
         if (!userId || !workspaceId) return;
@@ -1857,91 +1874,207 @@ export default function FinancialDashboard() {
 
             {/* MODAL IA */}
             {isAIOpen && (
-                <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[200] p-4 animate-in fade-in duration-300">
-                    <div className="bg-[#0f0f13] border border-gray-700 w-full max-w-2xl h-[600px] rounded-3xl shadow-2xl flex flex-col relative overflow-hidden">
-                        <div className="p-6 border-b border-gray-800 bg-[#111] flex justify-between items-center z-10">
-                            <h2 className="text-xl font-bold text-white">Consultor IA</h2>
-                            <button onClick={() => setIsAIOpen(false)} className="text-gray-500 hover:text-white"><X size={20} /></button>
-                        </div>
-                        <div className="flex-1 p-6 overflow-y-auto space-y-4 scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent">
-                            {chatHistory.map((msg, idx) => (
-                                <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                    <div className={`max-w-[85%] p-4 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-purple-600 text-white' : 'bg-gray-800 text-gray-200'}`}>
-                                        {msg.content === 'Analisar comprovante...' && (
-                                            <div className="flex items-center gap-2 mb-2 text-purple-200 bg-purple-700/50 p-2 rounded-lg text-xs">
-                                                <FileText size={14} /> Comprovante enviado
-                                            </div>
-                                        )}
-                                        {msg.content}
-                                    </div>
-                                </div>
-                            ))}
-                            {isAiLoading && (
-                                <div className="flex justify-start">
-                                    <div className="bg-gray-800 text-gray-200 rounded-2xl p-4 flex items-center gap-2">
-                                        <Loader2 size={18} className="animate-spin text-purple-500" />
-                                        <span className="animate-pulse">Analisando...</span>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                        <div className="px-6 py-2 border-t border-gray-800 bg-[#111]">
-                            {userPlan !== 'free' ? (
-                                <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-2">
-                                    <button onClick={() => askGemini("Faça um diagnóstico de risco completo...")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 hover:text-white rounded-full text-xs font-bold text-cyan-400 border border-cyan-900/30 flex items-center gap-2 transition active:scale-95">
-                                        <BarChart3 size={14} /> Diagnóstico
-                                    </button>
-                                    <button onClick={() => askGemini("Analise meus maiores gastos...")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 hover:text-white rounded-full text-xs font-bold text-purple-400 border border-purple-900/30 flex items-center gap-2 transition active:scale-95">
-                                        <Search size={14} /> Detetive
-                                    </button>
-                                    <button onClick={() => askGemini("Me dê um plano de resgate...")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 hover:text-white rounded-full text-xs font-bold text-emerald-400 border border-emerald-900/30 flex items-center gap-2 transition active:scale-95">
-                                        <Target size={14} /> Plano de Resgate
-                                    </button>
-                                </div>
-                            ) : (
-                                <div className="flex flex-col gap-2">
-                                    <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 opacity-70">
-                                        <button onClick={() => askGemini("O que é Reserva de Emergência?")} className="whitespace-nowrap px-3 py-1.5 bg-gray-800/50 hover:bg-gray-700 rounded-full text-[10px] text-gray-300 border border-gray-700 transition">💡 O que é Reserva?</button>
-                                        <button onClick={() => askGemini("Dicas simples para economizar no mercado")} className="whitespace-nowrap px-3 py-1.5 bg-gray-800/50 hover:bg-gray-700 rounded-full text-[10px] text-gray-300 border border-gray-700 transition">🛒 Dicas de Mercado</button>
-                                    </div>
-                                    <div className="flex justify-between items-center bg-gradient-to-r from-amber-900/20 to-orange-900/20 p-2 rounded-lg border border-amber-900/30 cursor-pointer" onClick={() => { setIsAIOpen(false); openPricingModal(); }}>
-                                        <span className="text-[10px] text-amber-500 font-bold flex items-center gap-1 ml-1"><Lock size={10} /> Desbloqueie análises da sua conta</span>
-                                        <span className="text-[10px] bg-amber-600 hover:bg-amber-500 text-white px-3 py-1 rounded shadow-lg transition">Virar Premium</span>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                        <div className="p-4 border-t border-gray-800 bg-[#111]">
-                            {attachment && (
-                                <div className="mb-3 flex items-start animate-in slide-in-from-bottom-2">
-                                    <div className="relative group">
-                                        {attachment.type === 'image' ? (
-                                            <img src={attachment.base64} alt="Preview" className="h-16 w-16 object-cover rounded-xl border border-gray-700 shadow-lg" />
-                                        ) : (
-                                            <div className="h-16 w-16 bg-gray-800 rounded-xl border border-gray-700 flex items-center justify-center text-red-400"><FileText size={24} /></div>
-                                        )}
-                                        <button onClick={() => { setAttachment(null); if (fileInputRef.current) fileInputRef.current.value = ''; }} className="absolute -top-2 -right-2 bg-gray-900 border border-gray-600 text-gray-400 hover:text-white rounded-full p-1 shadow-md transition"><X size={12} /></button>
-                                    </div>
-                                    <div className="ml-3 mt-1">
-                                        <p className="text-xs text-emerald-500 font-bold flex items-center gap-1"><CheckCircle2 size={12} /> Arquivo pronto</p>
-                                        <p className="text-[10px] text-gray-500 max-w-[200px] leading-tight mt-0.5">A IA vai ler os dados deste comprovante.</p>
-                                    </div>
-                                </div>
-                            )}
-                            <div className="flex gap-2 items-end">
-                                <input type="file" ref={fileInputRef} className="hidden" accept="image/*,application/pdf" onChange={handleFileSelect} />
-                                <button onClick={() => fileInputRef.current?.click()} className={`p-3 rounded-xl border transition mb-[2px] ${attachment ? 'bg-emerald-900/20 text-emerald-500 border-emerald-500/50' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white hover:bg-gray-700'}`} title="Anexar Comprovante"><Paperclip size={20} /></button>
-                                <div className="flex-1 relative">
-                                    <textarea value={aiInput} onChange={(e) => setAiInput(e.target.value)} placeholder={attachment ? "Descreva o gasto (opcional)..." : "Digite ou envie comprovante..."} className="w-full bg-gray-900 text-white placeholder-gray-500 border border-gray-800 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 resize-none h-12 max-h-32 scrollbar-hide" style={{ minHeight: '48px' }} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (aiInput.trim() || attachment) { askGemini(aiInput, attachment?.base64 || null); setAiInput(''); setAttachment(null); if (fileInputRef.current) fileInputRef.current.value = ''; } } }} />
-                                </div>
-                                <button onClick={() => { if (aiInput.trim() || attachment) { askGemini(aiInput, attachment?.base64 || null); setAiInput(''); setAttachment(null); if (fileInputRef.current) fileInputRef.current.value = ''; } }} disabled={isAiLoading || (!aiInput.trim() && !attachment)} className="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white p-3 rounded-xl transition shadow-lg shadow-purple-900/20 mb-[2px]">
-                                    {isAiLoading ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
-                                </button>
-                            </div>
-                        </div>
+    <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[200] p-4 animate-in fade-in duration-300">
+        <div className="bg-[#0f0f13] border border-gray-700 w-full max-w-2xl h-[600px] rounded-3xl shadow-2xl flex flex-col relative overflow-hidden">
+            
+            {/* HEADER */}
+            <div className="p-6 border-b border-gray-800 bg-[#111] flex justify-between items-center z-10 shrink-0">
+                <div className="flex items-center gap-3">
+                    <div className="p-2 bg-purple-900/30 rounded-lg">
+                        <Sparkles size={20} className="text-purple-400" />
+                    </div>
+                    <div>
+                        <h2 className="text-xl font-bold text-white">Consultor IA</h2>
+                        <p className="text-xs text-gray-400">Powered by Gemini 1.5 Flash</p>
                     </div>
                 </div>
-            )}
+                <button onClick={() => setIsAIOpen(false)} className="text-gray-500 hover:text-white p-2 hover:bg-white/10 rounded-full transition">
+                    <X size={20} />
+                </button>
+            </div>
+
+            {/* CHAT AREA (MENSAGENS) */}
+            <div className="flex-1 p-6 overflow-y-auto space-y-6 scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent bg-[#0f0f13]">
+                {chatHistory.length === 0 ? (
+                    // Estado Vazio (Zero mensagens)
+                    <div className="h-full flex flex-col items-center justify-center text-center opacity-50 p-8">
+                        <Sparkles size={48} className="text-purple-500 mb-4" />
+                        <h3 className="text-white font-bold mb-2">Como posso ajudar?</h3>
+                        <p className="text-sm text-gray-400">Envie um comprovante, pergunte sobre seus gastos ou peça dicas de economia.</p>
+                    </div>
+                ) : (
+                    chatHistory.map((msg, idx) => (
+                        <div key={idx} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                            
+                            {/* Avatar da IA */}
+                            {msg.role !== 'user' && (
+                                <div className="w-8 h-8 rounded-full bg-purple-900/50 flex items-center justify-center mr-3 mt-1 shrink-0 border border-purple-500/30">
+                                    <Sparkles size={14} className="text-purple-400" />
+                                </div>
+                            )}
+
+                            {/* Balão da Mensagem */}
+                            <div className={`
+                                max-w-[85%] p-4 rounded-2xl text-sm shadow-lg
+                                ${msg.role === 'user' 
+                                    ? 'bg-purple-600 text-white rounded-tr-none' 
+                                    : 'bg-gray-800 text-gray-100 rounded-tl-none border border-gray-700'}
+                            `}>
+                                
+                                {/* Chip de Comprovante (Se houver) */}
+                                {msg.content === 'Analisar comprovante...' && (
+                                    <div className="flex items-center gap-2 mb-3 text-purple-200 bg-black/20 p-2 rounded-lg text-xs font-bold border border-white/10">
+                                        <FileText size={14} /> Comprovante enviado
+                                    </div>
+                                )}
+
+                                {/* CONTEÚDO DA MENSAGEM (CORRIGIDO) */}
+                                {msg.role === 'user' ? (
+                                    <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                                ) : (
+                                    <div className="markdown-content text-gray-100">
+                                        <ReactMarkdown
+                                            components={{
+                                                p: ({node, ...props}) => <p className="mb-3 last:mb-0 leading-relaxed" {...props} />,
+                                                strong: ({node, ...props}) => <strong className="font-bold text-purple-300" {...props} />,
+                                                ul: ({node, ...props}) => <ul className="list-disc ml-5 mb-3 space-y-1 marker:text-purple-400" {...props} />,
+                                                li: ({node, ...props}) => <li className="pl-1" {...props} />,
+                                                h1: ({node, ...props}) => <h1 className="text-lg font-bold text-white mb-2 mt-4 border-b border-gray-700 pb-1" {...props} />,
+                                                h2: ({node, ...props}) => <h2 className="text-base font-bold text-white mb-2 mt-3" {...props} />,
+                                                h3: ({node, ...props}) => <h3 className="text-sm font-bold text-white mb-1" {...props} />
+                                            }}
+                                        >
+                                            {msg.content}
+                                        </ReactMarkdown>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    ))
+                )}
+                
+                {/* Loader de Resposta */}
+                {isAiLoading && (
+                    <div className="flex justify-start w-full">
+                        <div className="w-8 h-8 rounded-full bg-purple-900/50 flex items-center justify-center mr-3 mt-1 shrink-0 border border-purple-500/30">
+                            <Sparkles size={14} className="text-purple-400 animate-pulse" />
+                        </div>
+                        <div className="bg-gray-800 text-gray-200 rounded-2xl p-4 flex items-center gap-3 border border-gray-700 rounded-tl-none">
+                            <Loader2 size={18} className="animate-spin text-purple-500" />
+                            <span className="text-xs font-bold animate-pulse text-purple-300">Escrevendo...</span>
+                        </div>
+                    </div>
+                )}
+                
+                {/* Scroll Anchor */}
+                <div ref={chatEndRef} />
+            </div>
+
+            {/* SUGESTÕES RÁPIDAS (RODAPÉ SUPERIOR) */}
+            <div className="px-6 py-2 border-t border-gray-800 bg-[#111]">
+                {userPlan !== 'free' ? (
+                    <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-2">
+                        <button onClick={() => askGemini("Faça um diagnóstico de risco completo...")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 hover:text-white rounded-full text-xs font-bold text-cyan-400 border border-cyan-900/30 flex items-center gap-2 transition active:scale-95">
+                            <BarChart3 size={14} /> Diagnóstico
+                        </button>
+                        <button onClick={() => askGemini("Analise meus maiores gastos...")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 hover:text-white rounded-full text-xs font-bold text-purple-400 border border-purple-900/30 flex items-center gap-2 transition active:scale-95">
+                            <Search size={14} /> Detetive
+                        </button>
+                        <button onClick={() => askGemini("Me dê um plano de resgate...")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 hover:text-white rounded-full text-xs font-bold text-emerald-400 border border-emerald-900/30 flex items-center gap-2 transition active:scale-95">
+                            <Target size={14} /> Plano de Resgate
+                        </button>
+                    </div>
+                ) : (
+                    <div className="flex flex-col gap-2">
+                        <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 opacity-70">
+                            <button onClick={() => askGemini("O que é Reserva de Emergência?")} className="whitespace-nowrap px-3 py-1.5 bg-gray-800/50 hover:bg-gray-700 rounded-full text-[10px] text-gray-300 border border-gray-700 transition">💡 O que é Reserva?</button>
+                            <button onClick={() => askGemini("Dicas simples para economizar no mercado")} className="whitespace-nowrap px-3 py-1.5 bg-gray-800/50 hover:bg-gray-700 rounded-full text-[10px] text-gray-300 border border-gray-700 transition">🛒 Dicas de Mercado</button>
+                        </div>
+                        <div className="flex justify-between items-center bg-gradient-to-r from-amber-900/20 to-orange-900/20 p-2 rounded-lg border border-amber-900/30 cursor-pointer hover:bg-amber-900/30 transition" onClick={() => { setIsAIOpen(false); openPricingModal(); }}>
+                            <span className="text-[10px] text-amber-500 font-bold flex items-center gap-1 ml-1"><Lock size={10} /> Desbloqueie análises da sua conta</span>
+                            <span className="text-[10px] bg-amber-600 hover:bg-amber-500 text-white px-3 py-1 rounded shadow-lg transition">Virar Premium</span>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* INPUT AREA (RODAPÉ INFERIOR - RESTAURADO) */}
+            <div className="p-4 border-t border-gray-800 bg-[#111]">
+                
+                {/* Preview de Anexo */}
+                {attachment && (
+                    <div className="mb-3 flex items-start animate-in slide-in-from-bottom-2">
+                        <div className="relative group">
+                            {attachment.type === 'image' ? (
+                                <img src={attachment.base64} alt="Preview" className="h-16 w-16 object-cover rounded-xl border border-gray-700 shadow-lg" />
+                            ) : (
+                                <div className="h-16 w-16 bg-gray-800 rounded-xl border border-gray-700 flex items-center justify-center text-red-400"><FileText size={24} /></div>
+                            )}
+                            <button onClick={() => { setAttachment(null); if (fileInputRef.current) fileInputRef.current.value = ''; }} className="absolute -top-2 -right-2 bg-gray-900 border border-gray-600 text-gray-400 hover:text-white rounded-full p-1 shadow-md transition"><X size={12} /></button>
+                        </div>
+                        <div className="ml-3 mt-1">
+                            <p className="text-xs text-emerald-500 font-bold flex items-center gap-1"><CheckCircle2 size={12} /> Arquivo pronto</p>
+                            <p className="text-[10px] text-gray-500 max-w-[200px] leading-tight mt-0.5">A IA vai ler os dados deste comprovante.</p>
+                        </div>
+                    </div>
+                )}
+
+                {/* Controles de Input */}
+                <div className="flex gap-2 items-end">
+                    <input type="file" ref={fileInputRef} className="hidden" accept="image/*,application/pdf" onChange={handleFileSelect} />
+                    
+                    {/* Botão Clipe */}
+                    <button 
+                        onClick={() => fileInputRef.current?.click()} 
+                        className={`p-3 rounded-xl border transition mb-[2px] ${attachment ? 'bg-emerald-900/20 text-emerald-500 border-emerald-500/50' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white hover:bg-gray-700'}`} 
+                        title="Anexar Comprovante"
+                    >
+                        <Paperclip size={20} />
+                    </button>
+
+                    {/* Campo de Texto */}
+                    <div className="flex-1 relative">
+                        <textarea 
+                            value={aiInput} 
+                            onChange={(e) => setAiInput(e.target.value)} 
+                            placeholder={attachment ? "Descreva o gasto (opcional)..." : "Digite ou envie comprovante..."} 
+                            className="w-full bg-gray-900 text-white placeholder-gray-500 border border-gray-800 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 resize-none h-12 max-h-32 scrollbar-hide" 
+                            style={{ minHeight: '48px' }} 
+                            onKeyDown={(e) => { 
+                                if (e.key === 'Enter' && !e.shiftKey) { 
+                                    e.preventDefault(); 
+                                    if (aiInput.trim() || attachment) { 
+                                        askGemini(aiInput, attachment?.base64 || null); 
+                                        setAiInput(''); 
+                                        setAttachment(null); 
+                                        if (fileInputRef.current) fileInputRef.current.value = ''; 
+                                    } 
+                                } 
+                            }} 
+                        />
+                    </div>
+
+                    {/* Botão Enviar */}
+                    <button 
+                        onClick={() => { 
+                            if (aiInput.trim() || attachment) { 
+                                askGemini(aiInput, attachment?.base64 || null); 
+                                setAiInput(''); 
+                                setAttachment(null); 
+                                if (fileInputRef.current) fileInputRef.current.value = ''; 
+                            } 
+                        }} 
+                        disabled={isAiLoading || (!aiInput.trim() && !attachment)} 
+                        className="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white p-3 rounded-xl transition shadow-lg shadow-purple-900/20 mb-[2px]"
+                    >
+                        {isAiLoading ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+)}
 
             {isRolloverModalOpen && (
                 <div className="fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center z-[300] p-6 animate-in zoom-in duration-300">
