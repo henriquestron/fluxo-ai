@@ -14,10 +14,16 @@ const geistMono = Geist_Mono({
 
 // 1. Identidade Visual (Título da Aba e Descrição)
 export const metadata: Metadata = {
-  title: "Meu Aliado | Inteligência Financeira",
-  description: "O QG das suas finanças. Controle gastos, parcelamentos e assinaturas com inteligência artificial.",
-  icons: {
-    icon: "/favicon.ico", 
+  title: "Meu Aliado | Finanças Inteligentes",
+  description: "Gerencie suas finanças com Inteligência Artificial.",
+  manifest: "/manifest.json", // <--- ISSO AQUI QUE FAZ A MÁGICA
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Aliado",
+  },
+  formatDetection: {
+    telephone: false,
   },
 };
 
