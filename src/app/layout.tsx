@@ -1,6 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import SupportWidget from '@/components/SupportWidget';
+import { Toaster } from 'sonner';
+
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -40,21 +43,26 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    // 3. Configuração de Idioma (pt-BR)
     <html lang="pt-BR" className="dark">
       
-      {/* 👇👇👇 ADICIONEI ESTE BLOCO HEAD AQUI 👇👇👇 */}
+      {/* SEU BLOCO HEAD (MANTIDO INTACTO PARA O TOUR FUNCIONAR) */}
       <head>
         <script src="https://cdn.jsdelivr.net/npm/driver.js@1.0.1/dist/driver.js.iife.js"></script>
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.0.1/dist/driver.css"/>
       </head>
-      {/* 👆👆👆 FIM DO BLOCO HEAD 👆👆👆 */}
 
       <body
-        // Adicionei bg-[#050505] aqui para evitar clarão branco ao carregar
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#050505] text-gray-100`}
       >
+        {/* 1. Componente de Notificações (Importante para o feedback do suporte) */}
+        <Toaster richColors position="top-center" theme="dark" />
+
+        {/* 2. O Site em si */}
         {children}
+
+        {/* 3. O Widget de Suporte (Fica flutuando por cima de tudo) */}
+        <SupportWidget />
+
       </body>
     </html>
   );
