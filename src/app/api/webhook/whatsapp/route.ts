@@ -8,21 +8,24 @@ const INSTANCE_NAME = "MEO_ALIADO_INSTANCE";
 
 // --- FUNÇÕES AUXILIARES ---
 
+// Agora aceita delay personalizado (padrão 1200ms)
 async function sendWhatsAppMessage(jid: string, text: string, delay: number = 1200) {
     const finalJid = jid.includes('@') ? jid : `${jid}@s.whatsapp.net`;
     try {
-        // console.log(`📤 Enviando para ${finalJid} (Delay: ${delay}ms)...`);
+        console.log(`📤 Enviando para ${finalJid} (Delay: ${delay}ms)...`);
         const res = await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE_NAME}`, {
             method: 'POST',
             headers: { 'apikey': EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
             body: JSON.stringify({ number: finalJid, text, delay: delay })
         });
-        // const json = await res.json();
+        const json = await res.json();
+        console.log("✅ Status Envio:", json);
     } catch (e) { console.error("❌ Erro Envio ZAP:", e); }
 }
 
 async function downloadMedia(url: string) {
     try {
+        console.log("📥 Tentando baixar URL:", url);
         const response = await fetch(url, { headers: { 'apikey': EVOLUTION_API_KEY } });
         if (!response.ok) return null;
         const arrayBuffer = await response.arrayBuffer();
@@ -30,26 +33,13 @@ async function downloadMedia(url: string) {
     } catch (error) { return null; }
 }
 
-// 🧠 CÁLCULO FINANCEIRO AJUSTADO
+// 🧠 CÁLCULO FINANCEIRO
 async function getFinancialContext(supabase: any, userId: string, workspaceId: string) {
     const today = new Date();
     const monthStr = String(today.getMonth() + 1).padStart(2, '0');
     const yearStr = today.getFullYear();
     
-    // 1. Busca Transações (Evitando duplicidade de Fatura de Cartão)
-    // Geralmente a diferença de valor ocorre porque somamos as parcelas (installments) E o pagamento da fatura (transactions).
-    // Tentamos filtrar pagamentos de fatura aqui.
-    const { data: transactions } = await supabase
-        .from('transactions')
-        .select('type, amount, title, category')
-        .eq('user_id', userId)
-        .eq('context', workspaceId)
-        .like('date', `%/${monthStr}/${yearStr}`)
-        .neq('status', 'delayed')
-        // Tenta filtrar pagamentos de fatura para não duplicar com parcelados
-        .not('category', 'ilike', '%fatura%') 
-        .not('title', 'ilike', '%pagamento cartão%'); 
-
+    const { data: transactions } = await supabase.from('transactions').select('type, amount').eq('user_id', userId).eq('context', workspaceId).like('date', `%/${monthStr}/${yearStr}`).neq('status', 'delayed');
     const { data: recurring } = await supabase.from('recurring').select('type, value').eq('user_id', userId).eq('context', workspaceId).eq('status', 'active');
     const { data: installments } = await supabase.from('installments').select('value_per_month').eq('user_id', userId).eq('context', workspaceId).eq('status', 'active');
 
@@ -61,19 +51,16 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
     installments?.forEach((i: any) => totalSaidas += i.value_per_month);
 
     const saldo = totalEntradas - totalSaidas;
-    
-    // Lógica de Estado mais suave
     let estado = "ESTÁVEL";
-    if (saldo < 0) estado = "ATENÇÃO (Saldo Negativo)"; // Tirei o "CRÍTICO VERMELHO" pra não assustar a IA
-    else if (saldo < (totalEntradas * 0.1)) estado = "ALERTA (Margem Baixa)";
+    if (saldo < 0) estado = "CRÍTICO (VERMELHO)";
+    else if (saldo < (totalEntradas * 0.1)) estado = "ALERTA (POUCA MARGEM)";
 
     return {
         saldo: saldo.toFixed(2),
         entradas: totalEntradas.toFixed(2),
         saidas: totalSaidas.toFixed(2),
         estado_conta: estado,
-        // Texto forçado para a IA ler
-        resumo_texto: `Receita Mensal: R$ ${totalEntradas.toLocaleString('pt-BR', {minimumFractionDigits: 2})} | Despesas Totais: R$ ${totalSaidas.toLocaleString('pt-BR', {minimumFractionDigits: 2})} | SALDO PREVISTO: R$ ${saldo.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`
+        resumo_texto: `Receita: R$${totalEntradas.toFixed(2)} | Despesas Totais: R$${totalSaidas.toFixed(2)} | SALDO FINAL: R$${saldo.toFixed(2)}`
     };
 }
 
@@ -87,7 +74,7 @@ export async function POST(req: Request) {
 
         const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" }); // Usei 1.5 Flash (mais rápido e inteligente que o latest antigo)
+        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
         const body = await req.json();
 
@@ -138,6 +125,7 @@ export async function POST(req: Request) {
         }
 
         if (!userSettings) {
+            // Lógica de Vínculo... (Mantida igual)
             const numbersInText = messageContent.replace(/\D/g, ''); 
             if (numbersInText.length >= 10) { 
                 const possiblePhones = [numbersInText, `55${numbersInText}`, numbersInText.replace(/^55/, '')];
@@ -151,20 +139,30 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "User unknown" });
         }
         
-        // TRAVA DE SEGURANÇA (PLANO)
+        // =================================================================================
+        // 🔒 TRAVA DE SEGURANÇA: VERIFICAÇÃO DE PLANO
+        // =================================================================================
+        
         const { data: profile } = await supabase.from('profiles').select('plan_tier').eq('id', userSettings.user_id).single();
         const plan = profile?.plan_tier || 'free';
         
         if (!['pro', 'agent', 'admin'].includes(plan)) {
+            console.log(`🚫 Bloqueado: ${senderId} é plano '${plan}' - ENVIANDO AVISO...`);
+            
+            // Define o número de destino com segurança (do banco ou do remetente)
             const targetForBlock = userSettings.whatsapp_phone || senderId;
+
+            // Envia SEM DELAY (delay: 100ms) para garantir que chegue antes do return
             await sendWhatsAppMessage(targetForBlock, 
                 "🚫 *Acesso Exclusivo PRO*\n\n" +
                 "A Inteligência Artificial no WhatsApp está disponível apenas nos planos **Pro** e **Consultor**.\n\n" +
-                "Faça o upgrade no seu painel para desbloquear! 🚀",
+                "Faça o upgrade no seu painel para desbloquear: lançamentos por áudio, consultas e muito mais! 🚀",
                 100 
             );
+            
             return NextResponse.json({ status: 'Blocked by Plan', plan: plan });
         }
+        // =================================================================================
 
         if (senderId !== userSettings.whatsapp_phone && userSettings.whatsapp_id !== senderId) {
             await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userSettings.user_id);
@@ -177,33 +175,26 @@ export async function POST(req: Request) {
         let contextInfo = { saldo: "0", resumo_texto: "Sem dados", estado_conta: "Indefinido" };
         if (workspace) contextInfo = await getFinancialContext(supabase, userSettings.user_id, workspace.id);
 
-        // 4. PROMPT DA IA (CORRIGIDO PARA NÃO SURTAR COM O SALDO)
+        // 4. PROMPT DA IA
         const systemPrompt = `
-        ATUE COMO: "Meu Aliado", assistente financeiro no WhatsApp.
+        ATUE COMO: "Meu Aliado", assistente financeiro.
         HOJE: ${new Date().toLocaleDateString('pt-BR')}.
-        
-        --- DADOS FINANCEIROS REAIS (RESUMO OFICIAL) ---
-        Use os valores abaixo como VERDADE ABSOLUTA. Não tente recalcular somando itens.
-        ${contextInfo.resumo_texto}
-        ------------------------------------------------
-
+        --- DADOS FINANCEIROS REAIS ---
+        ${JSON.stringify(contextInfo)}
+        -------------------------------
         SUA MISSÃO:
-        1. SE O USUÁRIO ENVIAR GASTO/FOTO: Retorne o JSON de 'add'.
-        2. SE FOR CONVERSA/ANÁLISE: 
-           - Use o 'resumo_texto' acima para responder.
-           - Se o saldo for negativo, seja calmo e estratégico (não use termos como "COLAPSO" ou "CRÍTICO"). 
-           - Diga "Estamos com um saldo negativo de X, vamos ajustar?" em vez de "ALERTA GRAVE".
-
-        FORMATO OBRIGATÓRIO (JSON ARRAY):
+        1. ADICIONAR CONTA: 
+           - SE estiver 'CRÍTICO' ou 'ALERTA', INCLUA UM ALERTA GRAVE.
+        2. CONSULTA:
+           - Se perguntar "Como estou?", use o 'resumo_texto'.
+        FORMATO (JSON ARRAY):
         [{"action": "add", ...}, {"reply": "Texto..."}]
-        
         AÇÕES JSON:
         1. ADICIONAR (add):
            - transactions: [{"action":"add", "table":"transactions", "data":{ "title": "...", "amount": 0.00, "type": "expense", "date": "DD/MM/YYYY", "category": "Outros", "target_month": "Mês" }}]
            - installments: [{"action":"add", "table":"installments", "data":{ "title": "...", "total_value": 0.00, "installments_count": 1, "value_per_month": 0.00, "due_day": 10, "status": "active" }}]
         2. CONVERSAR (reply):
            - [{"reply": "Sua resposta..."}]
-        
         ${hasAudio ? "Transcrição do Áudio: O usuário falou algo. Entenda e execute." : ""}
         `;
 
@@ -221,7 +212,6 @@ export async function POST(req: Request) {
             let replySent = false;
 
             for (const cmd of commands) {
-                // ... (LÓGICA DE SALVAR NO BANCO - MANTIDA IGUAL)
                 if (cmd.action === 'add') {
                     let payload: any = { ...cmd.data, user_id: userSettings.user_id, context: workspace?.id, created_at: new Date(), message_id: messageId };
 
@@ -229,7 +219,9 @@ export async function POST(req: Request) {
                         payload.current_installment = 0; payload.status = 'active';
                         delete payload.date; delete payload.target_month;
                         const { error } = await supabase.from('installments').insert([payload]);
+                        
                         if (error && error.code === '23505') { replySent = true; continue; }
+
                         if (!error && !commands.some((c:any) => c.reply)) {
                              const total = (cmd.data.total_value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                              await sendWhatsAppMessage(targetPhone, `✅ Parcelado: ${cmd.data.title} (${total})`);
@@ -238,7 +230,9 @@ export async function POST(req: Request) {
                     else if (cmd.table === 'recurring') {
                         payload.status = 'active';
                         const { error } = await supabase.from('recurring').insert([payload]);
+                        
                         if (error && error.code === '23505') { replySent = true; continue; }
+
                         if (!error && !commands.some((c:any) => c.reply)) await sendWhatsAppMessage(targetPhone, `✅ Fixo: ${cmd.data.title}`);
                     }
                     else if (cmd.table === 'transactions') {
@@ -250,7 +244,9 @@ export async function POST(req: Request) {
                         }
                         payload.is_paid = true; payload.status = 'paid';
                         const { error } = await supabase.from('transactions').insert([payload]);
+                        
                         if (error && error.code === '23505') { replySent = true; continue; }
+                        
                         if (!error && !commands.some((c:any) => c.reply)) {
                              const val = (cmd.data.amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                              await sendWhatsAppMessage(targetPhone, `✅ Lançado: ${cmd.data.title} (${val})`);
