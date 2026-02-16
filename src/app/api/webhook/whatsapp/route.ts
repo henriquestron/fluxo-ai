@@ -22,15 +22,39 @@ async function sendWhatsAppMessage(jid: string, text: string, delay: number = 12
 
 async function downloadMedia(url: string) {
     try {
-        console.log("📥 Baixando mídia...", url);
-        const response = await fetch(url, { headers: { 'apikey': EVOLUTION_API_KEY } });
-        if (!response.ok) return null;
+        console.log("📥 Baixando mídia:", url);
+        
+        // Configura headers apenas se NÃO for URL direta do WhatsApp
+        const headers: any = {};
+        if (!url.includes('whatsapp.net')) {
+            headers['apikey'] = EVOLUTION_API_KEY;
+        }
+
+        // Adiciona um timeout de 10s para não travar o servidor
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+        const response = await fetch(url, { 
+            headers, 
+            signal: controller.signal 
+        });
+        
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+            console.error(`❌ Falha no download: Status ${response.status}`);
+            return null;
+        }
+
         const arrayBuffer = await response.arrayBuffer();
         return Buffer.from(arrayBuffer).toString('base64');
-    } catch (error) { return null; }
+    } catch (error) { 
+        console.error("❌ Erro crítico no download de mídia:", error);
+        return null; 
+    }
 }
 
-// Helper para limpar números brasileiros (ex: "1.200,50" -> 1200.50)
+// Helper para limpar números brasileiros
 function parseBRL(value: any) {
     if (typeof value === 'number') return value;
     if (!value) return 0;
@@ -44,7 +68,6 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
     const monthStr = String(today.getMonth() + 1).padStart(2, '0');
     const yearStr = today.getFullYear();
     
-    // Busca transações para calcular saldo real
     const { data: transactions } = await supabase.from('transactions').select('type, amount').eq('user_id', userId).eq('context', workspaceId).like('date', `%/${monthStr}/${yearStr}`).neq('status', 'delayed');
     const { data: recurring } = await supabase.from('recurring').select('type, value').eq('user_id', userId).eq('context', workspaceId).eq('status', 'active');
     const { data: installments } = await supabase.from('installments').select('value_per_month').eq('user_id', userId).eq('context', workspaceId).eq('status', 'active');
@@ -57,8 +80,6 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
     installments?.forEach((i: any) => totalSaidas += i.value_per_month);
 
     const saldo = totalEntradas - totalSaidas;
-    
-    // Lógica de Estado da Conta (Personalidade)
     let estado = "ESTÁVEL";
     if (saldo < 0) estado = "CRÍTICO (VERMELHO)";
     else if (saldo < (totalEntradas * 0.1)) estado = "ALERTA (POUCA MARGEM)";
@@ -103,28 +124,46 @@ export async function POST(req: Request) {
 
         const msgData = body.data?.message;
         
-        // Imagem
+        // Verifica Imagem
         if (msgData?.imageMessage) {
             hasImage = true;
             let imgBase64 = body.data?.base64 || msgData.imageMessage?.base64;
-            if (!imgBase64 && msgData.imageMessage.url) imgBase64 = await downloadMedia(msgData.imageMessage.url);
-            if (imgBase64) promptParts.push({ inlineData: { mimeType: "image/jpeg", data: imgBase64 } });
+            
+            // Se não vier base64, tenta baixar da URL
+            if (!imgBase64 && msgData.imageMessage.url) {
+                imgBase64 = await downloadMedia(msgData.imageMessage.url);
+            }
+
+            if (imgBase64) {
+                promptParts.push({ inlineData: { mimeType: "image/jpeg", data: imgBase64 } });
+            } else {
+                // Se falhar o download, avisamos o usuário e retornamos SUCESSO para o WhatsApp parar de tentar
+                await sendWhatsAppMessage(remoteJid, "⚠️ Não consegui baixar a imagem. Tente enviar novamente.");
+                return NextResponse.json({ success: true, status: 'Image Download Failed' });
+            }
         }
-        // Áudio
+
+        // Verifica Áudio
         if (msgData?.audioMessage) {
             hasAudio = true;
             let audioBase64 = body.data?.base64 || msgData.audioMessage?.base64;
-            if (!audioBase64 && msgData.audioMessage.url) audioBase64 = await downloadMedia(msgData.audioMessage.url);
-            if (audioBase64) promptParts.push({ inlineData: { mimeType: "audio/ogg", data: audioBase64 } });
+            if (!audioBase64 && msgData.audioMessage.url) {
+                audioBase64 = await downloadMedia(msgData.audioMessage.url);
+            }
+            if (audioBase64) {
+                promptParts.push({ inlineData: { mimeType: "audio/ogg", data: audioBase64 } });
+            } else {
+                await sendWhatsAppMessage(remoteJid, "⚠️ Erro no áudio. Tente texto.");
+                return NextResponse.json({ success: true, status: 'Audio Failed' });
+            }
         }
 
         if (messageContent) promptParts.push(messageContent);
         if (promptParts.length === 0) return NextResponse.json({ status: 'No Content' });
 
-        // 2. USUÁRIO
+        // 2. IDENTIFICAÇÃO DO USUÁRIO
         let { data: userSettings } = await supabase.from('user_settings').select('*').or(`whatsapp_phone.eq.${senderId},whatsapp_id.eq.${senderId}`).maybeSingle();
 
-        // Lógica de Vínculo
         if (!userSettings) {
              const numbersInText = messageContent.replace(/\D/g, ''); 
              if (numbersInText.length >= 10) { 
@@ -153,38 +192,34 @@ export async function POST(req: Request) {
         const targetPhone = userSettings.whatsapp_phone || senderId;
         const { data: workspace } = await supabase.from('workspaces').select('id').eq('user_id', userSettings.user_id).limit(1).single();
         
-        // Contexto Financeiro
         let contextInfo = { saldo: "0", resumo_texto: "Sem dados", estado_conta: "Indefinido" };
         if (workspace) contextInfo = await getFinancialContext(supabase, userSettings.user_id, workspace.id);
 
-        // 4. PROMPT DA IA (O MISTO PERFEITO: PERSONALIDADE + TÉCNICA)
+        // 4. PROMPT DA IA
         const systemPrompt = `
-        ATUE COMO: "Meu Aliado", seu assistente financeiro pessoal.
+        ATUE COMO: "Meu Aliado", assistente financeiro.
         HOJE: ${new Date().toLocaleDateString('pt-BR')}.
-        
         --- DADOS FINANCEIROS REAIS ---
         ${JSON.stringify(contextInfo)}
         -------------------------------
-
         SUA MISSÃO:
         1. ADICIONAR CONTA: 
-           - **IMPORTANTE:** Verifique o 'estado_conta' acima.
-           - SE estiver 'CRÍTICO' ou 'ALERTA', INCLUA UM ALERTA GRAVE na sua resposta ("reply").
+           - SE estiver 'CRÍTICO' ou 'ALERTA', INCLUA UM ALERTA GRAVE.
            - SE for IMAGEM (Comprovante): Extraia o VALOR TOTAL e a DATA da compra (se não achar data, use HOJE).
         
         2. CONSULTA:
-           - Se perguntar "Como estou?", use o 'resumo_texto' para responder.
+           - Se perguntar "Como estou?", use o 'resumo_texto'.
 
-        --- FORMATO OBRIGATÓRIO (JSON ARRAY) ---
-        Responda APENAS o JSON puro, sem formatação de código.
+        FORMATO OBRIGATÓRIO (JSON ARRAY - SEM MARKDOWN):
+        [{"action": "add", ...}, {"reply": "Texto..."}]
 
         AÇÕES JSON:
-        1. ADICIONAR (add) - Exemplos:
-           - Gasto Simples: [{"action":"add", "table":"transactions", "data":{ "title": "Uber", "amount": 14.93, "type": "expense", "date": "DD/MM/YYYY", "category": "Transporte", "target_month": "Mês" }}]
-           - Parcelado: [{"action":"add", "table":"installments", "data":{ "title": "TV", "total_value": 2000.00, "installments_count": 10, "value_per_month": 200.00, "due_day": 10, "status": "active" }}]
+        1. ADICIONAR (add):
+           - transactions: [{"action":"add", "table":"transactions", "data":{ "title": "...", "amount": 0.00, "type": "expense", "date": "DD/MM/YYYY", "category": "Outros", "target_month": "Mês" }}]
+           - installments: [{"action":"add", "table":"installments", "data":{ "title": "...", "total_value": 0.00, "installments_count": 1, "value_per_month": 0.00, "due_day": 10, "status": "active" }}]
         
         2. CONVERSAR (reply):
-           - [{"reply": "Sua resposta com personalidade aqui..."}]
+           - [{"reply": "Sua resposta..."}]
 
         ${hasAudio ? "Transcrição do Áudio: O usuário falou algo. Entenda e execute." : ""}
         ${hasImage ? "Imagem: Analise o comprovante visualmente para extrair dados." : ""}
@@ -193,7 +228,7 @@ export async function POST(req: Request) {
         const finalPrompt = [systemPrompt, ...promptParts];
         const result = await model.generateContent(finalPrompt);
         
-        // --- LIMPEZA TÉCNICA (PARA NÃO QUEBRAR O PARSER) ---
+        // --- LIMPEZA TÉCNICA ---
         let rawText = result.response.text();
         let cleanJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
         const jsonMatch = cleanJson.match(/\[[\s\S]*\]/);
@@ -213,7 +248,7 @@ export async function POST(req: Request) {
                         context: workspace?.id, 
                         created_at: new Date(), 
                         message_id: messageId,
-                        amount: parseBRL(cmd.data.amount || cmd.data.value) // Limpeza de número
+                        amount: parseBRL(cmd.data.amount || cmd.data.value) 
                     };
 
                     // --- PARCELAS ---
@@ -247,7 +282,6 @@ export async function POST(req: Request) {
                     }
                     // --- GASTOS AVULSOS ---
                     else if (cmd.table === 'transactions') {
-                        // Data e Mês Inteligente
                         payload.date = payload.date || new Date().toLocaleDateString('pt-BR');
                         const parts = payload.date.split('/');
                         if (parts.length === 3) {
@@ -278,7 +312,6 @@ export async function POST(req: Request) {
                     }
                 }
 
-                // Resposta Personalizada da IA (Com alertas de saldo)
                 if (cmd.reply && !replySent) {
                     await sendWhatsAppMessage(targetPhone, cmd.reply);
                     replySent = true;
@@ -286,13 +319,16 @@ export async function POST(req: Request) {
             }
         } catch (error) {
             console.error("❌ ERRO JSON:", error);
-            if (!hasAudio && !hasImage) await sendWhatsAppMessage(targetPhone, rawText); // Fallback conversa
-            else await sendWhatsAppMessage(targetPhone, "Não entendi. Tente digitar?");
+            if (!hasAudio && !hasImage) await sendWhatsAppMessage(targetPhone, rawText);
+            else await sendWhatsAppMessage(targetPhone, "Não consegui ler os dados. Tente digitar ou mandar uma foto melhor.");
         }
 
         return NextResponse.json({ success: true });
 
     } catch (e: any) {
-        return NextResponse.json({ error: e.message }, { status: 500 });
+        console.error("❌ ERRO CRÍTICO ROTA:", e);
+        // Retornamos 200 OK com erro no corpo para que o WhatsApp pare de reenviar
+        // Se retornarmos 500, o WhatsApp entra em loop infinito
+        return NextResponse.json({ success: false, error: e.message }, { status: 200 });
     }
 }
