@@ -9,39 +9,70 @@ interface HistoryModalProps {
     transactions: any[];
     installments: any[];
     recurring: any[];
+    selectedYear: number; // <--- ADICIONADO
 }
 
-export default function HistoryModal({ isOpen, onClose, transactions, installments, recurring }: HistoryModalProps) {
+export default function HistoryModal({ isOpen, onClose, transactions, installments, recurring, selectedYear }: HistoryModalProps) {
     // Estado para controlar qual barra está ativa
     const [activeIndex, setActiveIndex] = useState<number | null>(null);
+
+    // --- HELPER UNIFICADO DE DATA ---
+    const getStartData = (item: any) => {
+        if (item.start_date && item.start_date.includes('/')) {
+            const p = item.start_date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+        }
+        if (item.date && item.date.includes('/')) {
+            const p = item.date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+        }
+        if (item.created_at) {
+            const d = new Date(item.created_at); return { m: d.getMonth(), y: d.getFullYear() };
+        }
+        return { m: 0, y: selectedYear };
+    };
 
     // --- CÁLCULO DE DADOS ---
     const chartData = useMemo(() => {
         let accumulatedBalance = 0;
 
-        return MONTHS.map((month) => {
-            const monthIndex = MONTHS.indexOf(month);
-            const monthMap: Record<string, string> = { 'Jan': '/01', 'Fev': '/02', 'Mar': '/03', 'Abr': '/04', 'Mai': '/05', 'Jun': '/06', 'Jul': '/07', 'Ago': '/08', 'Set': '/09', 'Out': '/10', 'Nov': '/11', 'Dez': '/12' };
-            const dateFilter = monthMap[month];
+        return MONTHS.map((month, index) => {
+            const monthCode = (index + 1).toString().padStart(2, '0');
+            const dateFilter = `/${monthCode}/${selectedYear}`;
 
-            const isRecurringActive = (rec: any) => {
-                if (!rec.start_date) return true;
-                const startMonthIndex = parseInt(rec.start_date.split('/')[1]) - 1;
-                return monthIndex >= startMonthIndex;
-            };
+            // 1. RECEITAS
+            const incomeFixed = recurring
+                .filter(r => {
+                    const { m: sM, y: sY } = getStartData(r);
+                    const isVisible = r.type === 'income' && (selectedYear > sY || (selectedYear === sY && index >= sM));
+                    return isVisible && !r.skipped_months?.includes(month);
+                })
+                .reduce((acc, curr) => acc + Number(curr.value), 0);
 
-            const incomeFixed = recurring.filter(r => r.type === 'income' && isRecurringActive(r) && !r.skipped_months?.includes(month)).reduce((acc, curr) => acc + curr.value, 0);
-            const incomeVariable = transactions.filter(t => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed').reduce((acc, curr) => acc + curr.amount, 0);
+            const incomeVariable = transactions
+                .filter(t => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby')
+                .reduce((acc, curr) => acc + Number(curr.amount), 0);
 
-            const expenseVariable = transactions.filter(t => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed').reduce((acc, curr) => acc + curr.amount, 0);
-            const expenseFixed = recurring.filter(r => r.type === 'expense' && isRecurringActive(r) && !r.skipped_months?.includes(month) && r.status !== 'delayed').reduce((acc, curr) => acc + curr.value, 0);
+            // 2. DESPESAS
+            const expenseVariable = transactions
+                .filter(t => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby')
+                .reduce((acc, curr) => acc + Number(curr.amount), 0);
+
+            const expenseFixed = recurring
+                .filter(r => {
+                    const { m: sM, y: sY } = getStartData(r);
+                    const isVisible = r.type === 'expense' && r.status !== 'delayed' && r.status !== 'standby' && (selectedYear > sY || (selectedYear === sY && index >= sM));
+                    return isVisible && !r.skipped_months?.includes(month);
+                })
+                .reduce((acc, curr) => acc + Number(curr.value), 0);
 
             const expenseInstallments = installments.reduce((acc, curr) => {
-                if (curr.status === 'delayed') return acc;
-                const offset = monthIndex; 
-                const projectedInstallment = curr.current_installment + offset;
-                if (projectedInstallment >= 1 && projectedInstallment <= curr.installments_count) {
-                    return acc + curr.value_per_month;
+                if (curr.status === 'delayed' || curr.status === 'standby') return acc;
+                
+                const { m: sM, y: sY } = getStartData(curr);
+                const monthsDiff = ((selectedYear - sY) * 12) + (index - sM);
+                const actual = 1 + (curr.current_installment || 0) + monthsDiff;
+
+                if (actual >= 1 && actual <= curr.installments_count) {
+                    return acc + Number(curr.value_per_month);
                 }
                 return acc;
             }, 0);
@@ -54,7 +85,7 @@ export default function HistoryModal({ isOpen, onClose, transactions, installmen
 
             return { month, income: totalIncome, expense: totalExpense, result: monthlyResult, accumulated: accumulatedBalance };
         });
-    }, [transactions, installments, recurring]);
+    }, [transactions, installments, recurring, selectedYear]);
 
     const maxValue = Math.max(...chartData.map(d => Math.max(d.income, d.expense)));
 
@@ -70,7 +101,7 @@ export default function HistoryModal({ isOpen, onClose, transactions, installmen
                 {/* HEADER */}
                 <div className="p-4 md:p-6 border-b border-gray-800 flex justify-between items-center bg-[#111]">
                     <div>
-                        <h2 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2"><TrendingUp className="text-cyan-500"/> Histórico Anual</h2>
+                        <h2 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2"><TrendingUp className="text-cyan-500"/> Histórico Anual ({selectedYear})</h2>
                         <p className="text-gray-500 text-xs md:text-sm hidden md:block">Análise da sua evolução financeira mês a mês.</p>
                     </div>
                     <button onClick={onClose} className="text-gray-500 hover:text-white transition bg-gray-800 p-2 rounded-full"><X size={24}/></button>
@@ -167,14 +198,14 @@ export default function HistoryModal({ isOpen, onClose, transactions, installmen
                     </div>
                 </div>
 
-                {/* FOOTER - RESUMO (ESCONDIDO EM MOBILE MUITO PEQUENO PARA GANHAR ESPAÇO, OU ADAPTADO) */}
+                {/* FOOTER - RESUMO */}
                 <div className="p-4 md:p-6 bg-[#111] border-t border-gray-800 grid grid-cols-1 md:grid-cols-3 gap-4 shrink-0">
                     <div className="hidden md:block bg-gray-900/50 p-4 rounded-xl border border-gray-800">
-                        <p className="text-gray-500 text-xs uppercase font-bold mb-1">Total Entradas (Ano)</p>
+                        <p className="text-gray-500 text-xs uppercase font-bold mb-1">Total Entradas ({selectedYear})</p>
                         <p className="text-2xl font-mono text-emerald-400 font-bold">{chartData.reduce((acc, curr) => acc + curr.income, 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
                     </div>
                     <div className="hidden md:block bg-gray-900/50 p-4 rounded-xl border border-gray-800">
-                        <p className="text-gray-500 text-xs uppercase font-bold mb-1">Total Saídas (Ano)</p>
+                        <p className="text-gray-500 text-xs uppercase font-bold mb-1">Total Saídas ({selectedYear})</p>
                         <p className="text-2xl font-mono text-red-400 font-bold">{chartData.reduce((acc, curr) => acc + curr.expense, 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
                     </div>
                     {/* No mobile, mostramos apenas o acumulado geral no rodapé para não ocupar muito espaço */}

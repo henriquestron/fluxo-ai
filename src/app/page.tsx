@@ -1836,38 +1836,38 @@ export default function FinancialDashboard() {
             )}
 
             {(currentLayout === 'zen') && (
-                <ZenView 
-                    currentMonthData={currentMonthData} 
-                    displayBalance={displayBalance} 
-                    activeTab={activeTab} 
-                    months={MONTHS} 
+                <ZenView
+                    currentMonthData={currentMonthData}
+                    displayBalance={displayBalance}
+                    activeTab={activeTab}
+                    months={MONTHS}
                     setActiveTab={setActiveTab}
                     selectedYear={selectedYear} // <--- ADICIONADO
                 />
             )}
 
             {(currentLayout === 'timeline') && (
-                <TimelineView 
-                    transactions={transactions} 
-                    installments={installments} 
-                    recurring={recurring} 
+                <TimelineView
+                    transactions={transactions}
+                    installments={installments}
+                    recurring={recurring}
                     activeTab={activeTab}
                     selectedYear={selectedYear} // <--- ADICIONE ISSO
                 />
             )}
 
             {(currentLayout === 'bento') && (
-                <BentoView 
-                    currentMonthData={currentMonthData} 
-                    transactions={transactions} 
-                    installments={installments} 
+                <BentoView
+                    currentMonthData={currentMonthData}
+                    transactions={transactions}
+                    installments={installments}
                     recurring={recurring}
                     activeTab={activeTab}
                     selectedYear={selectedYear}
                     months={MONTHS}
-                    onOpenCalendar={() => setCurrentLayout('calendar')} 
+                    onOpenCalendar={() => setCurrentLayout('calendar')}
                     // ✅ Ajustado para o nome correto da sua função:
-                    onOpenRollover={() => setIsRolloverModalOpen(true)} 
+                    onOpenRollover={() => setIsRolloverModalOpen(true)}
                 />
             )}
 
@@ -1880,11 +1880,18 @@ export default function FinancialDashboard() {
                 userPlan={userPlan} // <--- ADICIONE ESTA LINHA
             />
 
-            <ExportModal isOpen={isExportModalOpen} onClose={() => setIsExportModalOpen(false)} user={user} userPlan={userPlan} clients={clients} activeTab={activeTab} />
-
+            <ExportModal
+                isOpen={isExportModalOpen}
+                onClose={() => setIsExportModalOpen(false)}
+                user={user}
+                userPlan={userPlan}
+                clients={clients}
+                activeTab={activeTab}
+                selectedYear={selectedYear} // <--- OBRIGATÓRIO ADICIONAR ISSO
+            />
             <CreditCardModal isOpen={isCreditCardModalOpen} onClose={() => setIsCreditCardModalOpen(false)} user={user} activeTab={activeTab} contextId={currentWorkspace?.id} onSuccess={() => loadData(getActiveUserId(), currentWorkspace?.id)} />
 
-            <HistoryModal isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} transactions={transactions} installments={installments} recurring={recurring} />
+            <HistoryModal isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} transactions={transactions} installments={installments} recurring={recurring}selectedYear={selectedYear} />
 
             <CustomizationModal isOpen={isCustomizationOpen} onClose={() => setIsCustomizationOpen(false)} currentLayout={currentLayout} currentTheme={currentTheme} onSelectLayout={(l) => handleSavePreferences('layout', l)} onSelectTheme={(t) => handleSavePreferences('theme', t)} userPlan={userPlan} />
 
