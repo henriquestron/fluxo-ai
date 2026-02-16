@@ -7,11 +7,12 @@ interface ZenViewProps {
     activeTab: string;
     months: string[];
     setActiveTab: (month: string) => void;
+    selectedYear: number; // <--- ADICIONADO
 }
 
-export default function ZenView({ currentMonthData, displayBalance, activeTab, months, setActiveTab }: ZenViewProps) {
+export default function ZenView({ currentMonthData, displayBalance, activeTab, months, setActiveTab, selectedYear }: ZenViewProps) {
     
-    // Frases motivacionais aleatórias (com estado para não mudar a cada render)
+    // Frases motivacionais aleatórias
     const [quote, setQuote] = useState("");
     
     useEffect(() => {
@@ -25,17 +26,19 @@ export default function ZenView({ currentMonthData, displayBalance, activeTab, m
             "Pequenos vazamentos afundam grandes navios."
         ];
         setQuote(quotes[Math.floor(Math.random() * quotes.length)]);
-    }, [activeTab]); // Muda a frase quando muda o mês
+    }, [activeTab, selectedYear]); // Muda a frase quando muda o mês ou ano
 
     // Navegação
     const currentIdx = months.indexOf(activeTab);
     const prevMonth = currentIdx > 0 ? months[currentIdx - 1] : null;
     const nextMonth = currentIdx < months.length - 1 ? months[currentIdx + 1] : null;
 
-    // Cálculos de Saúde
-    const income = currentMonthData.income || 1; // Evita divisão por zero
-    const expense = currentMonthData.expenseTotal || 0;
-    const percentUsed = Math.min((expense / income) * 100, 100);
+    // Cálculos de Saúde (Garantindo que sejam números)
+    const income = Number(currentMonthData.income) || 0; 
+    const expense = Number(currentMonthData.expenseTotal) || 0;
+    const safeIncome = income || 1; // Evita divisão por zero
+    
+    const percentUsed = Math.min((expense / safeIncome) * 100, 100);
     const isDanger = expense > income;
 
     const fmt = (val: number) => val.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
@@ -43,15 +46,15 @@ export default function ZenView({ currentMonthData, displayBalance, activeTab, m
     return (
         <div className="animate-in fade-in zoom-in duration-1000 min-h-[70vh] flex flex-col items-center justify-center p-4 relative">
             
-            {/* Efeitos de Fundo (Ambient Light) */}
-            <div className={`absolute top-1/4 left-1/4 w-96 h-96 rounded-full blur-[128px] pointer-events-none opacity-20 ${displayBalance >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+            {/* Efeitos de Fundo (Aura dinâmica baseada no saldo do ano) */}
+            <div className={`absolute top-1/4 left-1/4 w-96 h-96 rounded-full blur-[128px] pointer-events-none opacity-20 transition-colors duration-1000 ${displayBalance >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
 
             {/* CABEÇALHO ZEN */}
             <div className="text-center mb-8 relative z-10">
                 <div className="inline-flex items-center justify-center p-4 rounded-full bg-white/5 backdrop-blur-sm mb-4 border border-white/10 animate-pulse duration-[4000ms]">
                     <Leaf className={displayBalance >= 0 ? "text-emerald-400" : "text-orange-400"} size={28} />
                 </div>
-                <h2 className="text-gray-500 text-xs uppercase tracking-[0.3em] font-medium mb-3">Modo Foco</h2>
+                <h2 className="text-gray-500 text-xs uppercase tracking-[0.3em] font-medium mb-3">Modo Foco • {selectedYear}</h2>
                 <div className="flex items-center justify-center gap-4">
                     <button onClick={() => prevMonth && setActiveTab(prevMonth)} disabled={!prevMonth} className="text-gray-600 hover:text-white disabled:opacity-0 transition"><ChevronLeft size={20}/></button>
                     <span className="text-2xl font-thin text-white">{activeTab}</span>
@@ -71,7 +74,7 @@ export default function ZenView({ currentMonthData, displayBalance, activeTab, m
                     </h1>
                 </div>
 
-                {/* Barra de Progresso (Income vs Expense) */}
+                {/* Barra de Progresso (Comprometimento mensal) */}
                 <div className="w-full max-w-md space-y-2 z-10">
                     <div className="flex justify-between text-xs text-gray-500 px-1">
                         <span>Comprometido: {percentUsed.toFixed(0)}%</span>

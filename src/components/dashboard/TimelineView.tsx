@@ -1,6 +1,6 @@
 import React from 'react';
 import { 
-    Clock, Calendar, CheckCircle2, AlertCircle, RefreshCw, CreditCard, 
+    Clock, CheckCircle2, CreditCard, 
     ArrowUpRight, ArrowDownLeft,
     ShoppingCart, Home, Car, Utensils, GraduationCap, HeartPulse, Plane, Gamepad2, Zap, Smartphone, DollarSign
 } from 'lucide-react';
@@ -29,46 +29,91 @@ interface TimelineViewProps {
     installments: any[];
     recurring: any[];
     activeTab: string;
+    selectedYear: number; // <--- ADICIONADO
 }
 
-export default function TimelineView({ transactions, installments, recurring, activeTab }: TimelineViewProps) {
+export default function TimelineView({ transactions, installments, recurring, activeTab, selectedYear }: TimelineViewProps) {
     
     // Helper: Formata mês/ano para filtro
     const monthMap: Record<string, string> = { 'Jan': '/01', 'Fev': '/02', 'Mar': '/03', 'Abr': '/04', 'Mai': '/05', 'Jun': '/06', 'Jul': '/07', 'Ago': '/08', 'Set': '/09', 'Out': '/10', 'Nov': '/11', 'Dez': '/12' };
-    const currentYear = 2026; // Idealmente dinâmico, mas seguindo seu padrão
-    const monthCode = monthMap[activeTab]; // Ex: "/01"
+    const monthCode = monthMap[activeTab]; 
+    const paymentTag = `${activeTab}/${selectedYear}`;
 
-    // 1. Unificar todos os itens (Transações + Parcelas + Fixas) com datas normalizadas
+    // Helper Unificado de Datas
+    const getStartData = (item: any) => {
+        if (item.start_date && item.start_date.includes('/')) {
+            const p = item.start_date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+        }
+        if (item.date && item.date.includes('/')) {
+            const p = item.date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+        }
+        if (item.created_at) {
+            const d = new Date(item.created_at); return { m: d.getMonth(), y: d.getFullYear() };
+        }
+        return { m: 0, y: selectedYear };
+    };
+
+    // 1. Unificar todos os itens
     const getAllItems = () => {
         let items: any[] = [];
+        const monthIndex = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'].indexOf(activeTab);
 
-        // Transações
+        // A. Transações (Filtro por mês e ano exato)
         transactions.forEach(t => {
-            // Verifica se pertence ao mês atual
-            if (t.date?.includes(monthCode) && t.status !== 'delayed') {
-                items.push({ ...t, type_origin: 'trans', date_sort: t.date });
+            const dateFilter = `${monthCode}/${selectedYear}`;
+            if (t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby') {
+                items.push({ ...t, type_origin: 'trans', date_sort: t.date, amount: Number(t.amount) });
             }
         });
 
-        // Parcelas
+        // B. Parcelas (Cálculo de 13x em 2027)
         installments.forEach(i => {
-            const monthsList = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-            const currentInst = i.current_installment + monthsList.indexOf(activeTab);
+            if (i.status === 'delayed' || i.status === 'standby') return;
             
-            if (currentInst >= 1 && currentInst <= i.installments_count && i.status !== 'delayed') {
+            const { m: startMonth, y: startYear } = getStartData(i);
+            const monthsDiff = ((selectedYear - startYear) * 12) + (monthIndex - startMonth);
+            const actualInstallment = 1 + (i.current_installment || 0) + monthsDiff;
+            
+            if (actualInstallment >= 1 && actualInstallment <= i.installments_count) {
                 const dayStr = i.due_day.toString().padStart(2, '0');
-                const dateStr = `${dayStr}${monthCode}/${currentYear}`;
-                items.push({ ...i, amount: i.value_per_month, type_origin: 'inst', date_sort: dateStr, type: 'expense' });
+                const dateStr = `${dayStr}${monthCode}/${selectedYear}`;
+                const isPaid = i.paid_months?.includes(paymentTag);
+                
+                items.push({ 
+                    ...i, 
+                    amount: Number(i.value_per_month), 
+                    type_origin: 'inst', 
+                    date_sort: dateStr, 
+                    type: 'expense',
+                    actualInstallment,
+                    isPaidVisual: isPaid
+                });
             }
         });
 
-        // Recorrentes
+        // C. Recorrentes (Visibilidade em anos futuros)
         recurring.forEach(r => {
-            if (r.status !== 'delayed' && !r.skipped_months?.includes(activeTab)) {
-                 // Lógica simplificada de início (poderia ser mais complexa)
+            if (r.status === 'delayed' || r.status === 'standby') return;
+            if (r.skipped_months?.includes(activeTab)) return;
+
+            const { m: startMonth, y: startYear } = getStartData(r);
+            
+            let show = false;
+            if (selectedYear > startYear) show = true;
+            else if (selectedYear === startYear && monthIndex >= startMonth) show = true;
+
+            if (show) {
                 const dayStr = r.due_day.toString().padStart(2, '0');
-                const dateStr = `${dayStr}${monthCode}/${currentYear}`;
-                items.push({ ...r, amount: r.value, type_origin: 'recur', date_sort: dateStr });
+                const dateStr = `${dayStr}${monthCode}/${selectedYear}`;
+                const isPaid = r.paid_months?.includes(paymentTag);
+
+                items.push({ 
+                    ...r, 
+                    amount: Number(r.value), 
+                    type_origin: 'recur', 
+                    date_sort: dateStr,
+                    isPaidVisual: isPaid 
+                });
             }
         });
 
@@ -85,7 +130,7 @@ export default function TimelineView({ transactions, installments, recurring, ac
         return groups;
     }, {});
 
-    // 3. Ordenar Datas (Decrescente: Mais novo em cima)
+    // 3. Ordenar Datas (Decrescente)
     const sortedDates = Object.keys(groupedItems).sort((a, b) => {
         const [dayA, monthA, yearA] = a.split('/').map(Number);
         const [dayB, monthB, yearB] = b.split('/').map(Number);
@@ -99,7 +144,7 @@ export default function TimelineView({ transactions, installments, recurring, ac
                     <Clock className="text-cyan-400" size={32} />
                 </div>
                 <h2 className="text-2xl font-black text-white">Linha do Tempo</h2>
-                <p className="text-gray-500 text-sm mt-1">Extrato detalhado de {activeTab}.</p>
+                <p className="text-gray-500 text-sm mt-1">Extrato detalhado de {activeTab} / {selectedYear}.</p>
             </div>
 
             {sortedDates.length === 0 ? (
@@ -112,14 +157,14 @@ export default function TimelineView({ transactions, installments, recurring, ac
                     {sortedDates.map((date) => {
                         const items = groupedItems[date];
                         const dayTotal = items.reduce((acc: number, t: any) => t.type === 'income' ? acc + t.amount : acc - t.amount, 0);
-                        const [day, month] = date.split('/');
+                        const [day] = date.split('/');
 
                         return (
                             <div key={date} className="relative pl-8 md:pl-12">
                                 {/* DATA STICKY */}
                                 <div className="absolute -left-[42px] md:-left-[60px] top-0 flex flex-col items-end w-[30px] md:w-[40px]">
                                     <span className="text-2xl font-black text-white tracking-tighter">{day}</span>
-                                    <span className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">DI</span>
+                                    <span className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">{activeTab.substring(0,2)}</span>
                                 </div>
 
                                 {/* BOLINHA DA DATA */}
@@ -138,12 +183,10 @@ export default function TimelineView({ transactions, installments, recurring, ac
                                     {items.map((t: any, idx: number) => {
                                         const Icon = ICON_MAP[t.icon] || (t.type === 'income' ? ArrowUpRight : ArrowDownLeft);
                                         const bankBadge = BANK_BADGES[t.payment_method] || BANK_BADGES['outros'];
-                                        const isPaid = t.is_paid || t.paid_months?.includes(activeTab);
+                                        const isPaid = t.is_paid || t.isPaidVisual;
 
                                         return (
                                             <div key={`${t.id}-${idx}`} className="bg-[#0a0a0a] border border-gray-800 p-4 rounded-xl flex items-center justify-between hover:border-gray-600 transition group relative overflow-hidden shadow-sm">
-                                                
-                                                {/* Borda lateral colorida */}
                                                 <div className={`absolute left-0 top-0 bottom-0 w-1 ${t.type === 'income' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
 
                                                 <div className="flex items-center gap-4 pl-3">
@@ -153,24 +196,18 @@ export default function TimelineView({ transactions, installments, recurring, ac
                                                     <div>
                                                         <div className="flex items-center gap-2">
                                                             <h4 className={`font-bold text-sm ${isPaid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{t.title}</h4>
-                                                            {t.status === 'delayed' && <span className="text-[9px] font-bold bg-red-500 text-black px-1 rounded">ATRASADO</span>}
                                                         </div>
                                                         
                                                         <div className="flex items-center gap-2 mt-1">
-                                                            {/* Categoria */}
                                                             <span className="text-[10px] text-gray-500 bg-gray-800/50 px-1.5 py-0.5 rounded border border-gray-700/50">
                                                                 {t.category}
                                                             </span>
-                                                            
-                                                            {/* Badge de Banco */}
                                                             <span className={`text-[9px] px-1.5 py-0.5 rounded border uppercase font-bold tracking-wide ${bankBadge}`}>
                                                                 {t.payment_method || 'Outros'}
                                                             </span>
-
-                                                            {/* Se for parcela */}
                                                             {t.type_origin === 'inst' && (
                                                                 <span className="flex items-center gap-1 text-[10px] text-purple-400 font-bold">
-                                                                    <CreditCard size={10}/> {t.current_installment + ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'].indexOf(activeTab)}/{t.installments_count}
+                                                                    <CreditCard size={10}/> {t.actualInstallment}/{t.installments_count}
                                                                 </span>
                                                             )}
                                                         </div>

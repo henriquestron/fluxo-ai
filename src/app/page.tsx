@@ -1835,26 +1835,39 @@ export default function FinancialDashboard() {
                 />
             )}
 
-            {currentLayout === 'zen' && (
-                <ZenView
-                    displayBalance={displayBalance} currentMonthData={currentMonthData}
-                    activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab}
+            {(currentLayout === 'zen') && (
+                <ZenView 
+                    currentMonthData={currentMonthData} 
+                    displayBalance={displayBalance} 
+                    activeTab={activeTab} 
+                    months={MONTHS} 
+                    setActiveTab={setActiveTab}
+                    selectedYear={selectedYear} // <--- ADICIONADO
                 />
             )}
 
-            {currentLayout === 'timeline' && (
-                <TimelineView
-                    transactions={transactions} installments={installments} recurring={recurring}
+            {(currentLayout === 'timeline') && (
+                <TimelineView 
+                    transactions={transactions} 
+                    installments={installments} 
+                    recurring={recurring} 
                     activeTab={activeTab}
+                    selectedYear={selectedYear} // <--- ADICIONE ISSO
                 />
             )}
 
-            {currentLayout === 'bento' && (
-                <BentoView
-                    currentMonthData={currentMonthData} transactions={transactions}
-                    installments={installments} recurring={recurring}
-                    onOpenCalendar={() => setCurrentLayout('calendar')}
-                    onOpenRollover={() => setIsRolloverModalOpen(true)}
+            {(currentLayout === 'bento') && (
+                <BentoView 
+                    currentMonthData={currentMonthData} 
+                    transactions={transactions} 
+                    installments={installments} 
+                    recurring={recurring}
+                    activeTab={activeTab}
+                    selectedYear={selectedYear}
+                    months={MONTHS}
+                    onOpenCalendar={() => setCurrentLayout('calendar')} 
+                    // ✅ Ajustado para o nome correto da sua função:
+                    onOpenRollover={() => setIsRolloverModalOpen(true)} 
                 />
             )}
 

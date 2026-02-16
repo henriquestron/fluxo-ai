@@ -9,7 +9,9 @@ interface BentoViewProps {
   transactions: any[];
   installments: any[];
   recurring: any[];
-  // Funções de Navegação
+  activeTab: string; // <--- ADICIONADO
+  selectedYear: number; // <--- ADICIONADO
+  months: string[]; // <--- ADICIONADO
   onOpenCalendar: () => void;
   onOpenRollover: () => void;
 }
@@ -19,46 +21,93 @@ export default function BentoView({
   transactions, 
   installments, 
   recurring,
+  activeTab,
+  selectedYear,
+  months,
   onOpenCalendar, 
   onOpenRollover
 }: BentoViewProps) {
   
+  // Helper Unificado de Datas
+  const getStartData = (item: any) => {
+    if (item.start_date && item.start_date.includes('/')) {
+        const p = item.start_date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+    }
+    if (item.date && item.date.includes('/')) {
+        const p = item.date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+    }
+    if (item.created_at) {
+        const d = new Date(item.created_at); return { m: d.getMonth(), y: d.getFullYear() };
+    }
+    return { m: 0, y: selectedYear };
+  };
+
   // Dados Básicos
-  const { income: renda, expenseTotal, balance } = currentMonthData;
+  const renda = Number(currentMonthData.income) || 0;
+  const expenseTotal = Number(currentMonthData.expenseTotal) || 0;
+  const balance = Number(currentMonthData.balance) || 0;
   const savingsRate = renda > 0 ? ((balance / renda) * 100).toFixed(0) : 0;
   
-  // Filtra as próximas contas a vencer (Expense + !Paid + !Delayed)
-  const today = new Date().getDate();
-  const upcomingBills = [...transactions, ...recurring, ...installments]
-    .filter(t => {
-        // Normaliza
-        const isExpense = t.type === 'expense' || t.value_per_month; 
-        const isPaid = t.is_paid || (t.paid_months?.includes && false); // Lógica simples
-        const day = parseInt(t.date?.split('/')[0] || t.due_day || '30');
-        
-        return isExpense && !isPaid && t.status !== 'delayed' && day >= today;
-    })
-    .map(t => ({
-        title: t.title,
-        day: parseInt(t.date?.split('/')[0] || t.due_day || '30'),
-        amount: t.amount || t.value || t.value_per_month,
-        category: t.category || (t.installments_count ? 'Parcela' : 'Fixa')
-    }))
-    .sort((a, b) => a.day - b.day)
-    .slice(0, 4); // Pega só as top 4
+  const monthIndex = months.indexOf(activeTab);
+  const paymentTag = `${activeTab}/${selectedYear}`;
 
-  // Soma total de parcelas ativas (Dívida Futura)
-  const totalInstallmentsValue = installments.reduce((acc, curr) => acc + (curr.value_per_month * (curr.installments_count - curr.current_installment)), 0);
+  // 1. FILTRA PRÓXIMAS CONTAS (Ajustado para lógica de Anos)
+  const upcomingBills: any[] = [];
+
+  // Transações do Mês
+  transactions.forEach(t => {
+      const dateCode = `/${(monthIndex + 1).toString().padStart(2, '0')}/${selectedYear}`;
+      if (t.type === 'expense' && !t.is_paid && t.status !== 'delayed' && t.status !== 'standby' && t.date?.includes(dateCode)) {
+          upcomingBills.push({ title: t.title, day: parseInt(t.date.split('/')[0]), amount: Number(t.amount), category: t.category });
+      }
+  });
+
+  // Recorrentes Ativas
+  recurring.forEach(r => {
+      const { m: sM, y: sY } = getStartData(r);
+      const isVisible = selectedYear > sY || (selectedYear === sY && monthIndex >= sM);
+      const isPaid = r.paid_months?.includes(paymentTag);
+
+      if (r.type === 'expense' && isVisible && !isPaid && r.status !== 'delayed' && r.status !== 'standby' && !r.skipped_months?.includes(activeTab)) {
+          upcomingBills.push({ title: r.title, day: r.due_day, amount: Number(r.value), category: 'Fixa' });
+      }
+  });
+
+  // Parcelas Ativas
+  installments.forEach(i => {
+      const { m: sM, y: sY } = getStartData(i);
+      const monthsDiff = ((selectedYear - sY) * 12) + (monthIndex - sM);
+      const actualInst = 1 + (i.current_installment || 0) + monthsDiff;
+      const isPaid = i.paid_months?.includes(paymentTag);
+
+      if (actualInst >= 1 && actualInst <= i.installments_count && !isPaid && i.status !== 'delayed' && i.status !== 'standby') {
+          upcomingBills.push({ title: i.title, day: i.due_day, amount: Number(i.value_per_month), category: `${actualInst}/${i.installments_count}` });
+      }
+  });
+
+  // Ordena por dia e pega 4
+  const sortedUpcoming = upcomingBills.sort((a, b) => a.day - b.day).slice(0, 4);
+
+  // 2. CÁLCULO DÍVIDA FUTURA (Considerando o progresso real)
+  const totalInstallmentsValue = installments.reduce((acc, curr) => {
+      if (curr.status === 'delayed' || curr.status === 'standby') return acc;
+      const { m: sM, y: sY } = getStartData(curr);
+      const monthsDiff = ((selectedYear - sY) * 12) + (monthIndex - sM);
+      const actualInst = 1 + (curr.current_installment || 0) + monthsDiff;
+      
+      const remaining = curr.installments_count - actualInst + 1;
+      return remaining > 0 ? acc + (Number(curr.value_per_month) * remaining) : acc;
+  }, 0);
   
-  // Categoria Vilã (Maior Gasto)
+  // Categoria Vilã
   const categories = transactions.filter(t => t.type === 'expense').reduce((acc:any, t) => {
-    acc[t.category] = (acc[t.category] || 0) + t.amount;
+    acc[t.category] = (acc[t.category] || 0) + Number(t.amount);
     return acc;
   }, {});
   const topCategory = Object.keys(categories).sort((a,b) => categories[b] - categories[a])[0];
 
-  // Verifica se tem atrasados para mostrar o alerta
-  const hasDelayed = [...transactions, ...installments, ...recurring].some(t => t.status === 'delayed');
+  // Verifica se tem atrasados
+  const hasDelayed = currentMonthData.accumulatedDebt > 0 || currentMonthData.delayedTotal > 0;
 
   return (
     <div className="max-w-7xl mx-auto py-6 animate-in zoom-in-95 duration-500 px-4">
@@ -69,9 +118,9 @@ export default function BentoView({
         <div className="col-span-1 md:col-span-2 md:row-span-2 bg-[#080808] border border-gray-800 p-8 rounded-[32px] flex flex-col justify-between relative overflow-hidden group hover:border-gray-700 transition">
           <div className="flex justify-between items-start z-10">
             <div>
-                <h3 className="text-gray-400 font-medium flex items-center gap-2 mb-1"><Wallet size={18} className="text-cyan-500"/> Fluxo Líquido</h3>
+                <h3 className="text-gray-400 font-medium flex items-center gap-2 mb-1"><Wallet size={18} className="text-cyan-500"/> Fluxo Líquido • {activeTab}</h3>
                 <h1 className={`text-5xl md:text-6xl font-black tracking-tighter ${balance >= 0 ? 'text-white' : 'text-red-500'}`}>
-                R$ {balance?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) || '0,00'}
+                R$ {balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </h1>
             </div>
             <div className={`px-3 py-1 rounded-full text-xs font-bold border ${balance >= 0 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}>
@@ -82,11 +131,11 @@ export default function BentoView({
           <div className="grid grid-cols-2 gap-4 mt-8 z-10">
             <div className="bg-[#111] p-4 rounded-2xl border border-gray-800">
                 <div className="text-gray-500 text-xs font-bold uppercase mb-1 flex items-center gap-1"><ArrowUpRight size={12} className="text-emerald-500"/> Entrou</div>
-                <div className="text-xl font-bold text-emerald-400">R$ {renda?.toLocaleString('pt-BR')}</div>
+                <div className="text-xl font-bold text-emerald-400">R$ {renda.toLocaleString('pt-BR')}</div>
             </div>
             <div className="bg-[#111] p-4 rounded-2xl border border-gray-800">
                 <div className="text-gray-500 text-xs font-bold uppercase mb-1 flex items-center gap-1"><ArrowDownLeft size={12} className="text-red-500"/> Saiu</div>
-                <div className="text-xl font-bold text-red-400">R$ {expenseTotal?.toLocaleString('pt-BR')}</div>
+                <div className="text-xl font-bold text-red-400">R$ {expenseTotal.toLocaleString('pt-BR')}</div>
             </div>
           </div>
           
@@ -104,16 +153,16 @@ export default function BentoView({
             <div>
                 <h3 className="text-gray-400 text-sm font-bold uppercase mb-4 flex items-center gap-2"><CalendarDays size={16}/> Próximos Vencimentos</h3>
                 <div className="space-y-3">
-                    {upcomingBills.length === 0 && <div className="text-center text-gray-600 mt-10 text-sm">Nada pendente para os próximos dias! 🎉</div>}
+                    {sortedUpcoming.length === 0 && <div className="text-center text-gray-600 mt-10 text-sm">Nada pendente! 🎉</div>}
                     
-                    {upcomingBills.map((t, idx) => (
+                    {sortedUpcoming.map((t, idx) => (
                         <div key={idx} className="bg-black border border-gray-800 p-3 rounded-xl flex justify-between items-center group hover:border-gray-600 transition">
                             <div>
                                 <div className="text-white font-bold text-sm truncate w-24 md:w-28">{t.title}</div>
                                 <div className="text-[10px] text-gray-500 font-mono">Dia {t.day} • {t.category}</div>
                             </div>
                             <div className="text-right">
-                                <div className="text-red-400 font-mono text-sm font-bold">R$ {t.amount}</div>
+                                <div className="text-red-400 font-mono text-sm font-bold">R$ {t.amount.toLocaleString('pt-BR')}</div>
                             </div>
                         </div>
                     ))}
@@ -121,7 +170,7 @@ export default function BentoView({
             </div>
             
             <button 
-                onClick={onOpenCalendar} // <--- AÇÃO REAL
+                onClick={onOpenCalendar}
                 className="w-full mt-4 bg-gray-800 hover:bg-gray-700 hover:text-white text-gray-400 text-xs py-3 rounded-xl transition font-bold border border-gray-700 hover:border-gray-500"
             >
                 Ver Agenda Completa
@@ -148,10 +197,10 @@ export default function BentoView({
             <div className="col-span-1 md:col-span-2 md:row-span-1 bg-[#1a0505] border border-red-900/30 p-6 rounded-[32px] flex items-center justify-between animate-pulse">
                 <div className="flex items-center gap-4">
                     <div className="bg-red-500/10 p-3 rounded-full text-red-500"><AlertTriangle size={24}/></div>
-                    <div><h3 className="text-red-400 font-bold">Contas em Atraso</h3><p className="text-red-500/60 text-xs">Existem itens vencidos no sistema.</p></div>
+                    <div><h3 className="text-red-400 font-bold">Ações Pendentes</h3><p className="text-red-500/60 text-xs">Existem itens em atraso ou stand-by.</p></div>
                 </div>
                 <button 
-                    onClick={onOpenRollover} // <--- AÇÃO REAL
+                    onClick={onOpenRollover}
                     className="bg-red-600 hover:bg-red-500 text-white px-6 py-2 rounded-xl text-sm font-bold shadow-lg shadow-red-900/20 transition hover:scale-105"
                 >
                     Resolver
