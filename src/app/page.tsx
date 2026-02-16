@@ -334,8 +334,23 @@ export default function FinancialDashboard() {
 
 
     const getReceiptForMonth = (item: any, month: string) => {
-        if (!item.receipt_url) return null;
-        try { const json = JSON.parse(item.receipt_url); return json[month] || null; } catch (e) { return item.receipt_url; }
+        // 1. Tenta pegar pela Tag Mês/Ano (Novo Padrão)
+        const tag = `${month}/${selectedYear}`;
+        if (item.receipts && item.receipts[tag]) {
+            return item.receipts[tag];
+        }
+
+        // 2. Tenta pegar pela Tag Mês (Legado - para parcelas antigas de 2026)
+        if (item.receipts && item.receipts[month]) {
+            return item.receipts[month];
+        }
+
+        // 3. Fallback: Se for uma Despesa Avulsa (que só tem 1 data), usa o receipt_url antigo
+        if (item.receipt_url && (!item.installments_count && !item.start_date)) {
+            return item.receipt_url;
+        }
+
+        return null;
     };
 
     // --- AUTH & LOAD INICIAL ---
@@ -1042,7 +1057,7 @@ export default function FinancialDashboard() {
 
     const handleRemoveReceipt = (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); if (confirm("Tem certeza?")) setFormData({ ...formData, receiptUrl: '' }); };
 
-    const handleSubmit = async () => {
+   const handleSubmit = async () => {
         if (!formData.title || (!formData.amount && !formData.fixedMonthlyValue)) {
             toast.error("Preencha a descrição e o valor.");
             return;
@@ -1052,10 +1067,34 @@ export default function FinancialDashboard() {
         const context = currentWorkspace?.id;
         const amountVal = parseFloat(formData.amount.toString()) || 0;
 
-        // Monta a data apenas para quem precisa (Transactions e Recurring)
         const monthMapNums: Record<string, string> = { 'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04', 'Mai': '05', 'Jun': '06', 'Jul': '07', 'Ago': '08', 'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12' };
         const dayValue = formData.dueDay ? formData.dueDay.toString().padStart(2, '0') : '01';
         const dateString = `${dayValue}/${monthMapNums[formData.targetMonth]}/${selectedYear}`;
+
+        // 1. Encontra o item original para pegar os comprovantes que já existem
+        let originalItem: any = null;
+        if (editingId) {
+            originalItem = transactions.find(t => t.id === editingId) || 
+                           installments.find(i => i.id === editingId) || 
+                           recurring.find(r => r.id === editingId);
+        }
+
+        // 🔥 CORREÇÃO: Lógica de Exclusão e Adição
+        // Clona o objeto de recibos atual para podermos modificar
+        let updatedReceipts = { ...(originalItem?.receipts || {}) };
+        const tag = `${formData.targetMonth}/${selectedYear}`;
+        
+        if (formData.receiptUrl) {
+            // CASO 1: Tem comprovante? Salva/Atualiza na chave do mês
+            updatedReceipts[tag] = formData.receiptUrl;
+        } else {
+            // CASO 2: Não tem comprovante (foi excluído no modal)?
+            // Deleta a chave específica desse mês/ano
+            delete updatedReceipts[tag];
+            
+            // Opcional: Se quiser limpar também chaves legadas (sem ano)
+            delete updatedReceipts[formData.targetMonth];
+        }
 
         const getPayload = () => {
             const base = {
@@ -1064,8 +1103,15 @@ export default function FinancialDashboard() {
                 context: context,
                 icon: formData.icon,
                 payment_method: formData.paymentMethod || 'outros',
-                receipt_url: formData.receiptUrl
+                receipts: updatedReceipts, // Envia o objeto atualizado (com a chave removida se for o caso)
+                // Limpa a coluna antiga 'receipt_url' se for uma despesa avulsa e não tiver mais comprovante
+                receipt_url: (!itemHasRecurrence(formMode) && !formData.receiptUrl) ? null : (originalItem?.receipt_url || null)
             };
+
+            // Helper simples para saber se é recorrente/parcela
+            function itemHasRecurrence(mode: string) {
+                return mode === 'installment' || mode === 'fixed_expense' || (mode === 'income' && formData.isFixedIncome);
+            }
 
             // 1. Receitas
             if (formMode === 'income') {
@@ -1079,7 +1125,7 @@ export default function FinancialDashboard() {
                 return { table: 'transactions', data: { ...base, amount: amountVal, type: 'expense', date: dateString, category: formData.category, target_month: formData.targetMonth, status: 'active' } };
             }
 
-            // 3. Parcelamentos (❌ SEM COLUNA DATE AQUI)
+            // 3. Parcelamentos
             if (formMode === 'installment') {
                 const qtd = parseInt(formData.installments.toString()) || 1;
                 const valuePerMonth = formData.fixedMonthlyValue ? parseFloat(formData.fixedMonthlyValue.toString()) : (amountVal / qtd);
@@ -1097,7 +1143,7 @@ export default function FinancialDashboard() {
                 };
             }
 
-            // 4. Fixas (USA START_DATE)
+            // 4. Fixas
             return { table: 'recurring', data: { ...base, value: amountVal, due_day: parseInt(formData.dueDay.toString()) || 10, category: formData.category || 'Fixa', type: 'expense', status: 'active', start_date: dateString } };
         };
 
