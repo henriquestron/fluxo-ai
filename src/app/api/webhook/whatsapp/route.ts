@@ -66,7 +66,7 @@ export async function POST(req: Request) {
 
         const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" }); // Modelo mais rápido para Zap
+        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" }); // Modelo mais rápido para Zap
 
         const body = await req.json();
 
