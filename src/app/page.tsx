@@ -610,10 +610,10 @@ export default function FinancialDashboard() {
             .gte('created_at', startOfDayISO)
             .limit(1);
 
-        // if (existingNotifs && existingNotifs.length > 0) {
-        //     console.log("🔕 Notificação diária já enviada. Ignorando...");
-        //     return;
-        // }
+        if (existingNotifs && existingNotifs.length > 0) {
+            console.log("🔕 Notificação diária já enviada. Ignorando...");
+            return;
+        }
 
         // 4. Criação da Notificação e disparo do WhatsApp
         const messageSignature = `Você tem ${billsDueToday.length} conta(s) para pagar hoje. Não esqueça!`;
@@ -640,7 +640,7 @@ export default function FinancialDashboard() {
                 body: JSON.stringify({
                     userId,
                     bills: billsDueToday,
-                    forceSend: true // <-- Adicione isso para ignorar a trava da API
+                    forceSend: false // <-- Adicione isso para ignorar a trava da API
                 })
             })
                 .then(res => res.json())
