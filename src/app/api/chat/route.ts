@@ -4,48 +4,67 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 const apiKey = process.env.GEMINI_API_KEY || ""; 
 
 export async function POST(req: Request) {
-  if (!apiKey) return NextResponse.json({ error: "Chave API faltando" }, { status: 500 });
+  if (!apiKey) return NextResponse.json({ error: "Chave API faltando no servidor" }, { status: 500 });
 
   try {
     const { prompt, contextData, userPlan, images, history, selectedYear } = await req.json();
 
     const canPerformActions = ['premium', 'pro', 'agent', 'admin'].includes(userPlan);
 
-    // --- CONTEXTO DE PESSOAS ---
+    // --- 1. DEFINIÇÃO DE PAPÉIS (LÓGICA CORRIGIDA) ---
+    
+    // Nome de quem está no chat (Você)
+    // Se vier vazio, usa "Investidor" como fallback elegante
+    const rawOwnerName = contextData?.owner_name;
+    const myRealName = (rawOwnerName && rawOwnerName !== "Você") ? rawOwnerName : "Investidor";
+
     const isConsultant = contextData?.is_consultant || false;
     const viewingClient = contextData?.viewing_as_client || false;
-    const targetName = viewingClient ? (contextData.client_name || "o Cliente") : (contextData.owner_name || "Você");
+
+    // QUEM FALA (Interlocutor): É sempre você (seja dono ou consultor)
+    const interlocutorName = myRealName;
+
+    // QUEM É O DONO DO DINHEIRO (Sujeito): Pode ser você ou seu cliente
+    const dataOwnerName = viewingClient ? (contextData.client_name || "o Cliente") : myRealName;
+
+    // Contexto do cargo
     const userRole = isConsultant ? "CONSULTOR FINANCEIRO" : "DONO DA CONTA";
-    
-    // --- DATAS (A CORREÇÃO ESTÁ AQUI) ---
-    const todayReal = new Date().toLocaleDateString('pt-BR'); // Data de hoje (ex: 16/02/2026)
+
+    // --- 2. DATAS E CONTEXTO TEMPORAL ---
+    const todayReal = new Date().toLocaleDateString('pt-BR'); // Data real (ex: 16/02/2026)
     const viewingPeriod = `${contextData.mes_visualizado}/${selectedYear}`; // O que está na tela (ex: Fev/2027)
 
+    // --- 3. PROMPT DO SISTEMA ---
     let systemInstructionText = `
         ATUE COMO: "Meu Aliado", um estrategista financeiro pessoal.
         
-        --- QUEM É VOCÊ FALANDO ---
-        Você está conversando com: ${targetName} (${userRole}).
-        Sempre chame o usuário pelo nome: **${targetName}**.
+        --- QUEM ESTÁ FALANDO COM VOCÊ (INTERLOCUTOR) ---
+        Nome: **${interlocutorName}**
+        Papel: ${userRole}
+        
+        --- SOBRE QUEM SÃO OS DADOS (PROPRIETÁRIO) ---
+        Nome: **${dataOwnerName}**
         
         --- CONTEXTO TEMPORAL ---
         DATA REAL DE HOJE: ${todayReal}. (Use para cumprimentos tipo "Bom dia").
         PAINEL VISUALIZADO: O usuário está olhando para os dados de **${viewingPeriod}**.
         
-        ⚠️ **IMPORTANTE:** Ao analisar saldo ou adicionar contas, use o contexto do painel (${viewingPeriod}).
+        ⚠️ **REGRA DE OURO:** 1. Sempre chame o usuário (interlocutor) pelo nome: **${interlocutorName}**.
+        2. Se ${interlocutorName} for um Consultor, ajude-o a analisar os dados de ${dataOwnerName}.
+        3. Ao analisar saldo ou adicionar contas, use o contexto do painel (${viewingPeriod}).
         
         --- DADOS FINANCEIROS DE ${viewingPeriod} ---
         ${JSON.stringify(contextData, null, 2)}
 
         --- DIRETRIZES DE PERSONALIDADE ---
-        1. **USE O NOME:** Crie proximidade usando o nome ${targetName}.
+        1. **USE O NOME:** Crie proximidade chamando **${interlocutorName}** pelo nome.
         2. **ORIENTAÇÃO:** Seja direto. Use Markdown para formatar valores (ex: **R$ 100,00**).
     `;
 
     if (canPerformActions) {
         systemInstructionText += `
         --- MODO OPERACIONAL (CRIAR DADOS) ---
-        Se ${targetName} pedir para registrar algo (ex: "Gastei 50 reais no mercado"):
+        Se ${interlocutorName} pedir para registrar algo (ex: "Gastei 50 reais no mercado"):
         
         Use como data padrão para o registro: DIA ATUAL/${contextData.mes_visualizado}/${selectedYear}.
         (Se hoje for dia 16 e o usuário estiver olhando Fevereiro, a data será 16/02/${selectedYear}).
@@ -69,6 +88,7 @@ export async function POST(req: Request) {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
+    // Uso o modelo 2.0 Flash que é mais rápido e inteligente que o flash-latest genérico
     const model = genAI.getGenerativeModel({ 
         model: "gemini-flash-latest", 
         systemInstruction: systemInstructionText 
@@ -85,6 +105,7 @@ export async function POST(req: Request) {
     
     if (images && images.length > 0) {
         const img = images[0];
+        // Limpeza extra para garantir que o Gemini aceite a imagem
         const base64Data = img.base64.replace(/^data:.*;base64,/, "");
         messageParts = [
             { inlineData: { data: base64Data, mimeType: img.mimeType || "image/jpeg" } },
