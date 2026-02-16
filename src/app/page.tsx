@@ -1058,120 +1058,135 @@ export default function FinancialDashboard() {
     const handleRemoveReceipt = (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); if (confirm("Tem certeza?")) setFormData({ ...formData, receiptUrl: '' }); };
 
     const handleSubmit = async () => {
-        if (!formData.title || (!formData.amount && !formData.fixedMonthlyValue)) {
-            toast.error("Preencha a descrição e o valor.");
-            return;
-        }
+    // 1. Validação Inicial
+    if (!formData.title) {
+        toast.error("Preencha a descrição.");
+        return;
+    }
 
-        const activeId = getActiveUserId();
-        const context = currentWorkspace?.id;
-        const amountVal = parseFloat(formData.amount.toString()) || 0;
+    const activeId = getActiveUserId();
+    const context = currentWorkspace?.id;
+    
+    // Converte valores para número (tratando vírgula e ponto)
+    const amountVal = formData.amount ? parseFloat(formData.amount.toString().replace(',', '.')) : 0;
+    const fixedVal = formData.fixedMonthlyValue ? parseFloat(formData.fixedMonthlyValue.toString().replace(',', '.')) : 0;
 
-        const monthMapNums: Record<string, string> = { 'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04', 'Mai': '05', 'Jun': '06', 'Jul': '07', 'Ago': '08', 'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12' };
-        const dayValue = formData.dueDay ? formData.dueDay.toString().padStart(2, '0') : '01';
-        const dateString = `${dayValue}/${monthMapNums[formData.targetMonth]}/${selectedYear}`;
+    // Mapa de meses para construir a data ISO
+    const monthMapNums: Record<string, string> = { 
+        'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04', 'Mai': '05', 'Jun': '06', 
+        'Jul': '07', 'Ago': '08', 'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12' 
+    };
+    
+    const dayValue = formData.dueDay ? formData.dueDay.toString().padStart(2, '0') : '01';
+    const monthValue = monthMapNums[formData.targetMonth] || '01';
+    
+    // Criamos uma data no formato ISO (YYYY-MM-DD) para o banco aceitar no created_at
+    // Usamos 12:00:00 para evitar problemas de fuso horário que jogam a data para o dia anterior
+    const isoDateForDatabase = `${selectedYear}-${monthValue}-${dayValue}T12:00:00Z`;
+    const dateStringBR = `${dayValue}/${monthValue}/${selectedYear}`;
 
-        // 1. Encontra o item original para pegar os comprovantes que já existem
-        let originalItem: any = null;
-        if (editingId) {
-            originalItem = transactions.find(t => t.id === editingId) ||
-                installments.find(i => i.id === editingId) ||
-                recurring.find(r => r.id === editingId);
-        }
+    // 2. Lógica de Comprovantes (Preservando o que você já tem)
+    let originalItem: any = null;
+    if (editingId) {
+        originalItem = transactions.find(t => t.id === editingId) || 
+                       installments.find(i => i.id === editingId) || 
+                       recurring.find(r => r.id === editingId);
+    }
 
-        // 🔥 CORREÇÃO: Lógica de Exclusão e Adição
-        // Clona o objeto de recibos atual para podermos modificar
-        let updatedReceipts = { ...(originalItem?.receipts || {}) };
-        const tag = `${formData.targetMonth}/${selectedYear}`;
+    let updatedReceipts = { ...(originalItem?.receipts || {}) };
+    const tag = `${formData.targetMonth}/${selectedYear}`;
+    
+    if (formData.receiptUrl) {
+        updatedReceipts[tag] = formData.receiptUrl;
+    } else if (!editingId) {
+        // Se for novo e não tiver URL, limpa
+        updatedReceipts = {};
+    }
 
-        if (formData.receiptUrl) {
-            // CASO 1: Tem comprovante? Salva/Atualiza na chave do mês
-            updatedReceipts[tag] = formData.receiptUrl;
-        } else {
-            // CASO 2: Não tem comprovante (foi excluído no modal)?
-            // Deleta a chave específica desse mês/ano
-            delete updatedReceipts[tag];
-
-            // Opcional: Se quiser limpar também chaves legadas (sem ano)
-            delete updatedReceipts[formData.targetMonth];
-        }
-
-        const getPayload = () => {
-            const base = {
-                user_id: activeId,
-                title: formData.title,
-                context: context,
-                icon: formData.icon,
-                payment_method: formData.paymentMethod || 'outros',
-                receipts: updatedReceipts, // Envia o objeto atualizado (com a chave removida se for o caso)
-                // Limpa a coluna antiga 'receipt_url' se for uma despesa avulsa e não tiver mais comprovante
-                receipt_url: (!itemHasRecurrence(formMode) && !formData.receiptUrl) ? null : (originalItem?.receipt_url || null)
-            };
-
-            // Helper simples para saber se é recorrente/parcela
-            function itemHasRecurrence(mode: string) {
-                return mode === 'installment' || mode === 'fixed_expense' || (mode === 'income' && formData.isFixedIncome);
-            }
-
-            // 1. Receitas
-            if (formMode === 'income') {
-                return formData.isFixedIncome
-                    ? { table: 'recurring', data: { ...base, value: amountVal, due_day: 1, category: 'Salário', type: 'income', status: 'active', start_date: dateString } }
-                    : { table: 'transactions', data: { ...base, amount: amountVal, type: 'income', date: dateString, category: 'Receita', target_month: formData.targetMonth, status: 'active' } };
-            }
-
-            // 2. Despesas Avulsas
-            if (formMode === 'expense') {
-                return { table: 'transactions', data: { ...base, amount: amountVal, type: 'expense', date: dateString, category: formData.category, target_month: formData.targetMonth, status: 'active' } };
-            }
-
-            // 3. Parcelamentos
-            if (formMode === 'installment') {
-                const qtd = parseInt(formData.installments.toString()) || 1;
-                const valuePerMonth = formData.fixedMonthlyValue ? parseFloat(formData.fixedMonthlyValue.toString()) : (amountVal / qtd);
-                return {
-                    table: 'installments',
-                    data: {
-                        ...base,
-                        total_value: amountVal || (valuePerMonth * qtd),
-                        installments_count: qtd,
-                        current_installment: 0,
-                        value_per_month: valuePerMonth,
-                        due_day: parseInt(formData.dueDay.toString()) || 10,
-                        status: 'active'
-                    }
-                };
-            }
-
-            // 4. Fixas
-            return { table: 'recurring', data: { ...base, value: amountVal, due_day: parseInt(formData.dueDay.toString()) || 10, category: formData.category || 'Fixa', type: 'expense', status: 'active', start_date: dateString } };
+    // 3. Montagem do Payload por Tipo de Lançamento
+    const getPayload = () => {
+        const base = {
+            user_id: activeId,
+            title: formData.title,
+            context: context,
+            icon: formData.icon,
+            payment_method: formData.paymentMethod || 'outros',
+            receipts: updatedReceipts,
+            receipt_url: formData.receiptUrl || (originalItem?.receipt_url || null)
         };
 
-        const { table, data } = getPayload();
-
-        try {
-            if (editingId) {
-                const originalTable = transactions.find(t => t.id === editingId) ? 'transactions' : (installments.find(i => i.id === editingId) ? 'installments' : 'recurring');
-
-                if (originalTable !== table) {
-                    await supabase.from(originalTable).delete().eq('id', editingId);
-                    await supabase.from(table).insert([data]);
-                } else {
-                    await supabase.from(table).update(data).eq('id', editingId);
-                }
-            } else {
-                await supabase.from(table).insert([data]);
-            }
-
-            toast.success("Salvo com sucesso!");
-            setIsFormOpen(false);
-            setEditingId(null);
-            loadData(activeId!, context);
-        } catch (error) {
-            console.error(error);
-            toast.error("Erro ao salvar no banco.");
+        // --- RECEITAS ---
+        if (formMode === 'income') {
+            return formData.isFixedIncome
+                ? { table: 'recurring', data: { ...base, value: amountVal, due_day: 1, category: 'Salário', type: 'income', status: 'active', created_at: isoDateForDatabase } }
+                : { table: 'transactions', data: { ...base, amount: amountVal, type: 'income', date: dateStringBR, category: 'Receita', target_month: formData.targetMonth, status: 'active', created_at: isoDateForDatabase } };
         }
+
+        // --- DESPESAS AVULSAS ---
+        if (formMode === 'expense') {
+            return { table: 'transactions', data: { ...base, amount: amountVal, type: 'expense', date: dateStringBR, category: formData.category, target_month: formData.targetMonth, status: 'active', created_at: isoDateForDatabase } };
+        }
+
+        // --- PARCELAMENTOS (LÓGICA ADAPTADA) ---
+        if (formMode === 'installment') {
+            const qtd = parseInt(formData.installments.toString()) || 1;
+            // Prioriza o valor mensal se preenchido, senão divide o total
+            const valuePerMonth = fixedVal > 0 ? fixedVal : (amountVal / qtd);
+            const totalValue = amountVal > 0 ? amountVal : (valuePerMonth * qtd);
+
+            return {
+                table: 'installments',
+                data: {
+                    ...base,
+                    total_value: totalValue,
+                    installments_count: qtd,
+                    current_installment: 0, // 0 significa que no mês da "created_at" ele será 1
+                    value_per_month: valuePerMonth,
+                    due_day: parseInt(formData.dueDay.toString()) || 10,
+                    status: 'active',
+                    // Como você não tem start_date, forçamos o created_at para o mês de início
+                    created_at: isoDateForDatabase 
+                }
+            };
+        }
+
+        // --- DESPESAS FIXAS ---
+        return { table: 'recurring', data: { ...base, value: amountVal, due_day: parseInt(formData.dueDay.toString()) || 10, category: formData.category || 'Fixa', type: 'expense', status: 'active', created_at: isoDateForDatabase } };
     };
+
+    const { table, data } = getPayload();
+
+    // 4. Execução no Supabase
+    try {
+        let result;
+        if (editingId) {
+            // Verifica se mudou de tabela ao editar
+            const originalTable = transactions.find(t => t.id === editingId) ? 'transactions' : (installments.find(i => i.id === editingId) ? 'installments' : 'recurring');
+
+            if (originalTable !== table) {
+                await supabase.from(originalTable).delete().eq('id', editingId);
+                result = await supabase.from(table).insert([data]);
+            } else {
+                result = await supabase.from(table).update(data).eq('id', editingId);
+            }
+        } else {
+            result = await supabase.from(table).insert([data]);
+        }
+
+        if (result.error) throw result.error;
+
+        toast.success("Dados salvos com sucesso!");
+        setIsFormOpen(false);
+        setEditingId(null);
+        
+        // Recarrega os dados para atualizar a tela
+        if (activeId) loadData(activeId, context);
+
+    } catch (error: any) {
+        console.error("Erro ao salvar:", error);
+        toast.error("Erro ao salvar: " + error.message);
+    }
+};
     const getMonthData = (monthName: string) => {
         const monthIndex = MONTHS.indexOf(monthName);
         const monthMap: Record<string, string> = { 'Jan': '/01', 'Fev': '/02', 'Mar': '/03', 'Abr': '/04', 'Mai': '/05', 'Jun': '/06', 'Jul': '/07', 'Ago': '/08', 'Set': '/09', 'Out': '/10', 'Nov': '/11', 'Dez': '/12' };
