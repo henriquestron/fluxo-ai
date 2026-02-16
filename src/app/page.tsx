@@ -1057,7 +1057,7 @@ export default function FinancialDashboard() {
 
     const handleRemoveReceipt = (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); if (confirm("Tem certeza?")) setFormData({ ...formData, receiptUrl: '' }); };
 
-   const handleSubmit = async () => {
+    const handleSubmit = async () => {
         if (!formData.title || (!formData.amount && !formData.fixedMonthlyValue)) {
             toast.error("Preencha a descrição e o valor.");
             return;
@@ -1074,16 +1074,16 @@ export default function FinancialDashboard() {
         // 1. Encontra o item original para pegar os comprovantes que já existem
         let originalItem: any = null;
         if (editingId) {
-            originalItem = transactions.find(t => t.id === editingId) || 
-                           installments.find(i => i.id === editingId) || 
-                           recurring.find(r => r.id === editingId);
+            originalItem = transactions.find(t => t.id === editingId) ||
+                installments.find(i => i.id === editingId) ||
+                recurring.find(r => r.id === editingId);
         }
 
         // 🔥 CORREÇÃO: Lógica de Exclusão e Adição
         // Clona o objeto de recibos atual para podermos modificar
         let updatedReceipts = { ...(originalItem?.receipts || {}) };
         const tag = `${formData.targetMonth}/${selectedYear}`;
-        
+
         if (formData.receiptUrl) {
             // CASO 1: Tem comprovante? Salva/Atualiza na chave do mês
             updatedReceipts[tag] = formData.receiptUrl;
@@ -1091,7 +1091,7 @@ export default function FinancialDashboard() {
             // CASO 2: Não tem comprovante (foi excluído no modal)?
             // Deleta a chave específica desse mês/ano
             delete updatedReceipts[tag];
-            
+
             // Opcional: Se quiser limpar também chaves legadas (sem ano)
             delete updatedReceipts[formData.targetMonth];
         }
@@ -1322,35 +1322,34 @@ export default function FinancialDashboard() {
     const askGemini = async (text: string, fileBase64: string | null = null) => {
         setIsAiLoading(true);
 
-        // Adiciona mensagem do usuário no chat (interface)
         const userMsg = { role: 'user', content: text, type: 'text' };
         setChatHistory(prev => [...prev, userMsg]);
 
         try {
-            // Prepara o contexto financeiro
+            const myName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || "Investidor";
+
             const contextData = {
                 saldo_atual: displayBalance,
                 receita_mensal: currentMonthData.income,
                 despesa_mensal: currentMonthData.expenseTotal,
-                transacoes_recentes: transactions.slice(0, 10),
-                contas_fixas: recurring,
-                parcelamentos_ativos: installments,
+                transacoes_do_mes: transactions.slice(0, 15).map(t => ({ ...t, date: t.date })),
+                contas_fixas: recurring.filter(r => r.status === 'active'),
+                parcelamentos_ativos: installments.filter(i => i.status === 'active'),
                 mes_visualizado: activeTab,
+                ano_visualizado: selectedYear,
                 user_plan: userPlan,
                 is_consultant: userPlan === 'agent',
                 viewing_as_client: viewingAs?.client_id !== user?.id,
-                client_name: viewingAs ? viewingAs.client_email : "Você"
+                client_name: viewingAs ? viewingAs.client_email : "Você",
+                owner_name: myName
             };
 
-            // Prepara imagens (se houver)
             const images = fileBase64 ? [{ base64: fileBase64, mimeType: 'image/jpeg' }] : [];
 
-            // --- PREPARA O HISTÓRICO PARA A API ---
-            // Filtra mensagens válidas e mapeia para o formato do Gemini API
             const historyForAi = chatHistory
-                .filter(msg => msg.type === 'text') // Ignora erros ou msg de sistema
+                .filter(msg => msg.type === 'text')
                 .map(msg => ({
-                    role: msg.role === 'user' ? 'user' : 'model', // 'assistant' vira 'model'
+                    role: msg.role === 'user' ? 'user' : 'model',
                     parts: [{ text: msg.content }]
                 }));
 
@@ -1362,23 +1361,21 @@ export default function FinancialDashboard() {
                     contextData,
                     userPlan,
                     images,
-                    history: historyForAi // <--- ENVIA O HISTÓRICO AQUI
+                    history: historyForAi,
+                    selectedYear
                 })
             });
 
             const data = await response.json();
-
             if (data.error) throw new Error(data.error);
 
-            // --- PROCESSADOR DE AÇÕES (AUTO-MAGIC) ---
             let aiResponseText = data.response;
-
-            // Regex para capturar JSON de comandos
             const jsonMatch = aiResponseText.match(/\[[\s\S]*\]/);
 
             if (jsonMatch) {
                 try {
-                    const commands = JSON.parse(jsonMatch[0]);
+                    let cleanJson = jsonMatch[0].replace(/```json/g, '').replace(/```/g, '').trim();
+                    const commands = JSON.parse(cleanJson);
 
                     if (Array.isArray(commands)) {
                         let actionsPerformed = 0;
@@ -1386,37 +1383,89 @@ export default function FinancialDashboard() {
 
                         for (const cmd of commands) {
                             if (cmd.action === 'add') {
-                                const { error } = await supabase
-                                    .from(cmd.table)
-                                    .insert([{
-                                        ...cmd.data,
-                                        user_id: activeId,
-                                        context: currentWorkspace?.id
-                                    }]);
+                                // 1. TRATAMENTO DE DATA
+                                let finalDate = cmd.data.date;
+                                if (finalDate && finalDate.split('/').length === 2) finalDate = `${finalDate}/${selectedYear}`;
+                                if (!finalDate && cmd.data.target_month) {
+                                    const map: any = { 'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04', 'Mai': '05', 'Jun': '06', 'Jul': '07', 'Ago': '08', 'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12' };
+                                    finalDate = `01/${map[cmd.data.target_month] || '01'}/${selectedYear}`;
+                                }
 
-                                if (!error) actionsPerformed++;
+                                // 2. WHITELIST (Só passa o que o banco aceita)
+                                // Isso remove campos alucinados pela IA como "is_paid", "confidence", etc.
+                                const safeData: any = {
+                                    user_id: activeId,
+                                    context: currentWorkspace?.id,
+                                    title: cmd.data.title,
+                                    amount: cmd.data.amount || cmd.data.value || 0, // Aceita value ou amount
+                                    type: cmd.data.type,
+                                    category: cmd.data.category || 'Outros',
+                                    icon: cmd.data.icon || 'dollar-sign',
+                                    status: cmd.data.status || 'active'
+                                };
+
+                                // Campos específicos por tabela
+                                if (cmd.table === 'transactions') {
+                                    safeData.date = finalDate;
+                                    safeData.target_month = cmd.data.target_month || activeTab;
+                                    // Se a IA mandou 'paid', garantimos que o status seja 'paid'
+                                    if (cmd.data.is_paid === true) safeData.is_paid = true; // Só inclui se sua tabela tiver essa coluna, se não tiver, REMOVA essa linha.
+                                    // Se sua tabela usa APENAS o campo 'status'='paid', use esta linha:
+                                    // if (cmd.data.is_paid === true || cmd.data.status === 'paid') safeData.status = 'paid';
+                                }
+
+                                if (cmd.table === 'installments') {
+                                    safeData.total_value = cmd.data.total_value || (safeData.amount * (cmd.data.installments_count || 1));
+                                    safeData.installments_count = cmd.data.installments_count || 1;
+                                    safeData.current_installment = 0; // Sempre começa do 0
+                                    safeData.value_per_month = cmd.data.value_per_month || safeData.amount;
+                                    safeData.due_day = parseInt(cmd.data.due_day) || 10;
+                                    // Removemos amount da tabela installments se ela não tiver essa coluna específica
+                                    delete safeData.amount;
+                                }
+
+                                if (cmd.table === 'recurring') {
+                                    safeData.value = safeData.amount; // Recurring usa 'value'
+                                    delete safeData.amount;
+                                    safeData.due_day = parseInt(cmd.data.due_day) || 10;
+                                    safeData.start_date = finalDate; // Recurring usa start_date
+                                }
+
+                                // 3. INSERÇÃO
+                                const { error } = await supabase.from(cmd.table).insert([safeData]);
+
+                                if (!error) {
+                                    actionsPerformed++;
+                                } else {
+                                    console.error("Erro detalhado Supabase:", JSON.stringify(error, null, 2)); // Log detalhado
+                                }
                             }
                         }
 
                         if (actionsPerformed > 0) {
-                            aiResponseText = `✅ Feito! Adicionei ${actionsPerformed} item(s) para você automaticamente. Atualize a página para ver.`;
+                            aiResponseText = `✅ Pronto! Adicionei ${actionsPerformed} item(s) com sucesso.`;
                             if (user && activeId) loadData(activeId, currentWorkspace?.id);
                         }
                     }
                 } catch (e) {
-                    console.error("Erro ao processar JSON da IA", e);
+                    console.error("Erro JSON IA", e);
                 }
             }
 
-            // Adiciona resposta da IA no chat (interface)
             setChatHistory(prev => [...prev, { role: 'assistant', content: aiResponseText, type: 'text' }]);
 
         } catch (error: any) {
             console.error(error);
-            setChatHistory(prev => [...prev, { role: 'assistant', content: "Desculpe, tive um erro ao processar. Tente novamente.", type: 'error' }]);
+            setChatHistory(prev => [...prev, { role: 'assistant', content: "Erro técnico.", type: 'error' }]);
         } finally {
             setIsAiLoading(false);
         }
+    };
+
+    // Helper simples para o mês
+    const getMonthNum = (m: string) => {
+        const map: any = { 'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04', 'Mai': '05', 'Jun': '06', 'Jul': '07', 'Ago': '08', 'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12' };
+        return map[m] || '01';
     };
 
     // --- 1. DEFINIÇÃO DOS MODAIS DE AUTH (Para usar em ambas as telas) ---
@@ -1937,7 +1986,7 @@ export default function FinancialDashboard() {
             />
             <CreditCardModal isOpen={isCreditCardModalOpen} onClose={() => setIsCreditCardModalOpen(false)} user={user} activeTab={activeTab} contextId={currentWorkspace?.id} onSuccess={() => loadData(getActiveUserId(), currentWorkspace?.id)} />
 
-            <HistoryModal isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} transactions={transactions} installments={installments} recurring={recurring}selectedYear={selectedYear} />
+            <HistoryModal isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} transactions={transactions} installments={installments} recurring={recurring} selectedYear={selectedYear} />
 
             <CustomizationModal isOpen={isCustomizationOpen} onClose={() => setIsCustomizationOpen(false)} currentLayout={currentLayout} currentTheme={currentTheme} onSelectLayout={(l) => handleSavePreferences('layout', l)} onSelectTheme={(t) => handleSavePreferences('theme', t)} userPlan={userPlan} />
 
