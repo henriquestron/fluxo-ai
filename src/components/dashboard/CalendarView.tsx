@@ -23,12 +23,36 @@ const BANK_BORDERS: any = {
     'outros': 'border-l-gray-500'
 };
 
-export default function CalendarView({ transactions, installments, recurring, activeTab, months, setActiveTab }: any) {
+interface CalendarViewProps {
+    transactions: any[];
+    installments: any[];
+    recurring: any[];
+    activeTab: string;
+    months: string[];
+    setActiveTab: (month: string) => void;
+    selectedYear: number; // <--- ADICIONADO
+}
+
+export default function CalendarView({ transactions, installments, recurring, activeTab, months, setActiveTab, selectedYear }: CalendarViewProps) {
     
-    // Helper para pegar dias do mês
+    // Helper de Datas (Padronizado)
+    const getStartData = (item: any) => {
+        if (item.start_date && item.start_date.includes('/')) {
+            const p = item.start_date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+        }
+        if (item.date && item.date.includes('/')) {
+            const p = item.date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+        }
+        if (item.created_at) {
+            const d = new Date(item.created_at); return { m: d.getMonth(), y: d.getFullYear() };
+        }
+        return { m: 0, y: new Date().getFullYear() };
+    };
+
+    // Helper para pegar dias do mês CORRETO (considerando o ano selecionado)
     const getDaysInMonth = (monthName: string) => {
         const monthIndex = months.indexOf(monthName);
-        const year = 2026;
+        const year = selectedYear; // <--- CORREÇÃO: Usa o ano selecionado, não 2026 fixo
         const date = new Date(year, monthIndex, 1);
         const days = [];
         while (date.getMonth() === monthIndex) {
@@ -44,35 +68,57 @@ export default function CalendarView({ transactions, installments, recurring, ac
     // Filtra itens por dia
     const getItemsForDay = (day: number) => {
         const dayStr = day.toString().padStart(2, '0');
-        const dateFilter = `${dayStr}${monthMap[activeTab]}`; // Ex: "05/02"
-        
-        // 1. Transações
-        const trans = transactions.filter((t: any) => {
-            // Se tiver data exata, usa. Se não, tenta bater com o filtro.
-            const hasDate = t.date?.includes(dateFilter);
-            return hasDate && t.status !== 'delayed';
-        }).map((t: any) => ({...t, type_label: 'spot'}));
-        
-        // 2. Parcelas (Baseado no Dia de Vencimento)
-        const insts = installments.filter((i: any) => {
-            if (i.status === 'delayed') return false;
-            const due = i.due_day || 10;
-            const currentInst = i.current_installment + months.indexOf(activeTab);
-            // Verifica dia E se a parcela está ativa neste mês
-            return due === day && currentInst >= 1 && currentInst <= i.installments_count;
-        }).map((i: any) => ({...i, amount: i.value_per_month, type_label: 'parc'}));
+        // Filtro exato com ano: "05/02/2027"
+        const dateFilter = `${dayStr}${monthMap[activeTab]}/${selectedYear}`; 
+        const monthIndex = months.indexOf(activeTab);
+        const paymentTag = `${activeTab}/${selectedYear}`;
 
-        // 3. Recorrentes (Baseado no Dia de Vencimento)
-        const recurs = recurring.filter((r: any) => {
-            if (r.status === 'delayed') return false;
-            const due = r.due_day || 10;
-            const startMonthIndex = r.start_date ? parseInt(r.start_date.split('/')[1]) - 1 : 0;
-            const currentMonthIndex = months.indexOf(activeTab);
+        // 1. Transações (Filtro por data exata)
+        const trans = transactions.filter((t: any) => {
+            const hasDate = t.date?.includes(dateFilter);
+            return hasDate && t.status !== 'delayed' && t.status !== 'standby';
+        }).map((t: any) => ({...t, type_label: 'spot', is_paid_visual: t.is_paid }));
+        
+        // 2. Parcelas (Cálculo de Ano)
+        const insts = installments.reduce((acc: any[], i: any) => {
+            if (i.status === 'delayed' || i.status === 'standby') return acc;
             
-            return due === day && r.type === 'expense' && 
-                   currentMonthIndex >= startMonthIndex && 
-                   !r.skipped_months?.includes(activeTab);
-        }).map((r: any) => ({...r, amount: r.value, type_label: 'fixo'}));
+            const due = i.due_day || 10;
+            if (due !== day) return acc; // Só processa se for do dia certo
+
+            const { m: startMonth, y: startYear } = getStartData(i);
+            
+            // Cálculo de deslocamento de ano
+            const monthsDiff = ((selectedYear - startYear) * 12) + (monthIndex - startMonth);
+            const currentInst = 1 + (i.current_installment || 0) + monthsDiff;
+
+            if (currentInst >= 1 && currentInst <= i.installments_count) {
+                const isPaid = i.paid_months?.includes(paymentTag);
+                acc.push({...i, amount: Number(i.value_per_month), type_label: 'parc', is_paid_visual: isPaid});
+            }
+            return acc;
+        }, []);
+
+        // 3. Recorrentes (Visibilidade por Ano)
+        const recurs = recurring.filter((r: any) => {
+            if (r.status === 'delayed' || r.status === 'standby') return false;
+            
+            const due = r.due_day || 10;
+            if (due !== day) return false;
+
+            const { m: startMonth, y: startYear } = getStartData(r);
+            
+            // Lógica de Ano
+            if (selectedYear > startYear) return !r.skipped_months?.includes(activeTab);
+            if (selectedYear === startYear && monthIndex >= startMonth) return !r.skipped_months?.includes(activeTab);
+            
+            return false;
+        }).map((r: any) => ({
+            ...r, 
+            amount: Number(r.value), 
+            type_label: 'fixo', 
+            is_paid_visual: r.paid_months?.includes(paymentTag)
+        }));
 
         return [...trans, ...insts, ...recurs];
     };
@@ -92,7 +138,7 @@ export default function CalendarView({ transactions, installments, recurring, ac
                     <div className="bg-purple-900/20 p-2.5 rounded-xl text-purple-400 border border-purple-500/20"><CalIcon size={20}/></div>
                     <div>
                         <h2 className="text-lg font-bold text-white">Calendário</h2>
-                        <p className="text-xs text-gray-500">Visão mensal de vencimentos</p>
+                        <p className="text-xs text-gray-500">Visão mensal de vencimentos ({selectedYear})</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-1 bg-black p-1 rounded-xl border border-gray-800">
@@ -126,8 +172,10 @@ export default function CalendarView({ transactions, installments, recurring, ac
                             const items = getItemsForDay(dayNum);
                             const totalDay = items.reduce((acc: number, curr: any) => acc + (curr.amount || 0), 0);
                             
-                            // Verifica se é hoje
-                            const isToday = new Date().getDate() === dayNum && new Date().getMonth() === months.indexOf(activeTab);
+                            // Verifica se é hoje (considerando ano e mês)
+                            const isToday = new Date().getDate() === dayNum && 
+                                            new Date().getMonth() === months.indexOf(activeTab) &&
+                                            new Date().getFullYear() === selectedYear;
 
                             return (
                                 <div key={dayNum} className={`border-r border-b border-gray-800/50 min-h-[140px] p-2 transition hover:bg-gray-900/80 relative group flex flex-col ${isToday ? 'bg-cyan-950/10' : ''}`}>
@@ -148,7 +196,7 @@ export default function CalendarView({ transactions, installments, recurring, ac
                                     <div className="space-y-1 overflow-y-auto max-h-[100px] scrollbar-thin scrollbar-thumb-gray-800 pr-1 flex-1">
                                         {items.map((item: any, idx: number) => {
                                             const Icon = ICON_MAP[item.icon] || DollarSign;
-                                            const isPaid = item.is_paid || item.paid_months?.includes(activeTab);
+                                            const isPaid = item.is_paid_visual; // Usa o cálculo feito no getItemsForDay
                                             const bankBorder = BANK_BORDERS[item.payment_method] || 'border-l-gray-600';
 
                                             return (

@@ -548,76 +548,103 @@ export default function FinancialDashboard() {
     const checkUpcomingBills = async (userId: string) => {
         if (!userId) return;
 
-        // 1. Prepara as datas
+        // 1. Prepara as datas atuais reais (Hoje)
         const today = new Date();
         const dayNum = today.getDate();
         const dayStr = dayNum.toString().padStart(2, '0');
-        const monthMap: Record<number, string> = { 0: 'Jan', 1: 'Fev', 2: 'Mar', 3: 'Abr', 4: 'Mai', 5: 'Jun', 6: 'Jul', 7: 'Ago', 8: 'Set', 9: 'Out', 10: 'Nov', 11: 'Dez' };
+        const currentYear = today.getFullYear();
+        
+        const monthMap: Record<number, string> = { 
+            0: 'Jan', 1: 'Fev', 2: 'Mar', 3: 'Abr', 4: 'Mai', 5: 'Jun', 
+            6: 'Jul', 7: 'Ago', 8: 'Set', 9: 'Out', 10: 'Nov', 11: 'Dez' 
+        };
         const currentMonthName = monthMap[today.getMonth()];
+        
+        // 🔥 NOVA TAG: Agora buscamos por "Jan/2026"
+        const currentPaymentTag = `${currentMonthName}/${currentYear}`;
 
-        // 2. Identificar contas vencendo HOJE
+        // 2. Identificar contas vencendo HOJE (Lógica Corrigida)
         const billsDueToday = [
-            ...transactions.filter(t => t.type === 'expense' && !t.is_paid && t.status !== 'delayed' && t.date?.startsWith(`${dayStr}/`)),
-            ...recurring.filter(r => r.type === 'expense' && r.due_day === dayNum && r.status !== 'delayed' && !r.paid_months?.includes(currentMonthName)),
-            ...installments.filter(i => i.due_day === dayNum && i.status !== 'delayed' && !i.paid_months?.includes(currentMonthName))
+            // Transações: Filtra pelo dia/mês E pelo ano atual
+            ...transactions.filter(t => 
+                t.type === 'expense' && 
+                !t.is_paid && 
+                t.status !== 'delayed' && 
+                t.status !== 'standby' &&
+                t.date?.startsWith(`${dayStr}/`) &&
+                t.date?.endsWith(`/${currentYear}`)
+            ),
+            
+            // Recorrentes: Checa a nova tag de pagamento (Ex: Jan/2026)
+            ...recurring.filter(r => 
+                r.type === 'expense' && 
+                r.due_day === dayNum && 
+                r.status !== 'delayed' && 
+                r.status !== 'standby' &&
+                !r.paid_months?.includes(currentPaymentTag) && // <-- Check corrigido
+                !r.paid_months?.includes(currentMonthName)     // <-- Check legado (opcional)
+            ),
+            
+            // Parcelas: Checa a nova tag de pagamento
+            ...installments.filter(i => 
+                i.due_day === dayNum && 
+                i.status !== 'delayed' && 
+                i.status !== 'standby' &&
+                !i.paid_months?.includes(currentPaymentTag) // <-- Check corrigido
+            )
         ];
 
-        // Se não tiver contas hoje, encerra por aqui.
+        // Se não tiver contas hoje, encerra.
         if (billsDueToday.length === 0) return;
 
-        // 3. VERIFICAÇÃO DE SEGURANÇA (Anti-Duplicidade) 🛑
-        // Define o início do dia de hoje (00:00:00) em formato ISO
+        // 3. VERIFICAÇÃO DE SEGURANÇA (Anti-Duplicidade)
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
         const startOfDayISO = startOfDay.toISOString();
 
-        // Busca no banco se JÁ EXISTE uma notificação criada HOJE com esse título
         const { data: existingNotifs } = await supabase
             .from('notifications')
             .select('id')
             .eq('user_id', userId)
-            .eq('title', 'Contas Vencendo Hoje! 💸') // Título Fixo
-            .gte('created_at', startOfDayISO) // Criada de hoje pra frente
+            .eq('title', 'Contas Vencendo Hoje! 💸')
+            .gte('created_at', startOfDayISO)
             .limit(1);
 
-        // Se já existe, significa que o aviso de hoje já foi dado. Para tudo.
         if (existingNotifs && existingNotifs.length > 0) {
             console.log("🔕 Notificação diária já enviada. Ignorando...");
             return;
         }
 
-        // 4. Se chegou aqui, é a primeira vez no dia. Cria a notificação!
+        // 4. Criação da Notificação e disparo do WhatsApp
         const messageSignature = `Você tem ${billsDueToday.length} conta(s) para pagar hoje. Não esqueça!`;
 
         const { error } = await supabase.from('notifications').insert({
             user_id: userId,
-            title: 'Contas Vencendo Hoje! 💸', // Título Fixo (Importante para a trava funcionar)
+            title: 'Contas Vencendo Hoje! 💸',
             message: messageSignature,
             type: 'warning',
             is_read: false
         });
 
         if (!error) {
-            // A. Mostra o Toast na tela imediatamente
             toast.warning("Atenção: Contas Vencendo Hoje!", {
                 description: messageSignature,
                 duration: 5000,
                 icon: <AlertTriangle className="text-orange-500" />
             });
 
-            // B. DISPARA O WHATSAPP (Backend decide se manda ou não) 📲
-            console.log("📤 Tentando enviar WhatsApp...");
+            console.log("📤 Enviando comando para WhatsApp...");
             fetch('/api/check-notifications', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userId, bills: billsDueToday })
             })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.success) console.log("✅ WhatsApp enviado com sucesso!");
-                    else console.log("⚠️ WhatsApp não enviado:", data.reason);
-                })
-                .catch(err => console.error("❌ Erro ao chamar API WhatsApp:", err));
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) console.log("✅ WhatsApp enviado!");
+                else console.log("⚠️ WhatsApp ignorado:", data.reason);
+            })
+            .catch(err => console.error("❌ Erro API WhatsApp:", err));
         }
     };
 
@@ -968,8 +995,24 @@ export default function FinancialDashboard() {
     };
 
     const handleEdit = (item: any, mode: any) => {
-        setFormMode(mode); setEditingId(item.id); const currentReceipt = getReceiptForMonth(item, activeTab);
-        setFormData({ title: item.title, amount: item.amount || item.value || item.total_value || '', installments: item.installments_count || '', dueDay: item.due_day || '', category: item.category || 'Outros', targetMonth: item.target_month || activeTab, isFixedIncome: mode === 'income' && item.category === 'Salário', fixedMonthlyValue: item.fixed_monthly_value || '', receiptUrl: currentReceipt || '', icon: item.icon || '', paymentMethod: item.payment_method || 'outros' });
+        setFormMode(mode); 
+        setEditingId(item.id); 
+        const currentReceipt = getReceiptForMonth(item, activeTab);
+
+        setFormData({ 
+            title: item.title, 
+            amount: item.amount || item.value || item.total_value || '', 
+            installments: item.installments_count || '', 
+            dueDay: item.due_day || '', 
+            category: item.category || 'Outros', 
+            targetMonth: item.target_month || activeTab, 
+            isFixedIncome: mode === 'income' && item.category === 'Salário', 
+            fixedMonthlyValue: item.fixed_monthly_value || '', 
+            receiptUrl: currentReceipt || '', 
+            icon: item.icon || '', 
+            paymentMethod: item.payment_method || 'outros' 
+        });
+
         setIsFormOpen(true);
     };
 
@@ -996,140 +1039,88 @@ export default function FinancialDashboard() {
     const handleRemoveReceipt = (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); if (confirm("Tem certeza?")) setFormData({ ...formData, receiptUrl: '' }); };
 
     const handleSubmit = async () => {
-        // Validações
-        const totalItems = transactions.length + installments.length + recurring.length;
-        const FREE_LIMIT = 50;
-        if (userPlan === 'free' && totalItems >= FREE_LIMIT && !editingId) {
-            toast.error("Limite Grátis Atingido!", { description: "Você já usou seus 50 lançamentos mensais." });
-            openPricingModal();
-            return;
-        }
-
-        const hasValue = formData.amount || (formMode === 'installment' && formData.fixedMonthlyValue);
-        if (!formData.title || !hasValue) {
+        if (!formData.title || (!formData.amount && !formData.fixedMonthlyValue)) {
             toast.error("Preencha a descrição e o valor.");
             return;
         }
 
-        const amountVal = formData.amount ? parseFloat(formData.amount.toString()) : 0;
-        const fixedInstallmentVal = formData.fixedMonthlyValue ? parseFloat(formData.fixedMonthlyValue.toString()) : null;
+        const activeId = getActiveUserId();
+        const context = currentWorkspace?.id;
+        const amountVal = parseFloat(formData.amount.toString()) || 0;
 
-        // 1. MAPA CORRIGIDO (Sem a barra no /07)
-        const monthMapNums: Record<string, string> = {
-            'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04',
-            'Mai': '05', 'Jun': '06', 'Jul': '07', 'Ago': '08',
-            'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12'
-        };
-
+        // Monta a data apenas para quem precisa (Transactions e Recurring)
+        const monthMapNums: Record<string, string> = { 'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04', 'Mai': '05', 'Jun': '06', 'Jul': '07', 'Ago': '08', 'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12' };
         const dayValue = formData.dueDay ? formData.dueDay.toString().padStart(2, '0') : '01';
-
-        // 2. CORREÇÃO: Usa o ano selecionado (não 2026 fixo)
         const dateString = `${dayValue}/${monthMapNums[formData.targetMonth]}/${selectedYear}`;
 
-        const context = currentWorkspace?.id;
-        const activeId = getActiveUserId();
-
-        let finalReceiptData: string | null = formData.receiptUrl;
-        if ((formMode === 'installment' || formMode === 'fixed_expense') && editingId) {
-            const originalItem = [...installments, ...recurring].find(i => i.id === editingId);
-            if (originalItem) {
-                let receiptJson: any = {};
-                try { receiptJson = originalItem.receipt_url ? JSON.parse(originalItem.receipt_url) : {}; } catch { }
-                receiptJson[formData.targetMonth] = formData.receiptUrl;
-                finalReceiptData = JSON.stringify(receiptJson);
-            }
-        } else if ((formMode === 'installment' || formMode === 'fixed_expense') && !editingId) {
-            finalReceiptData = formData.receiptUrl ? JSON.stringify({ [formData.targetMonth]: formData.receiptUrl }) : null;
-        }
-
-        const baseData = {
-            user_id: activeId,
-            receipt_url: finalReceiptData,
-            context: context,
-            icon: formData.icon,
-            payment_method: formData.paymentMethod || 'outros'
-        };
-
         const getPayload = () => {
+            const base = {
+                user_id: activeId,
+                title: formData.title,
+                context: context,
+                icon: formData.icon,
+                payment_method: formData.paymentMethod || 'outros',
+                receipt_url: formData.receiptUrl
+            };
+
+            // 1. Receitas
             if (formMode === 'income') {
                 return formData.isFixedIncome
-                    ? { table: 'recurring', data: { ...baseData, title: formData.title, value: amountVal, due_day: 1, category: 'Salário', type: 'income', status: 'active', start_date: dateString } }
-                    : { table: 'transactions', data: { ...baseData, title: formData.title, amount: amountVal, type: 'income', date: dateString, category: 'Receita', target_month: formData.targetMonth, status: 'active' } };
+                    ? { table: 'recurring', data: { ...base, value: amountVal, due_day: 1, category: 'Salário', type: 'income', status: 'active', start_date: dateString } }
+                    : { table: 'transactions', data: { ...base, amount: amountVal, type: 'income', date: dateString, category: 'Receita', target_month: formData.targetMonth, status: 'active' } };
             }
+
+            // 2. Despesas Avulsas
             if (formMode === 'expense') {
-                return { table: 'transactions', data: { ...baseData, title: formData.title, amount: amountVal, type: 'expense', date: dateString, category: formData.category, target_month: formData.targetMonth, status: 'active' } };
+                return { table: 'transactions', data: { ...base, amount: amountVal, type: 'expense', date: dateString, category: formData.category, target_month: formData.targetMonth, status: 'active' } };
             }
+
+            // 3. Parcelamentos (❌ SEM COLUNA DATE AQUI)
             if (formMode === 'installment') {
                 const qtd = parseInt(formData.installments.toString()) || 1;
-                let finalTotal = 0;
-                let finalMonthly = 0;
-
-                if (fixedInstallmentVal && fixedInstallmentVal > 0) {
-                    finalMonthly = fixedInstallmentVal;
-                    finalTotal = amountVal > 0 ? amountVal : (fixedInstallmentVal * qtd);
-                }
-                else {
-                    finalTotal = amountVal;
-                    finalMonthly = amountVal / qtd;
-                }
-
-                if (finalTotal === 0 && finalMonthly === 0) {
-                    toast.error("Preencha o valor da parcela ou o total!");
-                    return { table: 'error', data: {} };
-                }
-
+                const valuePerMonth = formData.fixedMonthlyValue ? parseFloat(formData.fixedMonthlyValue.toString()) : (amountVal / qtd);
                 return {
                     table: 'installments',
                     data: {
-                        ...baseData,
-                        title: formData.title,
-                        total_value: finalTotal,
+                        ...base,
+                        total_value: amountVal || (valuePerMonth * qtd),
                         installments_count: qtd,
-                        current_installment: 1, // Reseta para 1, o cálculo fará a mágica depois
-                        value_per_month: finalMonthly,
-                        fixed_monthly_value: fixedInstallmentVal || null,
+                        current_installment: 0,
+                        value_per_month: valuePerMonth,
                         due_day: parseInt(formData.dueDay.toString()) || 10,
-                        status: 'active',
-                        date: dateString // Salva a data de INÍCIO correta
+                        status: 'active'
                     }
                 };
             }
-            return { table: 'recurring', data: { ...baseData, title: formData.title, value: amountVal, due_day: parseInt(formData.dueDay.toString()) || 10, category: 'Fixa', type: 'expense', status: 'active', start_date: dateString } };
+
+            // 4. Fixas (USA START_DATE)
+            return { table: 'recurring', data: { ...base, value: amountVal, due_day: parseInt(formData.dueDay.toString()) || 10, category: formData.category || 'Fixa', type: 'expense', status: 'active', start_date: dateString } };
         };
 
         const { table, data } = getPayload();
-        if (table === 'error') return;
 
-        if (user && activeId) {
-            if (editingId) await supabase.from(table).update(data).eq('id', editingId);
-            else await supabase.from(table).insert([data]);
-            loadData(activeId, context);
-        } else {
-            const newItem = { ...data, id: editingId || Date.now(), is_paid: false };
-            if (table === 'transactions') {
-                const list = editingId ? transactions.map(t => t.id === editingId ? newItem : t) : [newItem, ...transactions];
-                saveDataLocal(list, installments, recurring);
+        try {
+            if (editingId) {
+                const originalTable = transactions.find(t => t.id === editingId) ? 'transactions' : (installments.find(i => i.id === editingId) ? 'installments' : 'recurring');
+
+                if (originalTable !== table) {
+                    await supabase.from(originalTable).delete().eq('id', editingId);
+                    await supabase.from(table).insert([data]);
+                } else {
+                    await supabase.from(table).update(data).eq('id', editingId);
+                }
+            } else {
+                await supabase.from(table).insert([data]);
             }
-            else if (table === 'installments') {
-                const list = editingId ? installments.map(i => i.id === editingId ? newItem : i) : [...installments, newItem];
-                saveDataLocal(transactions, list, recurring);
-            }
-            else {
-                const list = editingId ? recurring.map(r => r.id === editingId ? newItem : r) : [...recurring, newItem];
-                saveDataLocal(transactions, installments, list);
-            }
+
+            toast.success("Salvo com sucesso!");
+            setIsFormOpen(false);
+            setEditingId(null);
+            loadData(activeId!, context);
+        } catch (error) {
+            console.error(error);
+            toast.error("Erro ao salvar no banco.");
         }
-
-        if (!editingId && (userPlan === 'free' || userPlan === 'start')) {
-            const newCount = addCounter + 1;
-            setAddCounter(newCount);
-            if (newCount % 3 === 0) setTimeout(() => setIsNudgeOpen(true), 500);
-        }
-
-        setFormData({ ...initialFormState, targetMonth: activeTab });
-        setEditingId(null);
-        setIsFormOpen(false);
-        toast.success("Salvo com sucesso!");
     };
    const getMonthData = (monthName: string) => {
         const monthIndex = MONTHS.indexOf(monthName);
@@ -1813,21 +1804,30 @@ export default function FinancialDashboard() {
                     getReceipt={getReceiptForMonth}
                 />
             )}
-            {currentLayout === 'trader' && (
+            {(currentLayout === 'trader') && (
                 <TraderView
-                    transactions={transactions} installments={installments} recurring={recurring}
+                    selectedYear={selectedYear} // <--- ADICIONE ISSO
+                    
+                    transactions={transactions} // Sem filtro, o componente filtra
+                    installments={installments}
+                    recurring={recurring}
                     activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab}
                     currentMonthData={currentMonthData} previousSurplus={previousSurplus}
-                    displayBalance={displayBalance} onTogglePaid={togglePaid}
+                    displayBalance={displayBalance}
+                    onTogglePaid={togglePaid} onTogglePaidMonth={togglePaidMonth}
                     onToggleDelay={toggleDelay} onDelete={handleDelete}
-                    onTogglePaidMonth={togglePaidMonth}
                 />
             )}
 
-            {currentLayout === 'calendar' && (
-                <CalendarView
-                    transactions={transactions} installments={installments} recurring={recurring}
-                    activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab}
+           {(currentLayout === 'calendar') && (
+                <CalendarView 
+                    transactions={transactions} 
+                    installments={installments} 
+                    recurring={recurring} 
+                    activeTab={activeTab} 
+                    months={MONTHS} 
+                    setActiveTab={setActiveTab}
+                    selectedYear={selectedYear} // <--- OBRIGATÓRIO ADICIONAR ISSO
                 />
             )}
 

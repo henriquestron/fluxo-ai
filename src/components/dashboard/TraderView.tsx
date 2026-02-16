@@ -34,16 +34,17 @@ interface TraderViewProps {
     currentMonthData: any;
     previousSurplus: number;
     displayBalance: number;
+    selectedYear: number; // <--- ADICIONADO
     // Funções
     onTogglePaid: (table: string, id: number, status: boolean) => void;
-    onTogglePaidMonth: (table: string, item: any) => void; // <--- ADICIONADO PARA PARCELAS
+    onTogglePaidMonth: (table: string, item: any) => void;
     onToggleDelay: (table: string, item: any) => void;
     onDelete: (table: string, id: number) => void;
 }
 
 export default function TraderView({
     transactions, installments, recurring, activeTab, months, setActiveTab,
-    currentMonthData, previousSurplus, displayBalance,
+    currentMonthData, previousSurplus, displayBalance, selectedYear, // <--- ADICIONADO
     onTogglePaid, onTogglePaidMonth, onToggleDelay, onDelete
 }: TraderViewProps) {
 
@@ -56,39 +57,81 @@ export default function TraderView({
         return map[method] || 'OTHER';
     };
 
+    // Helper de Datas
+    const getStartData = (item: any) => {
+        if (item.start_date && item.start_date.includes('/')) {
+            const p = item.start_date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+        }
+        if (item.date && item.date.includes('/')) {
+            const p = item.date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+        }
+        if (item.created_at) {
+            const d = new Date(item.created_at); return { m: d.getMonth(), y: d.getFullYear() };
+        }
+        return { m: 0, y: new Date().getFullYear() };
+    };
+
     // Junta tudo numa lista única para a "Tabela de Ordens"
     const getAllItems = () => {
         const list: any[] = []; 
-        
+        const monthIndex = months.indexOf(activeTab);
         const monthMap: Record<string, string> = { 'Jan': '/01', 'Fev': '/02', 'Mar': '/03', 'Abr': '/04', 'Mai': '/05', 'Jun': '/06', 'Jul': '/07', 'Ago': '/08', 'Set': '/09', 'Out': '/10', 'Nov': '/11', 'Dez': '/12' };
-        
-        // 1. Transações Normais (Prioriza target_month)
+        const dateFilter = `${monthMap[activeTab]}/${selectedYear}`; // Filtro com Ano
+
+        // 1. Transações Normais (Prioriza target_month ou data exata)
         transactions.forEach(t => {
-            const isMatch = t.target_month === activeTab || (t.date?.includes(monthMap[activeTab]) && !t.target_month);
+            // Verifica data exata "dd/mm/aaaa"
+            const isMatch = t.date?.includes(dateFilter);
             
             if (isMatch && t.status !== 'delayed') {
                 list.push({ ...t, origin: 'transactions', type_label: 'SPOT', isFixed: false });
             }
         });
 
-        // 2. Recorrentes
+        // 2. Recorrentes (Lógica atualizada com Ano)
         recurring.forEach(r => {
-            const startMonthIndex = r.start_date ? parseInt(r.start_date.split('/')[1]) - 1 : 0;
-            const currentMonthIndex = months.indexOf(activeTab);
-            if (currentMonthIndex >= startMonthIndex && !r.skipped_months?.includes(activeTab) && r.status !== 'delayed') {
-                list.push({ ...r, origin: 'recurring', type_label: 'FIXED', isFixed: true, date: `VENC ${r.due_day}`, amount: r.value });
+            if (r.status === 'delayed') return;
+            const { m: startMonth, y: startYear } = getStartData(r);
+            
+            let show = false;
+            if (selectedYear > startYear) show = true;
+            else if (selectedYear === startYear && monthIndex >= startMonth) show = true;
+
+            if (show && !r.skipped_months?.includes(activeTab)) {
+                // Check de pagamento rígido
+                const tag = `${activeTab}/${selectedYear}`;
+                const isPaid = r.paid_months?.includes(tag);
+
+                list.push({ ...r, origin: 'recurring', type_label: 'FIXED', isFixed: true, date: `VENC ${r.due_day}`, amount: r.value, is_paid: isPaid });
             }
         });
 
-        // 3. Parcelas
+        // 3. Parcelas (Lógica atualizada com Ano e 13x)
         installments.forEach(i => {
-            const currentInst = i.current_installment + months.indexOf(activeTab);
-            if (currentInst >= 1 && currentInst <= i.installments_count && i.status !== 'delayed') {
-                list.push({ ...i, origin: 'installments', type_label: `FUTURES (${currentInst}/${i.installments_count})`, isFixed: false, date: `VENC ${i.due_day}`, amount: i.value_per_month });
+            if (i.status === 'delayed') return;
+            const { m: startMonth, y: startYear } = getStartData(i);
+
+            const monthsDiff = ((selectedYear - startYear) * 12) + (monthIndex - startMonth);
+            const currentInst = 1 + (i.current_installment || 0) + monthsDiff;
+
+            if (currentInst >= 1 && currentInst <= i.installments_count) {
+                // Check de pagamento rígido
+                const tag = `${activeTab}/${selectedYear}`;
+                const isPaid = i.paid_months?.includes(tag);
+
+                list.push({ 
+                    ...i, 
+                    origin: 'installments', 
+                    type_label: `FUTURES (${currentInst}/${i.installments_count})`, 
+                    isFixed: false, 
+                    date: `VENC ${i.due_day}`, 
+                    amount: i.value_per_month,
+                    is_paid: isPaid 
+                });
             }
         });
 
-        return list.sort((a, b) => (b.amount || 0) - (a.amount || 0)); // Ordena por valor (Maior impacto primeiro)
+        return list.sort((a, b) => (Number(b.amount) || 0) - (Number(a.amount) || 0)); // Ordena por valor
     };
 
     const items = getAllItems();
@@ -172,7 +215,9 @@ export default function TraderView({
                                 {items.length === 0 ? (
                                     <tr><td colSpan={6} className="p-8 text-center text-gray-700 italic">NO POSITIONS FOUND</td></tr>
                                 ) : items.map((item: any) => {
-                                    const isPaid = item.paid_months?.includes(activeTab) || item.is_paid;
+                                    // isPaid já vem calculado no getAllItems para Recorrentes/Parcelas
+                                    // Para transactions, usa o is_paid direto
+                                    const isPaid = item.origin === 'transactions' ? item.is_paid : item.is_paid; 
                                     const Icon = ICON_MAP[item.icon] || DollarSign;
                                     const brokerColor = BROKER_COLORS[item.payment_method] || 'text-gray-500 border-gray-700 bg-gray-900';
 
@@ -196,7 +241,7 @@ export default function TraderView({
                                             </td>
                                             <td className="p-3 text-gray-500 text-[10px]">{item.type_label}</td>
                                             <td className={`p-3 text-right font-mono font-bold ${item.type === 'income' ? 'text-emerald-400' : 'text-red-400'}`}>
-                                                {item.type === 'income' ? '+' : '-'} {fmt(item.amount)}
+                                                {item.type === 'income' ? '+' : '-'} {fmt(Number(item.amount))}
                                             </td>
                                             <td className="p-3 flex justify-center gap-2 opacity-30 group-hover:opacity-100 transition">
                                                 <button 
