@@ -553,42 +553,42 @@ export default function FinancialDashboard() {
         const dayNum = today.getDate();
         const dayStr = dayNum.toString().padStart(2, '0');
         const currentYear = today.getFullYear();
-        
-        const monthMap: Record<number, string> = { 
-            0: 'Jan', 1: 'Fev', 2: 'Mar', 3: 'Abr', 4: 'Mai', 5: 'Jun', 
-            6: 'Jul', 7: 'Ago', 8: 'Set', 9: 'Out', 10: 'Nov', 11: 'Dez' 
+
+        const monthMap: Record<number, string> = {
+            0: 'Jan', 1: 'Fev', 2: 'Mar', 3: 'Abr', 4: 'Mai', 5: 'Jun',
+            6: 'Jul', 7: 'Ago', 8: 'Set', 9: 'Out', 10: 'Nov', 11: 'Dez'
         };
         const currentMonthName = monthMap[today.getMonth()];
-        
+
         // 🔥 NOVA TAG: Agora buscamos por "Jan/2026"
         const currentPaymentTag = `${currentMonthName}/${currentYear}`;
 
         // 2. Identificar contas vencendo HOJE (Lógica Corrigida)
         const billsDueToday = [
             // Transações: Filtra pelo dia/mês E pelo ano atual
-            ...transactions.filter(t => 
-                t.type === 'expense' && 
-                !t.is_paid && 
-                t.status !== 'delayed' && 
+            ...transactions.filter(t =>
+                t.type === 'expense' &&
+                !t.is_paid &&
+                t.status !== 'delayed' &&
                 t.status !== 'standby' &&
                 t.date?.startsWith(`${dayStr}/`) &&
                 t.date?.endsWith(`/${currentYear}`)
             ),
-            
+
             // Recorrentes: Checa a nova tag de pagamento (Ex: Jan/2026)
-            ...recurring.filter(r => 
-                r.type === 'expense' && 
-                r.due_day === dayNum && 
-                r.status !== 'delayed' && 
+            ...recurring.filter(r =>
+                r.type === 'expense' &&
+                r.due_day === dayNum &&
+                r.status !== 'delayed' &&
                 r.status !== 'standby' &&
                 !r.paid_months?.includes(currentPaymentTag) && // <-- Check corrigido
                 !r.paid_months?.includes(currentMonthName)     // <-- Check legado (opcional)
             ),
-            
+
             // Parcelas: Checa a nova tag de pagamento
-            ...installments.filter(i => 
-                i.due_day === dayNum && 
-                i.status !== 'delayed' && 
+            ...installments.filter(i =>
+                i.due_day === dayNum &&
+                i.status !== 'delayed' &&
                 i.status !== 'standby' &&
                 !i.paid_months?.includes(currentPaymentTag) // <-- Check corrigido
             )
@@ -610,10 +610,10 @@ export default function FinancialDashboard() {
             .gte('created_at', startOfDayISO)
             .limit(1);
 
-        if (existingNotifs && existingNotifs.length > 0) {
-            console.log("🔕 Notificação diária já enviada. Ignorando...");
-            return;
-        }
+        // if (existingNotifs && existingNotifs.length > 0) {
+        //     console.log("🔕 Notificação diária já enviada. Ignorando...");
+        //     return;
+        // }
 
         // 4. Criação da Notificação e disparo do WhatsApp
         const messageSignature = `Você tem ${billsDueToday.length} conta(s) para pagar hoje. Não esqueça!`;
@@ -637,14 +637,18 @@ export default function FinancialDashboard() {
             fetch('/api/check-notifications', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId, bills: billsDueToday })
+                body: JSON.stringify({
+                    userId,
+                    bills: billsDueToday,
+                    forceSend: true // <-- Adicione isso para ignorar a trava da API
+                })
             })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) console.log("✅ WhatsApp enviado!");
-                else console.log("⚠️ WhatsApp ignorado:", data.reason);
-            })
-            .catch(err => console.error("❌ Erro API WhatsApp:", err));
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) console.log("✅ WhatsApp enviado!");
+                    else console.log("⚠️ WhatsApp ignorado:", data.reason);
+                })
+                .catch(err => console.error("❌ Erro API WhatsApp:", err));
         }
     };
 
@@ -962,13 +966,13 @@ export default function FinancialDashboard() {
 
     const togglePaidMonth = async (table: string, item: any) => {
         const currentPaid = item.paid_months || [];
-        
+
         // AGORA SALVAMOS: "Mar/2026" ao invés de só "Mar"
         // Isso impede que o pagamento de um ano conte para o outro
-        const monthTag = `${activeTab}/${selectedYear}`; 
+        const monthTag = `${activeTab}/${selectedYear}`;
 
         let newPaidList;
-        
+
         // Verifica se já tem a tag exata "Mar/2026"
         if (currentPaid.includes(monthTag)) {
             // Se tem, remove (desmarcar)
@@ -976,10 +980,10 @@ export default function FinancialDashboard() {
         } else {
             // Se não tem, adiciona
             newPaidList = [...currentPaid, monthTag];
-            
+
             // LIMPEZA LEGADA: Remove tags antigas sem ano (ex: "Mar") para não dar conflito
             // Isso conserta automaticamente dados velhos quando você clica
-            newPaidList = newPaidList.filter((m: string) => m !== activeTab); 
+            newPaidList = newPaidList.filter((m: string) => m !== activeTab);
         }
 
         const activeId = getActiveUserId();
@@ -995,22 +999,22 @@ export default function FinancialDashboard() {
     };
 
     const handleEdit = (item: any, mode: any) => {
-        setFormMode(mode); 
-        setEditingId(item.id); 
+        setFormMode(mode);
+        setEditingId(item.id);
         const currentReceipt = getReceiptForMonth(item, activeTab);
 
-        setFormData({ 
-            title: item.title, 
-            amount: item.amount || item.value || item.total_value || '', 
-            installments: item.installments_count || '', 
-            dueDay: item.due_day || '', 
-            category: item.category || 'Outros', 
-            targetMonth: item.target_month || activeTab, 
-            isFixedIncome: mode === 'income' && item.category === 'Salário', 
-            fixedMonthlyValue: item.fixed_monthly_value || '', 
-            receiptUrl: currentReceipt || '', 
-            icon: item.icon || '', 
-            paymentMethod: item.payment_method || 'outros' 
+        setFormData({
+            title: item.title,
+            amount: item.amount || item.value || item.total_value || '',
+            installments: item.installments_count || '',
+            dueDay: item.due_day || '',
+            category: item.category || 'Outros',
+            targetMonth: item.target_month || activeTab,
+            isFixedIncome: mode === 'income' && item.category === 'Salário',
+            fixedMonthlyValue: item.fixed_monthly_value || '',
+            receiptUrl: currentReceipt || '',
+            icon: item.icon || '',
+            paymentMethod: item.payment_method || 'outros'
         });
 
         setIsFormOpen(true);
@@ -1122,12 +1126,12 @@ export default function FinancialDashboard() {
             toast.error("Erro ao salvar no banco.");
         }
     };
-   const getMonthData = (monthName: string) => {
+    const getMonthData = (monthName: string) => {
         const monthIndex = MONTHS.indexOf(monthName);
         const monthMap: Record<string, string> = { 'Jan': '/01', 'Fev': '/02', 'Mar': '/03', 'Abr': '/04', 'Mai': '/05', 'Jun': '/06', 'Jul': '/07', 'Ago': '/08', 'Set': '/09', 'Out': '/10', 'Nov': '/11', 'Dez': '/12' };
-        
+
         const dateFilter = `${monthMap[monthName]}/${selectedYear}`;
-        
+
         // Tag de pagamento atual (ex: "Jan/2027")
         const currentPaymentTag = `${monthName}/${selectedYear}`;
 
@@ -1137,27 +1141,27 @@ export default function FinancialDashboard() {
             }
             if (item.date && item.date.includes('/')) {
                 const p = item.date.split('/'); return { d: parseInt(p[0]), m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
-            } 
+            }
             if (item.created_at) {
                 const d = new Date(item.created_at); return { d: d.getDate(), m: d.getMonth(), y: d.getFullYear() };
             }
-            return { d: 1, m: 0, y: new Date().getFullYear() }; 
+            return { d: 1, m: 0, y: new Date().getFullYear() };
         };
 
         // 1. RECORRENTES (CORREÇÃO DO BUG DE JANEIRO 2027)
         const activeRecurring = recurring.filter(r => {
             if (r.status === 'standby' || r.status === 'delayed') return false;
-            
+
             const { m: startMonth, y: startYear } = getStartData(r);
-            
+
             // CASO 1: Ano selecionado é MAIOR que o início (Ex: 2027 > 2026)
             // MOSTRA SEMPRE! Não importa se é Janeiro e a conta é de Março/26.
             if (selectedYear > startYear) return true;
-            
+
             // CASO 2: Mesmo ano (Ex: 2026 == 2026)
             // Mostra só se o mês já chegou
             if (selectedYear === startYear && monthIndex >= startMonth) return true;
-            
+
             return false;
         });
 
@@ -1213,14 +1217,14 @@ export default function FinancialDashboard() {
             if (inst.status !== 'standby' && inst.status !== 'delayed') {
                 const { m: startMonth, y: startYear } = getStartData(inst);
                 const totalMonthsDiffUntilNow = ((selectedYear - startYear) * 12) + (monthIndex - startMonth);
-                
+
                 for (let i = 0; i < totalMonthsDiffUntilNow; i++) {
                     const instNum = 1 + (inst.current_installment || 0) + i;
                     if (instNum >= 1 && instNum <= inst.installments_count) {
                         const absMonthIndex = (startMonth + i);
-                        const pYear = startYear + Math.floor(absMonthIndex/12);
+                        const pYear = startYear + Math.floor(absMonthIndex / 12);
                         const pMonthName = MONTHS[absMonthIndex % 12];
-                        
+
                         // Checa se está pago usando ANO (Ex: Mar/2026)
                         const paymentTag = `${pMonthName}/${pYear}`;
                         if (!isPaid(inst, paymentTag)) {
@@ -1238,11 +1242,11 @@ export default function FinancialDashboard() {
                 const totalMonthsSinceStart = ((selectedYear - startYear) * 12) + (monthIndex - startMonth);
 
                 for (let i = 0; i < totalMonthsSinceStart; i++) {
-                    const absMonthIndex = startMonth + i; 
+                    const absMonthIndex = startMonth + i;
                     const checkYear = startYear + Math.floor(absMonthIndex / 12);
                     const checkMonthName = MONTHS[absMonthIndex % 12];
                     const checkTag = `${checkMonthName}/${checkYear}`;
-                    
+
                     if (!isPaid(rec, checkTag) && !rec.skipped_months?.includes(checkMonthName)) {
                         accumulatedDebt += Number(rec.value);
                     }
@@ -1251,12 +1255,12 @@ export default function FinancialDashboard() {
         });
 
         const currentMonthObligations = expenseVariable + expenseFixed + installTotal;
-        
-        return { 
-            income: incomeTotal, 
-            expenseTotal: currentMonthObligations, 
+
+        return {
+            income: incomeTotal,
+            expenseTotal: currentMonthObligations,
             accumulatedDebt: accumulatedDebt,
-            balance: incomeTotal - currentMonthObligations, 
+            balance: incomeTotal - currentMonthObligations,
             delayedTotal: delayedTotal
         };
     };
@@ -1776,30 +1780,30 @@ export default function FinancialDashboard() {
 
             {/* --- RENDERIZAÇÃO DOS LAYOUTS (Sintaxe Corrigida) --- */}
 
-           {/* LAYOUTS */}
+            {/* LAYOUTS */}
             {(currentLayout === 'standard') && (
                 <StandardView
                     selectedYear={selectedYear}
-                    
+
                     // ✅ Filtro de Transações: Mantém o filtro de data (para itens avulsos)
                     transactions={transactions.filter(t => t.date && t.date.endsWith(`/${selectedYear}`))}
-                    
+
                     // ✅ Filtro de Parcelas: PASSE PURO! O StandardView já faz o cálculo matemático
-                    installments={installments} 
-                    
+                    installments={installments}
+
                     recurring={recurring}
-                    activeTab={activeTab} 
-                    months={MONTHS} 
+                    activeTab={activeTab}
+                    months={MONTHS}
                     setActiveTab={setActiveTab}
-                    currentMonthData={currentMonthData} 
+                    currentMonthData={currentMonthData}
                     previousSurplus={previousSurplus}
-                    displayBalance={displayBalance} 
+                    displayBalance={displayBalance}
                     viewingAs={viewingAs}
-                    onTogglePaid={togglePaid} 
-                    onToggleSkip={toggleSkipMonth} 
-                    onToggleDelay={toggleDelay} 
-                    onDelete={handleDelete} 
-                    onEdit={handleEdit} 
+                    onTogglePaid={togglePaid}
+                    onToggleSkip={toggleSkipMonth}
+                    onToggleDelay={toggleDelay}
+                    onDelete={handleDelete}
+                    onEdit={handleEdit}
                     onTogglePaidMonth={togglePaidMonth}
                     getReceipt={getReceiptForMonth}
                 />
@@ -1807,7 +1811,7 @@ export default function FinancialDashboard() {
             {(currentLayout === 'trader') && (
                 <TraderView
                     selectedYear={selectedYear} // <--- ADICIONE ISSO
-                    
+
                     transactions={transactions} // Sem filtro, o componente filtra
                     installments={installments}
                     recurring={recurring}
@@ -1819,13 +1823,13 @@ export default function FinancialDashboard() {
                 />
             )}
 
-           {(currentLayout === 'calendar') && (
-                <CalendarView 
-                    transactions={transactions} 
-                    installments={installments} 
-                    recurring={recurring} 
-                    activeTab={activeTab} 
-                    months={MONTHS} 
+            {(currentLayout === 'calendar') && (
+                <CalendarView
+                    transactions={transactions}
+                    installments={installments}
+                    recurring={recurring}
+                    activeTab={activeTab}
+                    months={MONTHS}
                     setActiveTab={setActiveTab}
                     selectedYear={selectedYear} // <--- OBRIGATÓRIO ADICIONAR ISSO
                 />
