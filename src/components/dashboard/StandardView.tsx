@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import {
     TrendingUp, TrendingDown, CheckCircle2, AlertCircle,
-    MoreHorizontal, Wallet, CreditCard, DollarSign,
+    Wallet, CreditCard, DollarSign,
     ShoppingCart, Home, Car, Utensils, Zap, GraduationCap,
-    HeartPulse, Plane, Gamepad2, Smartphone, Check, X, Clock,
-    FileText, Trash2, Pencil, List, CheckSquare, Square, AlertTriangle, ExternalLink,
+    HeartPulse, Plane, Gamepad2, Smartphone, Check, Clock,
+    FileText, Trash2, Pencil, List, AlertTriangle,
     ChevronDown, ChevronUp 
 } from 'lucide-react';
 
@@ -17,86 +17,16 @@ const ICON_MAP: any = {
 
 // --- ESTILOS DOS BANCOS ---
 const BANK_STYLES: any = {
-    'nubank': {
-        label: 'Nubank',
-        color: 'bg-[#820AD1]',
-        bg: 'bg-[#820AD1]/10',
-        border: 'border-[#820AD1]/30',
-        text: 'text-[#a958e8]',
-        icon: 'https://upload.wikimedia.org/wikipedia/commons/f/f7/Nubank_logo_2021.svg'
-    },
-    'inter': {
-        label: 'Inter',
-        color: 'bg-[#FF7A00]',
-        bg: 'bg-[#FF7A00]/10',
-        border: 'border-[#FF7A00]/30',
-        text: 'text-[#ff9638]',
-        icon: 'https://upload.wikimedia.org/wikipedia/commons/0/01/Inter_RGB_300_dpi.png'
-    },
-    'bb': {
-        label: 'BB',
-        color: 'bg-[#F8D117]',
-        bg: 'bg-[#F8D117]/10',
-        border: 'border-[#F8D117]/30',
-        text: 'text-[#fae064]',
-        icon: 'https://upload.wikimedia.org/wikipedia/commons/1/1a/Funda%C3%A7%C3%A3o_Banco_do_Brasil_-_logo_2.svg'
-    },
-    'itau': {
-        label: 'Itaú',
-        color: 'bg-[#EC7000]',
-        bg: 'bg-[#EC7000]/10',
-        border: 'border-[#EC7000]/30',
-        text: 'text-[#ff9233]',
-        icon: 'https://upload.wikimedia.org/wikipedia/commons/1/19/Ita%C3%BA_Unibanco_logo_2023.svg'
-    },
-    'santander': {
-        label: 'Santander',
-        color: 'bg-[#CC0000]',
-        bg: 'bg-[#CC0000]/10',
-        border: 'border-[#CC0000]/30',
-        text: 'text-[#ff4d4d]',
-        icon: 'https://upload.wikimedia.org/wikipedia/commons/b/b8/Banco_Santander_Logotipo.svg'
-    },
-    'caixa': {
-        label: 'Caixa',
-        color: 'bg-[#005CA9]',
-        bg: 'bg-[#005CA9]/10',
-        border: 'border-[#005CA9]/30',
-        text: 'text-[#4ea4eb]',
-        icon: 'https://upload.wikimedia.org/wikipedia/commons/3/3c/Caixa_Econ%C3%B4mica_Federal_logo_1997.svg'
-    },
-    'bradesco': {
-        label: 'Bradesco',
-        color: 'bg-[#CC092F]',
-        bg: 'bg-[#CC092F]/10',
-        border: 'border-[#CC092F]/30',
-        text: 'text-[#ff4d6f]',
-        icon: 'https://upload.wikimedia.org/wikipedia/commons/c/c3/Banco_Bradesco_logo.svg'
-    },
-    'c6': {
-        label: 'C6 Bank',
-        color: 'bg-[#222]',
-        bg: 'bg-gray-800',
-        border: 'border-gray-600',
-        text: 'text-gray-300',
-        icon: 'https://upload.wikimedia.org/wikipedia/commons/7/77/Logo_C6_Bank.svg'
-    },
-    'money': {
-        label: 'Dinheiro',
-        color: 'bg-emerald-600',
-        bg: 'bg-emerald-900/10',
-        border: 'border-emerald-500/30',
-        text: 'text-emerald-400',
-        icon: null 
-    },
-    'outros': {
-        label: 'Outros',
-        color: 'bg-gray-700',
-        bg: 'bg-gray-800/50',
-        border: 'border-gray-700',
-        text: 'text-gray-400',
-        icon: null
-    },
+    'nubank': { label: 'Nubank', color: 'bg-[#820AD1]', bg: 'bg-[#820AD1]/10', border: 'border-[#820AD1]/30', text: 'text-[#a958e8]', icon: 'https://upload.wikimedia.org/wikipedia/commons/f/f7/Nubank_logo_2021.svg' },
+    'inter': { label: 'Inter', color: 'bg-[#FF7A00]', bg: 'bg-[#FF7A00]/10', border: 'border-[#FF7A00]/30', text: 'text-[#ff9638]', icon: 'https://upload.wikimedia.org/wikipedia/commons/0/01/Inter_RGB_300_dpi.png' },
+    'bb': { label: 'BB', color: 'bg-[#F8D117]', bg: 'bg-[#F8D117]/10', border: 'border-[#F8D117]/30', text: 'text-[#fae064]', icon: 'https://upload.wikimedia.org/wikipedia/commons/1/1a/Funda%C3%A7%C3%A3o_Banco_do_Brasil_-_logo_2.svg' },
+    'itau': { label: 'Itaú', color: 'bg-[#EC7000]', bg: 'bg-[#EC7000]/10', border: 'border-[#EC7000]/30', text: 'text-[#ff9233]', icon: 'https://upload.wikimedia.org/wikipedia/commons/1/19/Ita%C3%BA_Unibanco_logo_2023.svg' },
+    'santander': { label: 'Santander', color: 'bg-[#CC0000]', bg: 'bg-[#CC0000]/10', border: 'border-[#CC0000]/30', text: 'text-[#ff4d4d]', icon: 'https://upload.wikimedia.org/wikipedia/commons/b/b8/Banco_Santander_Logotipo.svg' },
+    'caixa': { label: 'Caixa', color: 'bg-[#005CA9]', bg: 'bg-[#005CA9]/10', border: 'border-[#005CA9]/30', text: 'text-[#4ea4eb]', icon: 'https://upload.wikimedia.org/wikipedia/commons/3/3c/Caixa_Econ%C3%B4mica_Federal_logo_1997.svg' },
+    'bradesco': { label: 'Bradesco', color: 'bg-[#CC092F]', bg: 'bg-[#CC092F]/10', border: 'border-[#CC092F]/30', text: 'text-[#ff4d6f]', icon: 'https://upload.wikimedia.org/wikipedia/commons/c/c3/Banco_Bradesco_logo.svg' },
+    'c6': { label: 'C6 Bank', color: 'bg-[#222]', bg: 'bg-gray-800', border: 'border-gray-600', text: 'text-gray-300', icon: 'https://upload.wikimedia.org/wikipedia/commons/7/77/Logo_C6_Bank.svg' },
+    'money': { label: 'Dinheiro', color: 'bg-emerald-600', bg: 'bg-emerald-900/10', border: 'border-emerald-500/30', text: 'text-emerald-400', icon: null },
+    'outros': { label: 'Outros', color: 'bg-gray-700', bg: 'bg-gray-800/50', border: 'border-gray-700', text: 'text-gray-400', icon: null },
 };
 
 // --- COMPONENTE CARD ---
@@ -153,6 +83,7 @@ interface StandardViewProps {
     previousSurplus: number;
     displayBalance: number;
     viewingAs: any;
+    selectedYear: number;
     onTogglePaid: (table: string, id: number, currentStatus: boolean) => void;
     onToggleSkip: (item: any) => void;
     onToggleDelay: (table: string, item: any) => void;
@@ -163,54 +94,79 @@ interface StandardViewProps {
 }
 
 export default function StandardView({
-    transactions, installments, recurring, activeTab, months, setActiveTab,
-    currentMonthData, previousSurplus, displayBalance, viewingAs,
+    transactions, installments,  recurring, activeTab, months, setActiveTab,
+    currentMonthData, previousSurplus, displayBalance, viewingAs, selectedYear,
     onTogglePaid, onToggleSkip, onToggleDelay, onDelete, onEdit, onTogglePaidMonth, getReceipt
 }: StandardViewProps) {
 
-    // Estado para controlar quais bancos estão abertos (Accordion)
     const [openBanks, setOpenBanks] = useState<string[]>([]);
+    const toggleBank = (bankKey: string) => openBanks.includes(bankKey) ? setOpenBanks(openBanks.filter(k => k !== bankKey)) : setOpenBanks([...openBanks, bankKey]);
 
-    const toggleBank = (bankKey: string) => {
-        if (openBanks.includes(bankKey)) {
-            setOpenBanks(openBanks.filter(key => key !== bankKey));
-        } else {
-            setOpenBanks([...openBanks, bankKey]);
-        }
-    };
-
-    // --- Lógica de Filtros ---
     const monthIndex = months.indexOf(activeTab);
     const monthMap: Record<string, string> = { 'Jan': '/01', 'Fev': '/02', 'Mar': '/03', 'Abr': '/04', 'Mai': '/05', 'Jun': '/06', 'Jul': '/07', 'Ago': '/08', 'Set': '/09', 'Out': '/10', 'Nov': '/11', 'Dez': '/12' };
-    const dateFilter = monthMap[activeTab];
+    const dateFilter = `${monthMap[activeTab]}/${selectedYear}`; 
 
-    const monthTransactions = transactions.filter(t => t.date?.includes(dateFilter) && t.status !== 'delayed');
+    // Helper Unificado de Datas (Exatamente igual ao do page.tsx)
+    const getStartData = (item: any) => {
+        if (item.start_date && item.start_date.includes('/')) {
+            const p = item.start_date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+        }
+        if (item.date && item.date.includes('/')) {
+            const p = item.date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+        }
+        if (item.created_at) {
+            const d = new Date(item.created_at); return { m: d.getMonth(), y: d.getFullYear() };
+        }
+        return { m: 0, y: new Date().getFullYear() };
+    };
 
+    // --- FILTRO TRANSAÇÕES ---
+    const monthTransactions = transactions.filter(t => t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby');
+
+    // --- FILTRO RECORRENTES (Salário/Fixas) ---
     const activeRecurring = recurring.filter(r => {
-        if (r.status === 'delayed') return false;
-        if (!r.start_date) return true;
-        const startMonthIndex = parseInt(r.start_date.split('/')[1]) - 1;
-        return monthIndex >= startMonthIndex;
+        if (r.status === 'delayed' || r.status === 'standby') return false;
+        
+        const { m: startM, y: startY } = getStartData(r);
+
+        if (selectedYear > startY) return true;
+        if (selectedYear === startY && monthIndex >= startM) return true;
+        return false;
     });
 
+    // --- FILTRO PARCELAS (Lógica Corrigida) ---
     const groupedInstallments = installments.reduce((acc: any, curr: any) => {
-        if (curr.status === 'delayed') return acc;
-        const offset = monthIndex;
-        const actualInstallment = curr.current_installment + offset;
+        if (curr.status === 'delayed' || curr.status === 'standby') return acc;
+        
+        // Usa o MESMO helper para garantir consistência
+        const { m: startM, y: startY } = getStartData(curr);
+
+        // Cálculo de Ano: 12 meses de diferença para cada ano
+        const monthsDiff = ((selectedYear - startY) * 12) + (monthIndex - startM);
+        const actualInstallment = 1 + (curr.current_installment || 0) + monthsDiff;
+
+        // Filtro de exibição
         if (actualInstallment < 1 || actualInstallment > curr.installments_count) return acc;
+
         const bank = curr.payment_method || 'outros';
         if (!acc[bank]) acc[bank] = { items: [], total: 0 };
+        
         acc[bank].items.push({ ...curr, actualInstallment });
-        acc[bank].total += (curr.value_per_month || 0);
+        
+        // 🔥 CORREÇÃO: Força conversão para Number para evitar erro de string
+        acc[bank].total += Number(curr.value_per_month || 0);
         return acc;
     }, {});
+    
     const sortedBanks = Object.keys(groupedInstallments).sort((a, b) => groupedInstallments[b].total - groupedInstallments[a].total);
 
+    // --- RENDER STANDBY ---
     const renderDelayed = () => {
-        const delayedTrans = transactions.filter(t => t.status === 'delayed').map(t => ({ ...t, _source: 'trans', _amount: t.amount }));
-        const delayedInst = installments.filter(i => i.status === 'delayed').map(i => ({ ...i, _source: 'inst', _amount: i.value_per_month }));
-        const delayedRecur = recurring.filter(r => r.status === 'delayed').map(r => ({ ...r, _source: 'recur', _amount: r.value }));
-        const delayedItems = [...delayedTrans, ...delayedInst, ...delayedRecur];
+        const delayedItems = [
+            ...transactions.filter(t => t.status === 'delayed' || t.status === 'standby').map(t => ({ ...t, _source: 'trans', _amount: Number(t.amount) })),
+            ...installments.filter(i => i.status === 'delayed' || i.status === 'standby').map(i => ({ ...i, _source: 'inst', _amount: Number(i.value_per_month) })),
+            ...recurring.filter(r => r.status === 'delayed' || r.status === 'standby').map(r => ({ ...r, _source: 'recur', _amount: Number(r.value) }))
+        ];
 
         if (delayedItems.length === 0) return null;
 
@@ -260,8 +216,7 @@ export default function StandardView({
 
             {/* --- LAYOUT COMPACTO 3 COLUNAS --- */}
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
-
-                {/* COLUNA 1: EXTRATO (COM ROLAGEM) */}
+                {/* COLUNA 1: EXTRATO */}
                 <div className="space-y-6">
                     <div className="flex items-center justify-between">
                         <h3 className="text-xl font-bold text-white flex items-center gap-2"><div className="w-1 h-6 bg-cyan-500 rounded-full"></div> Extrato do Mês</h3>
@@ -292,7 +247,7 @@ export default function StandardView({
                                                 </div>
                                                 <div className="text-right">
                                                     <p className={`font-mono font-bold text-sm ${item.type === 'income' ? 'text-emerald-400' : 'text-gray-300'}`}>
-                                                        {item.type === 'income' ? '+' : '-'} R$ {item.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                        {item.type === 'income' ? '+' : '-'} R$ {Number(item.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                                     </p>
                                                     <div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">                                                        <button onClick={() => onToggleDelay('transactions', item)} title="Congelar" className="text-gray-500 hover:text-orange-400"><Clock size={14} /></button>
                                                         <button onClick={() => onEdit(item, item.type)} className="text-gray-500 hover:text-cyan-400"><Pencil size={14} /></button>
@@ -309,7 +264,7 @@ export default function StandardView({
                     {renderDelayed()}
                 </div>
 
-                {/* COLUNA 2: BANCOS (COM ACCORDION / SANFONA) */}
+                {/* COLUNA 2: BANCOS */}
                 <div className="space-y-6">
                     <div className="flex items-center justify-between">
                         <h3 className="text-xl font-bold text-white flex items-center gap-2"><div className="w-1 h-6 bg-purple-500 rounded-full"></div> Cartões & Faturas</h3>
@@ -329,27 +284,14 @@ export default function StandardView({
 
                                 return (
                                     <div key={bankKey} className={`rounded-2xl border overflow-hidden transition-all duration-300 ${style.bg} ${style.border} ${isOpen ? 'shadow-lg shadow-black/40' : 'opacity-90 hover:opacity-100'}`}>
-                                        {/* CABEÇALHO DO BANCO */}
-                                        <div
-                                            onClick={() => toggleBank(bankKey)}
-                                            className="p-4 flex justify-between items-center cursor-pointer select-none hover:bg-white/5 active:bg-white/10 transition"
-                                        >
+                                        <div onClick={() => toggleBank(bankKey)} className="p-4 flex justify-between items-center cursor-pointer select-none hover:bg-white/5 active:bg-white/10 transition">
                                             <div className="flex items-center gap-3">
-                                                {style.icon ? (
-                                                    <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center p-1.5 shadow-sm">
-                                                        <img src={style.icon} className="w-full h-full object-contain" style={{ filter: bankKey === 'nubank' ? 'none' : '' }} />
-                                                    </div>
-                                                ) : (
-                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center bg-black/20 ${style.text}`}><CreditCard size={16} /></div>
-                                                )}
+                                                {style.icon ? <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center p-1.5 shadow-sm"><img src={style.icon} className="w-full h-full object-contain" style={{ filter: bankKey === 'nubank' ? 'none' : '' }} /></div> : <div className={`w-8 h-8 rounded-full flex items-center justify-center bg-black/20 ${style.text}`}><CreditCard size={16} /></div>}
                                                 <div>
                                                     <h4 className={`font-bold text-sm ${style.text}`}>{style.label}</h4>
-                                                    <p className="text-[10px] text-gray-400/80 uppercase tracking-wider font-bold">
-                                                        {isOpen ? `Fatura de ${activeTab}` : `${group.items.length} compras`}
-                                                    </p>
+                                                    <p className="text-[10px] text-gray-400/80 uppercase tracking-wider font-bold">{isOpen ? `Fatura de ${activeTab}` : `${group.items.length} compras`}</p>
                                                 </div>
                                             </div>
-
                                             <div className="text-right flex items-center gap-3">
                                                 <div>
                                                     <p className="text-[10px] text-gray-400">Total da Fatura</p>
@@ -358,12 +300,11 @@ export default function StandardView({
                                                 {isOpen ? <ChevronUp size={18} className="text-gray-500" /> : <ChevronDown size={18} className="text-gray-500" />}
                                             </div>
                                         </div>
-
-                                        {/* LISTA DE ITENS */}
                                         {isOpen && (
                                             <div className="divide-y divide-gray-700/20 bg-black/20 animate-in slide-in-from-top-2 duration-200">
                                                 {group.items.map((item: any) => {
-                                                    const isPaid = item.paid_months?.includes(activeTab);
+                                                    const tag = `${activeTab}/${selectedYear}`;
+                                                    const isPaid = item.paid_months?.includes(tag);
                                                     const Icon = item.icon && ICON_MAP[item.icon] ? ICON_MAP[item.icon] : ShoppingCart;
 
                                                     return (
@@ -374,26 +315,15 @@ export default function StandardView({
                                                                 </div>
                                                                 <div className="overflow-hidden">
                                                                     <p className={`text-sm font-medium truncate max-w-[140px] ${isPaid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
-                                                                    
-                                                                    {/* 🚀 AQUI ESTÁ A ALTERAÇÃO: DATA ADICIONADA */}
-                                                                    <p className="text-[10px] text-gray-500 flex items-center gap-1">
-                                                                        <Icon size={10} /> 
-                                                                        <span>{item.actualInstallment}/{item.installments_count}</span>
-                                                                        <span className="text-gray-600 mx-0.5">•</span>
-                                                                        <span className="text-gray-400">{item.due_day} {activeTab}</span>
-                                                                    </p>
+                                                                    <p className="text-[10px] text-gray-500 flex items-center gap-1"><Icon size={10} /> <span>{item.actualInstallment}/{item.installments_count}</span> <span className="text-gray-600 mx-0.5">•</span> <span className="text-gray-400">{item.due_day} {activeTab}</span></p>
                                                                 </div>
                                                             </div>
                                                             <div className="text-right">
-                                                                <p className={`font-mono text-sm font-medium ${isPaid ? 'text-gray-600' : 'text-gray-300'}`}>
-                                                                    R$ {item.value_per_month.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                                                </p>
+                                                                <p className={`font-mono text-sm font-medium ${isPaid ? 'text-gray-600' : 'text-gray-300'}`}>R$ {Number(item.value_per_month).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                                                                 <div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">                                                                    <button onClick={() => onToggleDelay('installments', item)} className="text-gray-500 hover:text-orange-400" title="Stand-by"><Clock size={12} /></button>
                                                                     <button onClick={() => onEdit(item, 'installment')} className="text-gray-500 hover:text-cyan-400" title="Editar"><Pencil size={12} /></button>
                                                                     <button onClick={() => onDelete('installments', item.id)} className="text-gray-500 hover:text-red-400" title="Excluir"><Trash2 size={12} /></button>
-                                                                    {getReceipt(item, activeTab) && (
-                                                                        <a href={getReceipt(item, activeTab)} target="_blank" className="text-emerald-500 hover:text-emerald-300" title="Ver Recibo"><FileText size={12} /></a>
-                                                                    )}
+                                                                    {getReceipt(item, activeTab) && (<a href={getReceipt(item, activeTab)} target="_blank" className="text-emerald-500 hover:text-emerald-300" title="Ver Recibo"><FileText size={12} /></a>)}
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -408,7 +338,7 @@ export default function StandardView({
                     </div>
                 </div>
 
-                {/* COLUNA 3: RECORRENTES (COM ROLAGEM) */}
+                {/* COLUNA 3: RECORRENTES */}
                 <div className="space-y-6">
                     <div className="flex items-center justify-between">
                         <h3 className="text-xl font-bold text-white flex items-center gap-2"><div className="w-1 h-6 bg-emerald-500 rounded-full"></div> Recorrentes</h3>
@@ -416,7 +346,6 @@ export default function StandardView({
 
                     <div className="bg-[#0f0f10] border border-gray-800/50 rounded-3xl overflow-hidden max-h-[600px] flex flex-col">
                         <div className="overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent">
-                            {/* 1. RECEITAS FIXAS */}
                             <div className="bg-emerald-900/10 border-b border-emerald-500/20 p-3">
                                 <p className="text-[10px] uppercase font-bold text-emerald-500 tracking-wider mb-2 ml-1">Renda Fixa</p>
                                 {activeRecurring.filter(r => r.type === 'income').length === 0 ? (
@@ -430,21 +359,21 @@ export default function StandardView({
                                                     <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center"><DollarSign size={14} /></div>
                                                     <span className="text-sm font-bold text-gray-200">{item.title}</span>
                                                 </div>
-                                                <span className="text-emerald-400 font-mono font-bold text-sm">R$ {item.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                                <span className="text-emerald-400 font-mono font-bold text-sm">R$ {Number(item.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                                             </div>
                                         )
                                     })
                                 )}
                             </div>
 
-                            {/* 2. DESPESAS FIXAS */}
                             <div className="p-2">
                                 <p className="text-[10px] uppercase font-bold text-gray-500 tracking-wider mb-2 mt-2 ml-2">Contas a Pagar</p>
                                 {activeRecurring.filter(r => r.type === 'expense').length === 0 ? (
                                     <div className="text-center py-8 text-gray-600 text-sm">Tudo limpo!</div>
                                 ) : (
                                     activeRecurring.filter(r => r.type === 'expense').map(item => {
-                                        const isPaid = item.paid_months?.includes(activeTab);
+                                        const tag = `${activeTab}/${selectedYear}`;
+                                        const isPaid = item.paid_months?.includes(tag);
                                         const isSkipped = item.skipped_months?.includes(activeTab);
                                         const Icon = item.icon && ICON_MAP[item.icon] ? ICON_MAP[item.icon] : Home;
 
@@ -459,9 +388,8 @@ export default function StandardView({
                                                         <p className="text-[10px] text-gray-500 flex items-center gap-1">Vence dia {item.due_day} {isSkipped && <span className="text-orange-500 font-bold ml-1">(Pular)</span>}</p>
                                                     </div>
                                                 </div>
-
                                                 <div className="text-right">
-                                                    <p className={`font-mono font-bold text-sm ${isPaid ? 'text-gray-600' : 'text-gray-300'}`}>R$ {item.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                                    <p className={`font-mono font-bold text-sm ${isPaid ? 'text-gray-600' : 'text-gray-300'}`}>R$ {Number(item.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                                                     <div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">                                                        <button onClick={() => onToggleDelay('recurring', item)} title="Stand-by" className="text-gray-500 hover:text-orange-400"><Clock size={12} /></button>
                                                         <button onClick={() => onEdit(item, 'fixed_expense')} className="text-gray-500 hover:text-cyan-400"><Pencil size={12} /></button>
                                                         <button onClick={() => onDelete('recurring', item.id)} className="text-gray-500 hover:text-red-400"><Trash2 size={12} /></button>
@@ -475,7 +403,6 @@ export default function StandardView({
                         </div>
                     </div>
                 </div>
-
             </div>
         </div>
     );

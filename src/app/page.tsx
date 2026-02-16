@@ -7,7 +7,7 @@ import {
     LogOut, User, Eye, EyeOff, CheckSquare, Square, ArrowRight, Crown, ShieldCheck,
     Mail, Loader2, Lock, BarChart3, Search, Target, Upload, FileText, ExternalLink,
     Users, ChevronDown, UserPlus, Briefcase, HelpCircle, Star, Zap, Shield, Palette,
-    Layout, MousePointerClick, FolderPlus, Layers, FileSpreadsheet, Wallet, Landmark, Rocket, Paperclip,
+    Layout, MousePointerClick, FolderPlus, Layers, FileSpreadsheet, Wallet, Landmark, Rocket, Paperclip, ChevronRight, ChevronLeft,
 
     // NOVOS ÍCONES PARA O SELETOR 👇
     ShoppingCart, Home, Car, Utensils, GraduationCap, HeartPulse, Plane, Gamepad2, Smartphone
@@ -74,6 +74,7 @@ export default function FinancialDashboard() {
 
     // --- ESTADOS GLOBAIS ---
     const [activeTab, setActiveTab] = useState(currentSystemMonthName);
+    const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
     const [currentLayout, setCurrentLayout] = useState<'standard' | 'trader' | 'zen' | 'calendar' | 'timeline' | 'bento'>('standard');
     const [currentTheme, setCurrentTheme] = useState('default');
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -653,20 +654,20 @@ export default function FinancialDashboard() {
     }, [transactions, installments, recurring, user]);
 
     // 👇 ADICIONE ESTE BLOCO AQUI 👇
-  
-  // 1. Cria a referência para o final do chat
-  const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // 2. Faz o scroll automático sempre que chega mensagem nova
-  useEffect(() => {
-    if (isAIOpen) {
-      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [chatHistory, isAIOpen]); // Roda quando o histórico ou o modal mudam
+    // 1. Cria a referência para o final do chat
+    const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // 👆 FIM DO BLOCO 👆
+    // 2. Faz o scroll automático sempre que chega mensagem nova
+    useEffect(() => {
+        if (isAIOpen) {
+            chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }
+    }, [chatHistory, isAIOpen]); // Roda quando o histórico ou o modal mudam
 
-  // ... resto do código ...
+    // 👆 FIM DO BLOCO 👆
+
+    // ... resto do código ...
 
     const loadData = async (userId: string, workspaceId: string) => {
         if (!userId || !workspaceId) return;
@@ -686,17 +687,71 @@ export default function FinancialDashboard() {
     };
 
     const checkForPastDueItems = () => {
+        // 🔒 TRAVA DE SESSÃO: Se já mostrou nesta sessão, não mostra de novo
+        if (sessionStorage.getItem('hasShownRollover')) return;
+
+        const now = new Date();
+        const currentRealMonth = now.getMonth();
+        const currentRealYear = now.getFullYear();
+        const todayDay = now.getDate();
+
         const overdueItems: any[] = [];
-        const currentIdx = MONTHS.indexOf(currentSystemMonthName);
-        for (let i = 0; i < currentIdx; i++) {
-            const pastMonthName = MONTHS[i];
-            const pastMonthMap: Record<string, string> = { 'Jan': '/01', 'Fev': '/02', 'Mar': '/03', 'Abr': '/04', 'Mai': '/05', 'Jun': '/06', 'Jul': '/07', 'Ago': '/08', 'Set': '/09', 'Out': '/10', 'Nov': '/11', 'Dez': '/12' };
-            const dateFilter = pastMonthMap[pastMonthName];
-            transactions.forEach(t => { if (t.type === 'expense' && t.date?.includes(dateFilter) && !t.is_paid && t.status !== 'delayed') overdueItems.push({ ...t, origin: 'transactions', month: pastMonthName }); });
-            installments.forEach(inst => { const pastInstNum = inst.current_installment + i; if (pastInstNum >= 1 && pastInstNum <= inst.installments_count) { if (!inst.paid_months?.includes(pastMonthName) && inst.status !== 'delayed') overdueItems.push({ ...inst, origin: 'installments', month: pastMonthName, amount: inst.value_per_month }); } });
-            recurring.forEach(rec => { const startMonthIndex = rec.start_date ? parseInt(rec.start_date.split('/')[1]) - 1 : 0; if (i >= startMonthIndex && rec.type === 'expense' && !rec.paid_months?.includes(pastMonthName) && !rec.skipped_months?.includes(pastMonthName) && rec.status !== 'delayed') { overdueItems.push({ ...rec, origin: 'recurring', month: pastMonthName, amount: rec.value }); } });
+
+        // Helper de Data
+        const getStartData = (item: any) => {
+            if (item.date && item.date.includes('/')) {
+                const p = item.date.split('/');
+                return { d: parseInt(p[0]), m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+            } else if (item.created_at) {
+                const d = new Date(item.created_at);
+                return { d: d.getDate(), m: d.getMonth(), y: d.getFullYear() };
+            }
+            return { d: 1, m: 0, y: currentRealYear };
+        };
+
+        // 1. Transações
+        transactions.forEach(t => {
+            if (t.type === 'expense' && !t.is_paid && t.status !== 'delayed' && t.status !== 'standby') {
+                const { m, y } = getStartData(t);
+                if (y < currentRealYear || (y === currentRealYear && m < currentRealMonth)) {
+                    overdueItems.push({ ...t, origin: 'transactions', month: `${MONTHS[m]}/${y}` });
+                }
+            }
+        });
+
+        // 2. Parcelas
+        installments.forEach(inst => {
+            if (inst.status !== 'delayed' && inst.status !== 'standby') {
+                const { d: startDay, m: startMonth, y: startYear } = getStartData(inst);
+                const monthsDiff = ((currentRealYear - startYear) * 12) + (currentRealMonth - startMonth);
+
+                for (let i = 0; i <= monthsDiff; i++) {
+                    const checkInstNumber = 1 + (inst.current_installment || 0) + i;
+                    if (checkInstNumber >= 1 && checkInstNumber <= inst.installments_count) {
+                        const absMonthIndex = startMonth + i;
+                        const checkYear = startYear + Math.floor(absMonthIndex / 12);
+                        const checkMonthIndex = absMonthIndex % 12;
+
+                        if (checkYear > currentRealYear || (checkYear === currentRealYear && checkMonthIndex > currentRealMonth)) continue;
+                        if (checkYear === currentRealYear && checkMonthIndex === currentRealMonth && todayDay < inst.due_day) continue;
+
+                        const checkMonthName = MONTHS[checkMonthIndex];
+                        if (!inst.paid_months?.includes(checkMonthName)) {
+                            const alreadyAdded = overdueItems.find(o => o.id === inst.id && o.origin === 'installments');
+                            if (!alreadyAdded) overdueItems.push({ ...inst, origin: 'installments', month: `${checkMonthName}/${checkYear}`, amount: inst.value_per_month });
+                        }
+                    }
+                }
+            }
+        });
+
+        if (overdueItems.length > 0) {
+            setPastDueItems(overdueItems);
+            setTimeout(() => {
+                setIsRolloverModalOpen(true);
+                sessionStorage.setItem('hasShownRollover', 'true'); // ✅ Marca como visto
+            }, 1500);
         }
-        if (overdueItems.length > 0) { setPastDueItems(overdueItems); setTimeout(() => setIsRolloverModalOpen(true), 1000); }
     };
 
     const handleAuth = async () => {
@@ -806,10 +861,23 @@ export default function FinancialDashboard() {
 
         for (const item of pastDueItems) {
             if (item.origin === 'transactions') {
+                // Transação simples: marca is_paid = true
                 await supabase.from('transactions').update({ is_paid: true }).eq('id', item.id);
-            } else if (item.origin === 'installments' || item.origin === 'recurring') {
-                // Adiciona o mês pendente na lista de pagos
-                await togglePaidMonth(item.origin, item);
+            }
+            else if (item.origin === 'installments' || item.origin === 'recurring') {
+                // Parcelas/Fixas: Adiciona o nome do mês ao array de pagos
+                // item.month vem no formato "Fev" ou "Fev/2026" do modal
+                const monthName = item.month.includes('/') ? item.month.split('/')[0] : item.month;
+
+                // Busca o array atual para não perder dados
+                const currentPaid = item.paid_months || [];
+
+                // Só adiciona se já não estiver lá
+                if (!currentPaid.includes(monthName)) {
+                    const newPaidList = [...currentPaid, monthName];
+                    const table = item.origin === 'installments' ? 'installments' : 'recurring';
+                    await supabase.from(table).update({ paid_months: newPaidList }).eq('id', item.id);
+                }
             }
         }
 
@@ -826,14 +894,33 @@ export default function FinancialDashboard() {
         return acc + val;
     }, 0);
 
-    const toggleDelay = async (table: string, item: any) => {
-        const newStatus = item.status === 'delayed' ? 'active' : 'delayed'; const activeId = getActiveUserId();
-        if (user && activeId) { await supabase.from(table).update({ status: newStatus }).eq('id', item.id); loadData(activeId, currentWorkspace?.id); }
-        else {
-            const updateStatus = (list: any[]) => list.map(i => i.id === item.id ? { ...i, status: newStatus } : i);
-            if (table === 'transactions') saveDataLocal(updateStatus(transactions), installments, recurring); else if (table === 'installments') saveDataLocal(transactions, updateStatus(installments), recurring); else saveDataLocal(transactions, installments, updateStatus(recurring));
+    const toggleDelay = async (origin: string, item: any) => {
+        // Mapeia a "origin" do modal para o nome real da tabela no banco
+        const tableMap: Record<string, string> = {
+            'transactions': 'transactions',
+            'installments': 'installments',
+            'recurring': 'recurring'
+        };
+        const table = tableMap[origin] || origin;
+
+        // Se já está delayed ou standby, volta para active. Senão, vira standby.
+        const newStatus = (item.status === 'delayed' || item.status === 'standby') ? 'active' : 'standby';
+        const activeId = getActiveUserId();
+
+        if (user && activeId) {
+            await supabase.from(table).update({ status: newStatus }).eq('id', item.id);
+            // Recarrega os dados para atualizar o Card de Standby e os Totais
+            loadData(activeId, currentWorkspace?.id);
         }
-        if (isRolloverModalOpen) setPastDueItems(prev => prev.filter(i => i.id !== item.id || i.origin !== table));
+
+        // Remove visualmente do Modal de Pendências imediatamente
+        if (isRolloverModalOpen) {
+            setPastDueItems(prev => prev.filter(i => i.id !== item.id || i.origin !== origin));
+            // Se acabar os itens, fecha o modal
+            if (pastDueItems.length <= 1) setIsRolloverModalOpen(false);
+        }
+
+        toast.success(newStatus === 'active' ? "Reativado!" : "Movido para Stand-by (Não soma no total)");
     };
 
     const toggleSkipMonth = async (item: any) => {
@@ -847,12 +934,36 @@ export default function FinancialDashboard() {
     };
 
     const togglePaidMonth = async (table: string, item: any) => {
-        const currentPaid = item.paid_months || []; const isPaid = currentPaid.includes(activeTab); let newPaid = isPaid ? currentPaid.filter((m: string) => m !== activeTab) : [...currentPaid, activeTab];
+        const currentPaid = item.paid_months || [];
+        
+        // AGORA SALVAMOS: "Mar/2026" ao invés de só "Mar"
+        // Isso impede que o pagamento de um ano conte para o outro
+        const monthTag = `${activeTab}/${selectedYear}`; 
+
+        let newPaidList;
+        
+        // Verifica se já tem a tag exata "Mar/2026"
+        if (currentPaid.includes(monthTag)) {
+            // Se tem, remove (desmarcar)
+            newPaidList = currentPaid.filter((m: string) => m !== monthTag);
+        } else {
+            // Se não tem, adiciona
+            newPaidList = [...currentPaid, monthTag];
+            
+            // LIMPEZA LEGADA: Remove tags antigas sem ano (ex: "Mar") para não dar conflito
+            // Isso conserta automaticamente dados velhos quando você clica
+            newPaidList = newPaidList.filter((m: string) => m !== activeTab); 
+        }
+
         const activeId = getActiveUserId();
-        if (user && activeId) { await supabase.from(table).update({ paid_months: newPaid }).eq('id', item.id); loadData(activeId, currentWorkspace?.id); }
-        else {
-            const updateList = (list: any[]) => list.map(i => i.id === item.id ? { ...i, paid_months: newPaid } : i);
-            if (table === 'installments') saveDataLocal(transactions, updateList(installments), recurring); if (table === 'recurring') saveDataLocal(transactions, installments, updateList(recurring));
+        if (user && activeId) {
+            await supabase.from(table).update({ paid_months: newPaidList }).eq('id', item.id);
+            loadData(activeId, currentWorkspace?.id);
+        } else {
+            // Modo offline (se estiver usando)
+            const updateList = (list: any[]) => list.map(i => i.id === item.id ? { ...i, paid_months: newPaidList } : i);
+            if (table === 'installments') saveDataLocal(transactions, updateList(installments), recurring);
+            else saveDataLocal(transactions, installments, updateList(recurring));
         }
     };
 
@@ -885,6 +996,7 @@ export default function FinancialDashboard() {
     const handleRemoveReceipt = (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); if (confirm("Tem certeza?")) setFormData({ ...formData, receiptUrl: '' }); };
 
     const handleSubmit = async () => {
+        // Validações
         const totalItems = transactions.length + installments.length + recurring.length;
         const FREE_LIMIT = 50;
         if (userPlan === 'free' && totalItems >= FREE_LIMIT && !editingId) {
@@ -901,11 +1013,21 @@ export default function FinancialDashboard() {
 
         const amountVal = formData.amount ? parseFloat(formData.amount.toString()) : 0;
         const fixedInstallmentVal = formData.fixedMonthlyValue ? parseFloat(formData.fixedMonthlyValue.toString()) : null;
-        const monthMap: Record<string, string> = { 'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04', 'Mai': '05', 'Jun': '06', 'Jul': '/07', 'Ago': '08', 'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12' };
-        // ✅ COMO DEVE FICAR (Pega o dia digitado ou usa 01 se vazio)
+
+        // 1. MAPA CORRIGIDO (Sem a barra no /07)
+        const monthMapNums: Record<string, string> = {
+            'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04',
+            'Mai': '05', 'Jun': '06', 'Jul': '07', 'Ago': '08',
+            'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12'
+        };
+
         const dayValue = formData.dueDay ? formData.dueDay.toString().padStart(2, '0') : '01';
-        const dateString = `${dayValue}/${monthMap[formData.targetMonth]}/2026`;
+
+        // 2. CORREÇÃO: Usa o ano selecionado (não 2026 fixo)
+        const dateString = `${dayValue}/${monthMapNums[formData.targetMonth]}/${selectedYear}`;
+
         const context = currentWorkspace?.id;
+        const activeId = getActiveUserId();
 
         let finalReceiptData: string | null = formData.receiptUrl;
         if ((formMode === 'installment' || formMode === 'fixed_expense') && editingId) {
@@ -920,14 +1042,12 @@ export default function FinancialDashboard() {
             finalReceiptData = formData.receiptUrl ? JSON.stringify({ [formData.targetMonth]: formData.receiptUrl }) : null;
         }
 
-        const activeId = getActiveUserId();
-
         const baseData = {
             user_id: activeId,
             receipt_url: finalReceiptData,
             context: context,
             icon: formData.icon,
-            payment_method: formData.paymentMethod || 'outros' // ADICIONADO AQUI!
+            payment_method: formData.paymentMethod || 'outros'
         };
 
         const getPayload = () => {
@@ -958,9 +1078,6 @@ export default function FinancialDashboard() {
                     return { table: 'error', data: {} };
                 }
 
-                const targetMonthIndex = MONTHS.indexOf(formData.targetMonth);
-                const startOffset = 1 - targetMonthIndex;
-
                 return {
                     table: 'installments',
                     data: {
@@ -968,11 +1085,12 @@ export default function FinancialDashboard() {
                         title: formData.title,
                         total_value: finalTotal,
                         installments_count: qtd,
-                        current_installment: startOffset,
+                        current_installment: 1, // Reseta para 1, o cálculo fará a mágica depois
                         value_per_month: finalMonthly,
                         fixed_monthly_value: fixedInstallmentVal || null,
                         due_day: parseInt(formData.dueDay.toString()) || 10,
-                        status: 'active'
+                        status: 'active',
+                        date: dateString // Salva a data de INÍCIO correta
                     }
                 };
             }
@@ -988,83 +1106,168 @@ export default function FinancialDashboard() {
             loadData(activeId, context);
         } else {
             const newItem = { ...data, id: editingId || Date.now(), is_paid: false };
-            if (table === 'transactions') { const list = editingId ? transactions.map(t => t.id === editingId ? newItem : t) : [newItem, ...transactions]; saveDataLocal(list, installments, recurring); }
-            else if (table === 'installments') { const list = editingId ? installments.map(i => i.id === editingId ? newItem : i) : [...installments, newItem]; saveDataLocal(transactions, list, recurring); }
-            else { const list = editingId ? recurring.map(r => r.id === editingId ? newItem : r) : [...recurring, newItem]; saveDataLocal(transactions, installments, list); }
+            if (table === 'transactions') {
+                const list = editingId ? transactions.map(t => t.id === editingId ? newItem : t) : [newItem, ...transactions];
+                saveDataLocal(list, installments, recurring);
+            }
+            else if (table === 'installments') {
+                const list = editingId ? installments.map(i => i.id === editingId ? newItem : i) : [...installments, newItem];
+                saveDataLocal(transactions, list, recurring);
+            }
+            else {
+                const list = editingId ? recurring.map(r => r.id === editingId ? newItem : r) : [...recurring, newItem];
+                saveDataLocal(transactions, installments, list);
+            }
         }
 
-        // ... (código de salvar local ou supabase) ...
-
-        // --- LÓGICA DE GROWTH / NUDGE ---
-        // Se o usuário não é Plus/Pro/Agent, vamos "cutucar" ele a cada X lançamentos
         if (!editingId && (userPlan === 'free' || userPlan === 'start')) {
             const newCount = addCounter + 1;
             setAddCounter(newCount);
-
-            // A cada 3 lançamentos manuais, mostra a vantagem da automação
-            if (newCount % 3 === 0) {
-                setTimeout(() => setIsNudgeOpen(true), 500); // Pequeno delay para não ser brusco
-            }
+            if (newCount % 3 === 0) setTimeout(() => setIsNudgeOpen(true), 500);
         }
-        // -------------------------------
 
         setFormData({ ...initialFormState, targetMonth: activeTab });
         setEditingId(null);
         setIsFormOpen(false);
+        toast.success("Salvo com sucesso!");
     };
-
-    const getMonthData = (monthName: string) => {
+   const getMonthData = (monthName: string) => {
         const monthIndex = MONTHS.indexOf(monthName);
         const monthMap: Record<string, string> = { 'Jan': '/01', 'Fev': '/02', 'Mar': '/03', 'Abr': '/04', 'Mai': '/05', 'Jun': '/06', 'Jul': '/07', 'Ago': '/08', 'Set': '/09', 'Out': '/10', 'Nov': '/11', 'Dez': '/12' };
-        const dateFilter = monthMap[monthName];
+        
+        const dateFilter = `${monthMap[monthName]}/${selectedYear}`;
+        
+        // Tag de pagamento atual (ex: "Jan/2027")
+        const currentPaymentTag = `${monthName}/${selectedYear}`;
 
-        const isRecurringActive = (rec: any, checkIndex: number) => {
-            if (!rec.start_date) return true;
-            const startMonthIndex = parseInt(rec.start_date.split('/')[1]) - 1;
-            return checkIndex >= startMonthIndex;
+        const getStartData = (item: any) => {
+            if (item.start_date && item.start_date.includes('/')) {
+                const p = item.start_date.split('/'); return { d: parseInt(p[0]), m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+            }
+            if (item.date && item.date.includes('/')) {
+                const p = item.date.split('/'); return { d: parseInt(p[0]), m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+            } 
+            if (item.created_at) {
+                const d = new Date(item.created_at); return { d: d.getDate(), m: d.getMonth(), y: d.getFullYear() };
+            }
+            return { d: 1, m: 0, y: new Date().getFullYear() }; 
         };
-        const incomeFixed = recurring.filter(r => r.type === 'income' && isRecurringActive(r, monthIndex) && !r.skipped_months?.includes(monthName)).reduce((acc, curr) => acc + curr.value, 0);
-        const incomeVariable = transactions.filter(t => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed').reduce((acc, curr) => acc + curr.amount, 0);
+
+        // 1. RECORRENTES (CORREÇÃO DO BUG DE JANEIRO 2027)
+        const activeRecurring = recurring.filter(r => {
+            if (r.status === 'standby' || r.status === 'delayed') return false;
+            
+            const { m: startMonth, y: startYear } = getStartData(r);
+            
+            // CASO 1: Ano selecionado é MAIOR que o início (Ex: 2027 > 2026)
+            // MOSTRA SEMPRE! Não importa se é Janeiro e a conta é de Março/26.
+            if (selectedYear > startYear) return true;
+            
+            // CASO 2: Mesmo ano (Ex: 2026 == 2026)
+            // Mostra só se o mês já chegou
+            if (selectedYear === startYear && monthIndex >= startMonth) return true;
+            
+            return false;
+        });
+
+        // Helper para checar pagamento (Compatibilidade: checa "Mar/2026" OU "Mar")
+        const isPaid = (item: any, tag: string) => {
+            if (!item.paid_months) return false;
+            // Prioriza a tag com ano. Se não tiver ano salvo, aceita a tag simples (legado)
+            return item.paid_months.includes(tag) || item.paid_months.includes(tag.split('/')[0]);
+        };
+
+        // --- CÁLCULO DE ENTRADAS ---
+        const incomeFixed = activeRecurring.filter(r => r.type === 'income' && !r.skipped_months?.includes(monthName)).reduce((acc, curr) => acc + Number(curr.value), 0);
+        const incomeVariable = transactions.filter(t => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc, curr) => acc + Number(curr.amount), 0);
         const incomeTotal = incomeFixed + incomeVariable;
 
-        const expenseVariable = transactions.filter(t => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed').reduce((acc, curr) => acc + curr.amount, 0);
-        const expenseFixed = recurring.filter(r => r.type === 'expense' && isRecurringActive(r, monthIndex) && !r.skipped_months?.includes(monthName) && r.status !== 'delayed').reduce((acc, curr) => acc + curr.value, 0);
+        // --- CÁLCULO DE SAÍDAS DO MÊS ---
+        const expenseFixed = activeRecurring.filter(r => r.type === 'expense' && !r.skipped_months?.includes(monthName)).reduce((acc, curr) => acc + Number(curr.value), 0);
+        const expenseVariable = transactions.filter(t => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc, curr) => acc + Number(curr.amount), 0);
+
         const installTotal = installments.reduce((acc, curr) => {
-            if (curr.status === 'delayed') return acc;
-            const offset = monthIndex;
-            const actualInstallment = curr.current_installment + offset;
-            if (actualInstallment >= 1 && actualInstallment <= curr.installments_count) return acc + curr.value_per_month;
+            if (curr.status === 'delayed' || curr.status === 'standby') return acc;
+            const { m: startMonth, y: startYear } = getStartData(curr);
+            const monthsDiff = ((selectedYear - startYear) * 12) + (monthIndex - startMonth);
+            const currentInstNum = 1 + (curr.current_installment || 0) + monthsDiff;
+
+            if (currentInstNum >= 1 && currentInstNum <= curr.installments_count) {
+                return acc + Number(curr.value_per_month);
+            }
             return acc;
         }, 0);
 
+        // --- STAND-BY ---
         const delayedTotal =
-            transactions.filter(t => t.status === 'delayed').reduce((acc, curr) => acc + curr.amount, 0) +
-            installments.filter(i => i.status === 'delayed').reduce((acc, curr) => acc + (curr.value_per_month || curr.value || 0), 0) +
-            recurring.filter(r => r.status === 'delayed' && r.type === 'expense').reduce((acc, curr) => acc + curr.value, 0);
+            transactions.filter(t => t.status === 'delayed' || t.status === 'standby').reduce((acc, curr) => acc + Number(curr.amount), 0) +
+            installments.filter(i => i.status === 'delayed' || i.status === 'standby').reduce((acc, curr) => acc + (Number(curr.value_per_month) || Number(curr.value) || 0), 0) +
+            recurring.filter(r => (r.status === 'delayed' || r.status === 'standby') && r.type === 'expense').reduce((acc, curr) => acc + Number(curr.value), 0);
 
+        // --- DÍVIDA ACUMULADA ---
         let accumulatedDebt = 0;
-        for (let i = 0; i < monthIndex; i++) {
-            const pastMonth = MONTHS[i];
-            installments.forEach(inst => {
-                const pastInst = inst.current_installment + i;
-                if (inst.status !== 'delayed' && pastInst >= 1 && pastInst <= inst.installments_count) {
-                    if (!inst.paid_months?.includes(pastMonth)) accumulatedDebt += inst.value_per_month;
+
+        // A. Transações
+        transactions.forEach(t => {
+            if (t.type === 'expense' && !t.is_paid && t.status !== 'standby' && t.status !== 'delayed') {
+                const { m, y } = getStartData(t);
+                if (y < selectedYear || (y === selectedYear && m < monthIndex)) {
+                    accumulatedDebt += Number(t.amount);
                 }
-            });
-            recurring.filter(r => r.type === 'expense').forEach(rec => {
-                if (rec.status !== 'delayed' && isRecurringActive(rec, i) && !rec.paid_months?.includes(pastMonth) && !rec.skipped_months?.includes(pastMonth)) {
-                    accumulatedDebt += rec.value;
+            }
+        });
+
+        // B. Parcelas
+        installments.forEach(inst => {
+            if (inst.status !== 'standby' && inst.status !== 'delayed') {
+                const { m: startMonth, y: startYear } = getStartData(inst);
+                const totalMonthsDiffUntilNow = ((selectedYear - startYear) * 12) + (monthIndex - startMonth);
+                
+                for (let i = 0; i < totalMonthsDiffUntilNow; i++) {
+                    const instNum = 1 + (inst.current_installment || 0) + i;
+                    if (instNum >= 1 && instNum <= inst.installments_count) {
+                        const absMonthIndex = (startMonth + i);
+                        const pYear = startYear + Math.floor(absMonthIndex/12);
+                        const pMonthName = MONTHS[absMonthIndex % 12];
+                        
+                        // Checa se está pago usando ANO (Ex: Mar/2026)
+                        const paymentTag = `${pMonthName}/${pYear}`;
+                        if (!isPaid(inst, paymentTag)) {
+                            accumulatedDebt += Number(inst.value_per_month);
+                        }
+                    }
                 }
-            });
-            const pastDateFilter = Object.values(monthMap)[i];
-            transactions.forEach(t => {
-                if (t.type === 'expense' && t.status !== 'delayed' && t.date?.includes(pastDateFilter) && !t.is_paid) {
-                    accumulatedDebt += t.amount;
+            }
+        });
+
+        // C. RECORRENTES (Correção do Loop)
+        recurring.forEach(rec => {
+            if (rec.type === 'expense' && rec.status !== 'standby' && rec.status !== 'delayed') {
+                const { m: startMonth, y: startYear } = getStartData(rec);
+                const totalMonthsSinceStart = ((selectedYear - startYear) * 12) + (monthIndex - startMonth);
+
+                for (let i = 0; i < totalMonthsSinceStart; i++) {
+                    const absMonthIndex = startMonth + i; 
+                    const checkYear = startYear + Math.floor(absMonthIndex / 12);
+                    const checkMonthName = MONTHS[absMonthIndex % 12];
+                    const checkTag = `${checkMonthName}/${checkYear}`;
+                    
+                    if (!isPaid(rec, checkTag) && !rec.skipped_months?.includes(checkMonthName)) {
+                        accumulatedDebt += Number(rec.value);
+                    }
                 }
-            })
-        }
-        const totalObligations = expenseVariable + expenseFixed + installTotal + accumulatedDebt;
-        return { income: incomeTotal, expenseTotal: totalObligations, accumulatedDebt, balance: incomeTotal - totalObligations, delayedTotal };
+            }
+        });
+
+        const currentMonthObligations = expenseVariable + expenseFixed + installTotal;
+        
+        return { 
+            income: incomeTotal, 
+            expenseTotal: currentMonthObligations, 
+            accumulatedDebt: accumulatedDebt,
+            balance: incomeTotal - currentMonthObligations, 
+            delayedTotal: delayedTotal
+        };
     };
 
     const currentMonthData = getMonthData(activeTab);
@@ -1536,20 +1739,80 @@ export default function FinancialDashboard() {
                 </div>
             </header>
 
+            {/* --- SELETOR DE ANO --- */}
+            <div className="flex justify-center mb-6 animate-in slide-in-from-top-2">
+                <div className="flex items-center gap-4 bg-gray-900/80 backdrop-blur-sm p-1.5 pr-4 rounded-full border border-gray-800 shadow-xl">
+                    <div className="flex items-center">
+                        <button onClick={() => setSelectedYear(selectedYear - 1)} className="p-2 rounded-full hover:bg-gray-700 text-gray-400 hover:text-white transition active:scale-95"><ChevronLeft size={18} /></button>
+                        <span className="text-xl font-bold text-white min-w-[60px] text-center font-mono">{selectedYear}</span>
+                        <button onClick={() => setSelectedYear(selectedYear + 1)} className="p-2 rounded-full hover:bg-gray-700 text-gray-400 hover:text-white transition active:scale-95"><ChevronRight size={18} /></button>
+                    </div>
+                    {selectedYear !== new Date().getFullYear() && (
+                        <button onClick={() => setSelectedYear(new Date().getFullYear())} className="text-[10px] uppercase font-bold text-cyan-500 hover:text-cyan-400 border border-cyan-500/30 px-2 py-1 rounded-md transition">Voltar p/ Hoje</button>
+                    )}
+                </div>
+            </div>
+            {/* --- NOVO CARD DE PENDÊNCIAS (SÓ APARECE SE TIVER DÍVIDA) --- */}
+            {currentMonthData.accumulatedDebt > 0 && (
+                <div className="max-w-4xl mx-auto mb-6 animate-in slide-in-from-top-4">
+                    <div className="bg-red-500/10 border border-red-500/50 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-[0_0_30px_rgba(220,38,38,0.2)]">
+                        <div className="flex items-center gap-4">
+                            <div className="bg-red-500 text-white p-3 rounded-xl">
+                                <AlertTriangle size={24} />
+                            </div>
+                            <div>
+                                <h3 className="text-red-400 font-bold text-sm uppercase tracking-wider">Contas Atrasadas (Acumulado)</h3>
+                                <p className="text-2xl font-bold text-white">
+                                    R$ {currentMonthData.accumulatedDebt.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                </p>
+                                <p className="text-xs text-gray-400">Isso não desconta do seu saldo atual.</p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => {
+                                checkForPastDueItems(); // Força reabrir o modal para pagar
+                                setIsRolloverModalOpen(true);
+                            }}
+                            className="bg-red-500 hover:bg-red-600 text-white px-6 py-2.5 rounded-xl font-bold transition shadow-lg text-sm whitespace-nowrap"
+                        >
+                            Resolver Agora
+                        </button>
+                    </div>
+                </div>
+            )}
+
+
+
             {/* --- RENDERIZAÇÃO DOS LAYOUTS (Sintaxe Corrigida) --- */}
 
+           {/* LAYOUTS */}
             {(currentLayout === 'standard') && (
                 <StandardView
-                    transactions={transactions} installments={installments} recurring={recurring}
-                    activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab}
-                    currentMonthData={currentMonthData} previousSurplus={previousSurplus}
-                    displayBalance={displayBalance} viewingAs={viewingAs}
-                    onTogglePaid={togglePaid} onToggleSkip={toggleSkipMonth} onToggleDelay={toggleDelay}
-                    onDelete={handleDelete} onEdit={handleEdit} onTogglePaidMonth={togglePaidMonth}
+                    selectedYear={selectedYear}
+                    
+                    // ✅ Filtro de Transações: Mantém o filtro de data (para itens avulsos)
+                    transactions={transactions.filter(t => t.date && t.date.endsWith(`/${selectedYear}`))}
+                    
+                    // ✅ Filtro de Parcelas: PASSE PURO! O StandardView já faz o cálculo matemático
+                    installments={installments} 
+                    
+                    recurring={recurring}
+                    activeTab={activeTab} 
+                    months={MONTHS} 
+                    setActiveTab={setActiveTab}
+                    currentMonthData={currentMonthData} 
+                    previousSurplus={previousSurplus}
+                    displayBalance={displayBalance} 
+                    viewingAs={viewingAs}
+                    onTogglePaid={togglePaid} 
+                    onToggleSkip={toggleSkipMonth} 
+                    onToggleDelay={toggleDelay} 
+                    onDelete={handleDelete} 
+                    onEdit={handleEdit} 
+                    onTogglePaidMonth={togglePaidMonth}
                     getReceipt={getReceiptForMonth}
                 />
             )}
-
             {currentLayout === 'trader' && (
                 <TraderView
                     transactions={transactions} installments={installments} recurring={recurring}
@@ -1820,261 +2083,261 @@ export default function FinancialDashboard() {
             )}
 
             {/* MODAL NUDGE (CUTUCÃO DE AUTOMAÇÃO) */}
-           {isNudgeOpen && (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[250] p-4 animate-in fade-in duration-300">
-        <div className="relative w-full max-w-sm bg-[#0f0f0f] border border-gray-800 rounded-3xl p-6 shadow-2xl overflow-hidden group">
-            
-            {/* Efeito de Glow no fundo */}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-32 bg-cyan-500/20 rounded-full blur-[60px] pointer-events-none"></div>
+            {isNudgeOpen && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[250] p-4 animate-in fade-in duration-300">
+                    <div className="relative w-full max-w-sm bg-[#0f0f0f] border border-gray-800 rounded-3xl p-6 shadow-2xl overflow-hidden group">
 
-            {/* Botão Fechar */}
-            <button 
-                onClick={() => setIsNudgeOpen(false)} 
-                className="absolute top-3 right-3 p-2 text-gray-500 hover:text-white hover:bg-white/10 rounded-full transition z-20"
-            >
-                <X size={20} />
-            </button>
+                        {/* Efeito de Glow no fundo */}
+                        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-32 bg-cyan-500/20 rounded-full blur-[60px] pointer-events-none"></div>
 
-            {/* Conteúdo */}
-            <div className="relative z-10 text-center flex flex-col items-center">
-                
-                {/* Ícone Animado */}
-                <div className="w-16 h-16 bg-gradient-to-br from-cyan-900/50 to-blue-900/50 rounded-2xl flex items-center justify-center mb-5 border border-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.15)]">
-                    <Sparkles size={32} className="text-cyan-400 animate-pulse" />
+                        {/* Botão Fechar */}
+                        <button
+                            onClick={() => setIsNudgeOpen(false)}
+                            className="absolute top-3 right-3 p-2 text-gray-500 hover:text-white hover:bg-white/10 rounded-full transition z-20"
+                        >
+                            <X size={20} />
+                        </button>
+
+                        {/* Conteúdo */}
+                        <div className="relative z-10 text-center flex flex-col items-center">
+
+                            {/* Ícone Animado */}
+                            <div className="w-16 h-16 bg-gradient-to-br from-cyan-900/50 to-blue-900/50 rounded-2xl flex items-center justify-center mb-5 border border-cyan-500/30 shadow-[0_0_15px_rgba(6,182,212,0.15)]">
+                                <Sparkles size={32} className="text-cyan-400 animate-pulse" />
+                            </div>
+
+                            <h3 className="text-2xl font-black text-white mb-2">
+                                Cansado de digitar?
+                            </h3>
+
+                            <p className="text-gray-400 text-sm mb-6 leading-relaxed px-2">
+                                Você já fez <b>{addCounter} lançamentos</b> manuais hoje. <br />
+                                Imagine mandar um áudio no <b>WhatsApp</b> e a IA lançar tudo sozinha para você?
+                            </p>
+
+                            {/* Botão Principal */}
+                            <button
+                                onClick={() => { setIsNudgeOpen(false); openPricingModal(); }}
+                                className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold py-3.5 rounded-xl transition shadow-lg shadow-cyan-900/20 flex items-center justify-center gap-2 group-hover:scale-[1.02] active:scale-95"
+                            >
+                                <Zap size={18} className="fill-white" /> Quero Automatizar
+                            </button>
+
+                            {/* Botão Secundário (Psicológico) */}
+                            <button
+                                onClick={() => setIsNudgeOpen(false)}
+                                className="mt-3 text-xs text-gray-600 hover:text-gray-400 transition"
+                            >
+                                Prefiro continuar digitando manualmente
+                            </button>
+                        </div>
+                    </div>
                 </div>
-
-                <h3 className="text-2xl font-black text-white mb-2">
-                    Cansado de digitar?
-                </h3>
-                
-                <p className="text-gray-400 text-sm mb-6 leading-relaxed px-2">
-                    Você já fez <b>{addCounter} lançamentos</b> manuais hoje. <br/>
-                    Imagine mandar um áudio no <b>WhatsApp</b> e a IA lançar tudo sozinha para você?
-                </p>
-
-                {/* Botão Principal */}
-                <button 
-                    onClick={() => { setIsNudgeOpen(false); openPricingModal(); }} 
-                    className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold py-3.5 rounded-xl transition shadow-lg shadow-cyan-900/20 flex items-center justify-center gap-2 group-hover:scale-[1.02] active:scale-95"
-                >
-                    <Zap size={18} className="fill-white" /> Quero Automatizar
-                </button>
-
-                {/* Botão Secundário (Psicológico) */}
-                <button 
-                    onClick={() => setIsNudgeOpen(false)} 
-                    className="mt-3 text-xs text-gray-600 hover:text-gray-400 transition"
-                >
-                    Prefiro continuar digitando manualmente
-                </button>
-            </div>
-        </div>
-    </div>
-)}
+            )}
 
             {/* MODAL IA */}
             {isAIOpen && (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[200] p-4 animate-in fade-in duration-300">
-        <div className="bg-[#0f0f13] border border-gray-700 w-full max-w-2xl h-[600px] rounded-3xl shadow-2xl flex flex-col relative overflow-hidden">
-            
-            {/* HEADER */}
-            <div className="p-6 border-b border-gray-800 bg-[#111] flex justify-between items-center z-10 shrink-0">
-                <div className="flex items-center gap-3">
-                    <div className="p-2 bg-purple-900/30 rounded-lg">
-                        <Sparkles size={20} className="text-purple-400" />
-                    </div>
-                    <div>
-                        <h2 className="text-xl font-bold text-white">Consultor IA</h2>
-                        <p className="text-xs text-gray-400">Powered by Gemini 1.5 Flash</p>
-                    </div>
-                </div>
-                <button onClick={() => setIsAIOpen(false)} className="text-gray-500 hover:text-white p-2 hover:bg-white/10 rounded-full transition">
-                    <X size={20} />
-                </button>
-            </div>
+                <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[200] p-4 animate-in fade-in duration-300">
+                    <div className="bg-[#0f0f13] border border-gray-700 w-full max-w-2xl h-[600px] rounded-3xl shadow-2xl flex flex-col relative overflow-hidden">
 
-            {/* CHAT AREA (MENSAGENS) */}
-            <div className="flex-1 p-6 overflow-y-auto space-y-6 scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent bg-[#0f0f13]">
-                {chatHistory.length === 0 ? (
-                    // Estado Vazio (Zero mensagens)
-                    <div className="h-full flex flex-col items-center justify-center text-center opacity-50 p-8">
-                        <Sparkles size={48} className="text-purple-500 mb-4" />
-                        <h3 className="text-white font-bold mb-2">Como posso ajudar?</h3>
-                        <p className="text-sm text-gray-400">Envie um comprovante, pergunte sobre seus gastos ou peça dicas de economia.</p>
-                    </div>
-                ) : (
-                    chatHistory.map((msg, idx) => (
-                        <div key={idx} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                            
-                            {/* Avatar da IA */}
-                            {msg.role !== 'user' && (
-                                <div className="w-8 h-8 rounded-full bg-purple-900/50 flex items-center justify-center mr-3 mt-1 shrink-0 border border-purple-500/30">
-                                    <Sparkles size={14} className="text-purple-400" />
+                        {/* HEADER */}
+                        <div className="p-6 border-b border-gray-800 bg-[#111] flex justify-between items-center z-10 shrink-0">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-purple-900/30 rounded-lg">
+                                    <Sparkles size={20} className="text-purple-400" />
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-bold text-white">Consultor IA</h2>
+                                    <p className="text-xs text-gray-400">Powered by Gemini 1.5 Flash</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setIsAIOpen(false)} className="text-gray-500 hover:text-white p-2 hover:bg-white/10 rounded-full transition">
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* CHAT AREA (MENSAGENS) */}
+                        <div className="flex-1 p-6 overflow-y-auto space-y-6 scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent bg-[#0f0f13]">
+                            {chatHistory.length === 0 ? (
+                                // Estado Vazio (Zero mensagens)
+                                <div className="h-full flex flex-col items-center justify-center text-center opacity-50 p-8">
+                                    <Sparkles size={48} className="text-purple-500 mb-4" />
+                                    <h3 className="text-white font-bold mb-2">Como posso ajudar?</h3>
+                                    <p className="text-sm text-gray-400">Envie um comprovante, pergunte sobre seus gastos ou peça dicas de economia.</p>
+                                </div>
+                            ) : (
+                                chatHistory.map((msg, idx) => (
+                                    <div key={idx} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+
+                                        {/* Avatar da IA */}
+                                        {msg.role !== 'user' && (
+                                            <div className="w-8 h-8 rounded-full bg-purple-900/50 flex items-center justify-center mr-3 mt-1 shrink-0 border border-purple-500/30">
+                                                <Sparkles size={14} className="text-purple-400" />
+                                            </div>
+                                        )}
+
+                                        {/* Balão da Mensagem */}
+                                        <div className={`
+                                max-w-[85%] p-4 rounded-2xl text-sm shadow-lg
+                                ${msg.role === 'user'
+                                                ? 'bg-purple-600 text-white rounded-tr-none'
+                                                : 'bg-gray-800 text-gray-100 rounded-tl-none border border-gray-700'}
+                            `}>
+
+                                            {/* Chip de Comprovante (Se houver) */}
+                                            {msg.content === 'Analisar comprovante...' && (
+                                                <div className="flex items-center gap-2 mb-3 text-purple-200 bg-black/20 p-2 rounded-lg text-xs font-bold border border-white/10">
+                                                    <FileText size={14} /> Comprovante enviado
+                                                </div>
+                                            )}
+
+                                            {/* CONTEÚDO DA MENSAGEM (CORRIGIDO) */}
+                                            {msg.role === 'user' ? (
+                                                <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                                            ) : (
+                                                <div className="markdown-content text-gray-100">
+                                                    <ReactMarkdown
+                                                        components={{
+                                                            p: ({ node, ...props }) => <p className="mb-3 last:mb-0 leading-relaxed" {...props} />,
+                                                            strong: ({ node, ...props }) => <strong className="font-bold text-purple-300" {...props} />,
+                                                            ul: ({ node, ...props }) => <ul className="list-disc ml-5 mb-3 space-y-1 marker:text-purple-400" {...props} />,
+                                                            li: ({ node, ...props }) => <li className="pl-1" {...props} />,
+                                                            h1: ({ node, ...props }) => <h1 className="text-lg font-bold text-white mb-2 mt-4 border-b border-gray-700 pb-1" {...props} />,
+                                                            h2: ({ node, ...props }) => <h2 className="text-base font-bold text-white mb-2 mt-3" {...props} />,
+                                                            h3: ({ node, ...props }) => <h3 className="text-sm font-bold text-white mb-1" {...props} />
+                                                        }}
+                                                    >
+                                                        {msg.content}
+                                                    </ReactMarkdown>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+
+                            {/* Loader de Resposta */}
+                            {isAiLoading && (
+                                <div className="flex justify-start w-full">
+                                    <div className="w-8 h-8 rounded-full bg-purple-900/50 flex items-center justify-center mr-3 mt-1 shrink-0 border border-purple-500/30">
+                                        <Sparkles size={14} className="text-purple-400 animate-pulse" />
+                                    </div>
+                                    <div className="bg-gray-800 text-gray-200 rounded-2xl p-4 flex items-center gap-3 border border-gray-700 rounded-tl-none">
+                                        <Loader2 size={18} className="animate-spin text-purple-500" />
+                                        <span className="text-xs font-bold animate-pulse text-purple-300">Escrevendo...</span>
+                                    </div>
                                 </div>
                             )}
 
-                            {/* Balão da Mensagem */}
-                            <div className={`
-                                max-w-[85%] p-4 rounded-2xl text-sm shadow-lg
-                                ${msg.role === 'user' 
-                                    ? 'bg-purple-600 text-white rounded-tr-none' 
-                                    : 'bg-gray-800 text-gray-100 rounded-tl-none border border-gray-700'}
-                            `}>
-                                
-                                {/* Chip de Comprovante (Se houver) */}
-                                {msg.content === 'Analisar comprovante...' && (
-                                    <div className="flex items-center gap-2 mb-3 text-purple-200 bg-black/20 p-2 rounded-lg text-xs font-bold border border-white/10">
-                                        <FileText size={14} /> Comprovante enviado
-                                    </div>
-                                )}
+                            {/* Scroll Anchor */}
+                            <div ref={chatEndRef} />
+                        </div>
 
-                                {/* CONTEÚDO DA MENSAGEM (CORRIGIDO) */}
-                                {msg.role === 'user' ? (
-                                    <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
-                                ) : (
-                                    <div className="markdown-content text-gray-100">
-                                        <ReactMarkdown
-                                            components={{
-                                                p: ({node, ...props}) => <p className="mb-3 last:mb-0 leading-relaxed" {...props} />,
-                                                strong: ({node, ...props}) => <strong className="font-bold text-purple-300" {...props} />,
-                                                ul: ({node, ...props}) => <ul className="list-disc ml-5 mb-3 space-y-1 marker:text-purple-400" {...props} />,
-                                                li: ({node, ...props}) => <li className="pl-1" {...props} />,
-                                                h1: ({node, ...props}) => <h1 className="text-lg font-bold text-white mb-2 mt-4 border-b border-gray-700 pb-1" {...props} />,
-                                                h2: ({node, ...props}) => <h2 className="text-base font-bold text-white mb-2 mt-3" {...props} />,
-                                                h3: ({node, ...props}) => <h3 className="text-sm font-bold text-white mb-1" {...props} />
-                                            }}
-                                        >
-                                            {msg.content}
-                                        </ReactMarkdown>
+                        {/* SUGESTÕES RÁPIDAS (RODAPÉ SUPERIOR) */}
+                        <div className="px-6 py-2 border-t border-gray-800 bg-[#111]">
+                            {userPlan !== 'free' ? (
+                                <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-2">
+                                    <button onClick={() => askGemini("Faça um diagnóstico de risco completo...")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 hover:text-white rounded-full text-xs font-bold text-cyan-400 border border-cyan-900/30 flex items-center gap-2 transition active:scale-95">
+                                        <BarChart3 size={14} /> Diagnóstico
+                                    </button>
+                                    <button onClick={() => askGemini("Analise meus maiores gastos...")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 hover:text-white rounded-full text-xs font-bold text-purple-400 border border-purple-900/30 flex items-center gap-2 transition active:scale-95">
+                                        <Search size={14} /> Detetive
+                                    </button>
+                                    <button onClick={() => askGemini("Me dê um plano de resgate...")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 hover:text-white rounded-full text-xs font-bold text-emerald-400 border border-emerald-900/30 flex items-center gap-2 transition active:scale-95">
+                                        <Target size={14} /> Plano de Resgate
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col gap-2">
+                                    <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 opacity-70">
+                                        <button onClick={() => askGemini("O que é Reserva de Emergência?")} className="whitespace-nowrap px-3 py-1.5 bg-gray-800/50 hover:bg-gray-700 rounded-full text-[10px] text-gray-300 border border-gray-700 transition">💡 O que é Reserva?</button>
+                                        <button onClick={() => askGemini("Dicas simples para economizar no mercado")} className="whitespace-nowrap px-3 py-1.5 bg-gray-800/50 hover:bg-gray-700 rounded-full text-[10px] text-gray-300 border border-gray-700 transition">🛒 Dicas de Mercado</button>
                                     </div>
-                                )}
+                                    <div className="flex justify-between items-center bg-gradient-to-r from-amber-900/20 to-orange-900/20 p-2 rounded-lg border border-amber-900/30 cursor-pointer hover:bg-amber-900/30 transition" onClick={() => { setIsAIOpen(false); openPricingModal(); }}>
+                                        <span className="text-[10px] text-amber-500 font-bold flex items-center gap-1 ml-1"><Lock size={10} /> Desbloqueie análises da sua conta</span>
+                                        <span className="text-[10px] bg-amber-600 hover:bg-amber-500 text-white px-3 py-1 rounded shadow-lg transition">Virar Premium</span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* INPUT AREA (RODAPÉ INFERIOR - RESTAURADO) */}
+                        <div className="p-4 border-t border-gray-800 bg-[#111]">
+
+                            {/* Preview de Anexo */}
+                            {attachment && (
+                                <div className="mb-3 flex items-start animate-in slide-in-from-bottom-2">
+                                    <div className="relative group">
+                                        {attachment.type === 'image' ? (
+                                            <img src={attachment.base64} alt="Preview" className="h-16 w-16 object-cover rounded-xl border border-gray-700 shadow-lg" />
+                                        ) : (
+                                            <div className="h-16 w-16 bg-gray-800 rounded-xl border border-gray-700 flex items-center justify-center text-red-400"><FileText size={24} /></div>
+                                        )}
+                                        <button onClick={() => { setAttachment(null); if (fileInputRef.current) fileInputRef.current.value = ''; }} className="absolute -top-2 -right-2 bg-gray-900 border border-gray-600 text-gray-400 hover:text-white rounded-full p-1 shadow-md transition"><X size={12} /></button>
+                                    </div>
+                                    <div className="ml-3 mt-1">
+                                        <p className="text-xs text-emerald-500 font-bold flex items-center gap-1"><CheckCircle2 size={12} /> Arquivo pronto</p>
+                                        <p className="text-[10px] text-gray-500 max-w-[200px] leading-tight mt-0.5">A IA vai ler os dados deste comprovante.</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Controles de Input */}
+                            <div className="flex gap-2 items-end">
+                                <input type="file" ref={fileInputRef} className="hidden" accept="image/*,application/pdf" onChange={handleFileSelect} />
+
+                                {/* Botão Clipe */}
+                                <button
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className={`p-3 rounded-xl border transition mb-[2px] ${attachment ? 'bg-emerald-900/20 text-emerald-500 border-emerald-500/50' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white hover:bg-gray-700'}`}
+                                    title="Anexar Comprovante"
+                                >
+                                    <Paperclip size={20} />
+                                </button>
+
+                                {/* Campo de Texto */}
+                                <div className="flex-1 relative">
+                                    <textarea
+                                        value={aiInput}
+                                        onChange={(e) => setAiInput(e.target.value)}
+                                        placeholder={attachment ? "Descreva o gasto (opcional)..." : "Digite ou envie comprovante..."}
+                                        className="w-full bg-gray-900 text-white placeholder-gray-500 border border-gray-800 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 resize-none h-12 max-h-32 scrollbar-hide"
+                                        style={{ minHeight: '48px' }}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && !e.shiftKey) {
+                                                e.preventDefault();
+                                                if (aiInput.trim() || attachment) {
+                                                    askGemini(aiInput, attachment?.base64 || null);
+                                                    setAiInput('');
+                                                    setAttachment(null);
+                                                    if (fileInputRef.current) fileInputRef.current.value = '';
+                                                }
+                                            }
+                                        }}
+                                    />
+                                </div>
+
+                                {/* Botão Enviar */}
+                                <button
+                                    onClick={() => {
+                                        if (aiInput.trim() || attachment) {
+                                            askGemini(aiInput, attachment?.base64 || null);
+                                            setAiInput('');
+                                            setAttachment(null);
+                                            if (fileInputRef.current) fileInputRef.current.value = '';
+                                        }
+                                    }}
+                                    disabled={isAiLoading || (!aiInput.trim() && !attachment)}
+                                    className="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white p-3 rounded-xl transition shadow-lg shadow-purple-900/20 mb-[2px]"
+                                >
+                                    {isAiLoading ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
+                                </button>
                             </div>
                         </div>
-                    ))
-                )}
-                
-                {/* Loader de Resposta */}
-                {isAiLoading && (
-                    <div className="flex justify-start w-full">
-                        <div className="w-8 h-8 rounded-full bg-purple-900/50 flex items-center justify-center mr-3 mt-1 shrink-0 border border-purple-500/30">
-                            <Sparkles size={14} className="text-purple-400 animate-pulse" />
-                        </div>
-                        <div className="bg-gray-800 text-gray-200 rounded-2xl p-4 flex items-center gap-3 border border-gray-700 rounded-tl-none">
-                            <Loader2 size={18} className="animate-spin text-purple-500" />
-                            <span className="text-xs font-bold animate-pulse text-purple-300">Escrevendo...</span>
-                        </div>
-                    </div>
-                )}
-                
-                {/* Scroll Anchor */}
-                <div ref={chatEndRef} />
-            </div>
 
-            {/* SUGESTÕES RÁPIDAS (RODAPÉ SUPERIOR) */}
-            <div className="px-6 py-2 border-t border-gray-800 bg-[#111]">
-                {userPlan !== 'free' ? (
-                    <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-2">
-                        <button onClick={() => askGemini("Faça um diagnóstico de risco completo...")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 hover:text-white rounded-full text-xs font-bold text-cyan-400 border border-cyan-900/30 flex items-center gap-2 transition active:scale-95">
-                            <BarChart3 size={14} /> Diagnóstico
-                        </button>
-                        <button onClick={() => askGemini("Analise meus maiores gastos...")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 hover:text-white rounded-full text-xs font-bold text-purple-400 border border-purple-900/30 flex items-center gap-2 transition active:scale-95">
-                            <Search size={14} /> Detetive
-                        </button>
-                        <button onClick={() => askGemini("Me dê um plano de resgate...")} className="whitespace-nowrap px-4 py-2 bg-gray-800 hover:bg-gray-700 hover:text-white rounded-full text-xs font-bold text-emerald-400 border border-emerald-900/30 flex items-center gap-2 transition active:scale-95">
-                            <Target size={14} /> Plano de Resgate
-                        </button>
                     </div>
-                ) : (
-                    <div className="flex flex-col gap-2">
-                        <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 opacity-70">
-                            <button onClick={() => askGemini("O que é Reserva de Emergência?")} className="whitespace-nowrap px-3 py-1.5 bg-gray-800/50 hover:bg-gray-700 rounded-full text-[10px] text-gray-300 border border-gray-700 transition">💡 O que é Reserva?</button>
-                            <button onClick={() => askGemini("Dicas simples para economizar no mercado")} className="whitespace-nowrap px-3 py-1.5 bg-gray-800/50 hover:bg-gray-700 rounded-full text-[10px] text-gray-300 border border-gray-700 transition">🛒 Dicas de Mercado</button>
-                        </div>
-                        <div className="flex justify-between items-center bg-gradient-to-r from-amber-900/20 to-orange-900/20 p-2 rounded-lg border border-amber-900/30 cursor-pointer hover:bg-amber-900/30 transition" onClick={() => { setIsAIOpen(false); openPricingModal(); }}>
-                            <span className="text-[10px] text-amber-500 font-bold flex items-center gap-1 ml-1"><Lock size={10} /> Desbloqueie análises da sua conta</span>
-                            <span className="text-[10px] bg-amber-600 hover:bg-amber-500 text-white px-3 py-1 rounded shadow-lg transition">Virar Premium</span>
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* INPUT AREA (RODAPÉ INFERIOR - RESTAURADO) */}
-            <div className="p-4 border-t border-gray-800 bg-[#111]">
-                
-                {/* Preview de Anexo */}
-                {attachment && (
-                    <div className="mb-3 flex items-start animate-in slide-in-from-bottom-2">
-                        <div className="relative group">
-                            {attachment.type === 'image' ? (
-                                <img src={attachment.base64} alt="Preview" className="h-16 w-16 object-cover rounded-xl border border-gray-700 shadow-lg" />
-                            ) : (
-                                <div className="h-16 w-16 bg-gray-800 rounded-xl border border-gray-700 flex items-center justify-center text-red-400"><FileText size={24} /></div>
-                            )}
-                            <button onClick={() => { setAttachment(null); if (fileInputRef.current) fileInputRef.current.value = ''; }} className="absolute -top-2 -right-2 bg-gray-900 border border-gray-600 text-gray-400 hover:text-white rounded-full p-1 shadow-md transition"><X size={12} /></button>
-                        </div>
-                        <div className="ml-3 mt-1">
-                            <p className="text-xs text-emerald-500 font-bold flex items-center gap-1"><CheckCircle2 size={12} /> Arquivo pronto</p>
-                            <p className="text-[10px] text-gray-500 max-w-[200px] leading-tight mt-0.5">A IA vai ler os dados deste comprovante.</p>
-                        </div>
-                    </div>
-                )}
-
-                {/* Controles de Input */}
-                <div className="flex gap-2 items-end">
-                    <input type="file" ref={fileInputRef} className="hidden" accept="image/*,application/pdf" onChange={handleFileSelect} />
-                    
-                    {/* Botão Clipe */}
-                    <button 
-                        onClick={() => fileInputRef.current?.click()} 
-                        className={`p-3 rounded-xl border transition mb-[2px] ${attachment ? 'bg-emerald-900/20 text-emerald-500 border-emerald-500/50' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white hover:bg-gray-700'}`} 
-                        title="Anexar Comprovante"
-                    >
-                        <Paperclip size={20} />
-                    </button>
-
-                    {/* Campo de Texto */}
-                    <div className="flex-1 relative">
-                        <textarea 
-                            value={aiInput} 
-                            onChange={(e) => setAiInput(e.target.value)} 
-                            placeholder={attachment ? "Descreva o gasto (opcional)..." : "Digite ou envie comprovante..."} 
-                            className="w-full bg-gray-900 text-white placeholder-gray-500 border border-gray-800 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 resize-none h-12 max-h-32 scrollbar-hide" 
-                            style={{ minHeight: '48px' }} 
-                            onKeyDown={(e) => { 
-                                if (e.key === 'Enter' && !e.shiftKey) { 
-                                    e.preventDefault(); 
-                                    if (aiInput.trim() || attachment) { 
-                                        askGemini(aiInput, attachment?.base64 || null); 
-                                        setAiInput(''); 
-                                        setAttachment(null); 
-                                        if (fileInputRef.current) fileInputRef.current.value = ''; 
-                                    } 
-                                } 
-                            }} 
-                        />
-                    </div>
-
-                    {/* Botão Enviar */}
-                    <button 
-                        onClick={() => { 
-                            if (aiInput.trim() || attachment) { 
-                                askGemini(aiInput, attachment?.base64 || null); 
-                                setAiInput(''); 
-                                setAttachment(null); 
-                                if (fileInputRef.current) fileInputRef.current.value = ''; 
-                            } 
-                        }} 
-                        disabled={isAiLoading || (!aiInput.trim() && !attachment)} 
-                        className="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white p-3 rounded-xl transition shadow-lg shadow-purple-900/20 mb-[2px]"
-                    >
-                        {isAiLoading ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
-                    </button>
                 </div>
-            </div>
-
-        </div>
-    </div>
-)}
+            )}
 
             {isRolloverModalOpen && (
                 <div className="fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center z-[300] p-6 animate-in zoom-in duration-300">
