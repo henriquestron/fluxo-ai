@@ -23,13 +23,15 @@ const BANK_BADGES: any = {
     'money': 'bg-emerald-900/30 text-emerald-400 border-emerald-500/30',
     'outros': 'bg-gray-800 text-gray-500 border-gray-700'
 };
+import { Transaction, Installment, Recurring } from '@/types'; // <--- Importe aqui
 
 interface TimelineViewProps {
-    transactions: any[];
-    installments: any[];
-    recurring: any[];
+    transactions: Transaction[];
+    installments: Installment[];
+    recurring: Recurring[];
+    
     activeTab: string;
-    selectedYear: number; // <--- ADICIONADO
+    selectedYear: number;
 }
 
 export default function TimelineView({ transactions, installments, recurring, activeTab, selectedYear }: TimelineViewProps) {

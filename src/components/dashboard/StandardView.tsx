@@ -7,7 +7,7 @@ import {
     FileText, Trash2, Pencil, List, AlertTriangle,
     ChevronDown, ChevronUp 
 } from 'lucide-react';
-
+import { Transaction, Installment, Recurring } from '@/types';
 // --- MAPA DE ÍCONES ---
 const ICON_MAP: any = {
     'shopping-cart': ShoppingCart, 'home': Home, 'car': Car, 'utensils': Utensils,
@@ -73,26 +73,32 @@ const Card = ({ title, value, icon: Icon, type, extraLabel, subValueLabel, eleme
 };
 
 interface StandardViewProps {
-    transactions: any[];
-    installments: any[];
-    recurring: any[];
+    // 👇 Aqui acontece a mágica: Trocamos 'any[]' pelos tipos reais
+    transactions: Transaction[];
+    installments: Installment[];
+    recurring: Recurring[];
+    
     activeTab: string;
     months: string[];
     setActiveTab: (tab: string) => void;
-    currentMonthData: any;
+    
+    // Esse aqui podemos deixar any por enquanto ou criar um tipo 'DashboardSummary' depois
+    currentMonthData: any; 
+    
     previousSurplus: number;
     displayBalance: number;
     viewingAs: any;
     selectedYear: number;
+    
+    // Funções mantêm a assinatura, mas agora o 'item' pode ser tipado também se quiser
     onTogglePaid: (table: string, id: number, currentStatus: boolean) => void;
-    onToggleSkip: (item: any) => void;
+    onToggleSkip: (item: Recurring) => void; // ✅ Agora sabemos que é Recurring
     onToggleDelay: (table: string, item: any) => void;
     onDelete: (table: string, id: number) => void;
     onEdit: (item: any, mode: string) => void;
     onTogglePaidMonth: (table: string, item: any) => void;
     getReceipt: (item: any, month: string) => any;
 }
-
 export default function StandardView({
     transactions, installments,  recurring, activeTab, months, setActiveTab,
     currentMonthData, previousSurplus, displayBalance, viewingAs, selectedYear,
@@ -237,7 +243,7 @@ export default function StandardView({
                                         return (
                                             <div key={item.id} className="group p-4 hover:bg-white/[0.02] transition flex items-center justify-between">
                                                 <div className="flex items-center gap-4">
-                                                    <div onClick={() => onTogglePaid('transactions', item.id, item.is_paid)} className={`cursor-pointer w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${item.is_paid ? 'bg-emerald-500/20 text-emerald-500' : 'bg-gray-800 text-gray-500 group-hover:bg-gray-700'}`}>
+                                                    <div onClick={() => onTogglePaid('transactions', item.id, item.is_paid || false)} className={`cursor-pointer w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${item.is_paid ? 'bg-emerald-500/20 text-emerald-500' : 'bg-gray-800 text-gray-500 group-hover:bg-gray-700'}`}>
                                                         {item.is_paid ? <CheckCircle2 size={18} /> : <Icon size={18} />}
                                                     </div>
                                                     <div>

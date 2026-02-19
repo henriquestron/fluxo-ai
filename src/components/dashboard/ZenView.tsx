@@ -7,7 +7,7 @@ interface ZenViewProps {
     activeTab: string;
     months: string[];
     setActiveTab: (month: string) => void;
-    selectedYear: number; // <--- ADICIONADO
+    selectedYear: number;
 }
 
 export default function ZenView({ currentMonthData, displayBalance, activeTab, months, setActiveTab, selectedYear }: ZenViewProps) {

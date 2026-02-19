@@ -3,7 +3,7 @@ import {
     Calendar as CalIcon, ChevronLeft, ChevronRight, 
     ShoppingCart, Home, Car, Utensils, GraduationCap, HeartPulse, Plane, Gamepad2, Zap, Smartphone, DollarSign
 } from 'lucide-react';
-
+import { Transaction, Installment, Recurring } from '@/types'; // <--- Importe aqui
 // Mapa de Ícones
 const ICON_MAP: any = {
     'shopping-cart': ShoppingCart, 'home': Home, 'car': Car, 'utensils': Utensils,
@@ -23,14 +23,16 @@ const BANK_BORDERS: any = {
     'outros': 'border-l-gray-500'
 };
 
+
 interface CalendarViewProps {
-    transactions: any[];
-    installments: any[];
-    recurring: any[];
+    transactions: Transaction[];
+    installments: Installment[];
+    recurring: Recurring[];
+    
     activeTab: string;
     months: string[];
     setActiveTab: (month: string) => void;
-    selectedYear: number; // <--- ADICIONADO
+    selectedYear: number;
 }
 
 export default function CalendarView({ transactions, installments, recurring, activeTab, months, setActiveTab, selectedYear }: CalendarViewProps) {

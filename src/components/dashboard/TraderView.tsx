@@ -4,6 +4,7 @@ import {
     CheckCircle2, XCircle, AlertTriangle, Landmark,
     ShoppingCart, Home, Car, Utensils, GraduationCap, HeartPulse, Plane, Gamepad2, Zap, Smartphone
 } from 'lucide-react';
+import { Transaction, Installment, Recurring } from '@/types'; // <--- Importe aqui
 
 // Mapa de Ícones (Para renderizar visualmente)
 const ICON_MAP: any = {
@@ -25,19 +26,22 @@ const BROKER_COLORS: any = {
 };
 
 interface TraderViewProps {
-    transactions: any[];
-    installments: any[];
-    recurring: any[];
+    transactions: Transaction[];
+    installments: Installment[];
+    recurring: Recurring[];
+    
     activeTab: string;
     months: string[];
     setActiveTab: (month: string) => void;
-    currentMonthData: any;
+    
+    currentMonthData: any; // Pode manter any por enquanto
     previousSurplus: number;
     displayBalance: number;
-    selectedYear: number; // <--- ADICIONADO
+    selectedYear: number;
+    
     // Funções
     onTogglePaid: (table: string, id: number, status: boolean) => void;
-    onTogglePaidMonth: (table: string, item: any) => void;
+    onTogglePaidMonth: (table: string, item: any) => void; // Item pode ser Installment | Recurring
     onToggleDelay: (table: string, item: any) => void;
     onDelete: (table: string, id: number) => void;
 }

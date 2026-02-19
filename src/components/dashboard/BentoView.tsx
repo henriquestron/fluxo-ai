@@ -4,16 +4,21 @@ import {
     AlertTriangle, PieChart, ArrowUpRight, ArrowDownLeft 
 } from 'lucide-react';
 
+import { Transaction, Installment, Recurring } from '@/types'; // <--- Importe aqui
+
 interface BentoViewProps {
-  currentMonthData: any;
-  transactions: any[];
-  installments: any[];
-  recurring: any[];
-  activeTab: string; // <--- ADICIONADO
-  selectedYear: number; // <--- ADICIONADO
-  months: string[]; // <--- ADICIONADO
-  onOpenCalendar: () => void;
-  onOpenRollover: () => void;
+    currentMonthData: any;
+    
+    transactions: Transaction[];
+    installments: Installment[];
+    recurring: Recurring[];
+    
+    activeTab: string;
+    selectedYear: number;
+    months: string[];
+    
+    onOpenCalendar: () => void;
+    onOpenRollover: () => void;
 }
 
 export default function BentoView({ 
