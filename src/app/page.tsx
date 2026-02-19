@@ -123,10 +123,11 @@ export default function FinancialDashboard() {
             case 'cyberpunk': return 'bg-[#020014] text-pink-50 selection:bg-pink-500 selection:text-white';
             case 'dracula': return 'bg-[#282a36] text-purple-100 selection:bg-purple-500 selection:text-white';
             case 'nubank': return 'bg-[#26004d] text-gray-100 selection:bg-white selection:text-purple-700';
+            case 'forest': return 'bg-[#061a0c] text-emerald-100 selection:bg-emerald-700 selection:text-white';
+            case 'midnight': return 'bg-[#0f172a] text-white';
             default: return 'bg-[#050505] text-gray-100 selection:bg-cyan-500 selection:text-black';
         }
     };
-
     const runTour = () => {
         // Verifica se a biblioteca driver.js foi carregada
         const driverLib = (window as any).driver?.js?.driver;
@@ -945,7 +946,28 @@ export default function FinancialDashboard() {
     };
 
     const handleRemoveReceipt = (e: React.MouseEvent) => { e.preventDefault(); e.stopPropagation(); if (confirm("Tem certeza?")) setFormData({ ...formData, receiptUrl: '' }); };
+    // Função para limpar o formulário após salvar ou fechar
+    // Função para limpar o formulário após salvar ou fechar
+    // Função para limpar o formulário
+    const resetForm = () => {
+        setFormData({
+            title: '',
+            amount: '',
+            installments: '',
+            dueDay: '',
+            category: '',
+            targetMonth: activeTab || 'Jan', // Usa a aba ativa (ex: "Fev")
+            isFixedIncome: false,
+            fixedMonthlyValue: '',
+            receiptUrl: '', // O erro diz que deve ser string, então usamos aspas vazias
+            icon: '',
+            paymentMethod: ''
+        });
 
+        setEditingId(null);
+        // Se tiver o estado de upload, mantenha:
+        // setUploadingFile(false); 
+    };
     const handleSubmit = async () => {
         // 1. Validação Inicial
         if (!formData.title) {
@@ -970,7 +992,7 @@ export default function FinancialDashboard() {
         const monthValue = monthMapNums[formData.targetMonth] || '01';
 
         // Criamos uma data no formato ISO (YYYY-MM-DD) para o banco aceitar no created_at
-        // Usamos 12:00:00 para evitar problemas de fuso horário que jogam a data para o dia anterior
+        // Usamos 12:00:00 para evitar problemas de fuso horário
         const isoDateForDatabase = `${selectedYear}-${monthValue}-${dayValue}T12:00:00Z`;
         const dateStringBR = `${dayValue}/${monthValue}/${selectedYear}`;
 
@@ -1016,10 +1038,9 @@ export default function FinancialDashboard() {
                 return { table: 'transactions', data: { ...base, amount: amountVal, type: 'expense', date: dateStringBR, category: formData.category, target_month: formData.targetMonth, status: 'active', created_at: isoDateForDatabase } };
             }
 
-            // --- PARCELAMENTOS (LÓGICA ADAPTADA) ---
+            // --- PARCELAMENTOS ---
             if (formMode === 'installment') {
                 const qtd = parseInt(formData.installments.toString()) || 1;
-                // Prioriza o valor mensal se preenchido, senão divide o total
                 const valuePerMonth = fixedVal > 0 ? fixedVal : (amountVal / qtd);
                 const totalValue = amountVal > 0 ? amountVal : (valuePerMonth * qtd);
 
@@ -1033,7 +1054,6 @@ export default function FinancialDashboard() {
                         value_per_month: valuePerMonth,
                         due_day: parseInt(formData.dueDay.toString()) || 10,
                         status: 'active',
-                        // Como você não tem start_date, forçamos o created_at para o mês de início
                         created_at: isoDateForDatabase
                     }
                 };
@@ -1045,35 +1065,50 @@ export default function FinancialDashboard() {
 
         const { table, data } = getPayload();
 
-        // 4. Execução no Supabase
+        // 4. Execução no Supabase (Com lógica robusta de Update/Insert)
         try {
-            let result;
-            if (editingId) {
-                // Verifica se mudou de tabela ao editar
-                const originalTable = transactions.find(t => t.id === editingId) ? 'transactions' : (installments.find(i => i.id === editingId) ? 'installments' : 'recurring');
+            let error = null;
 
-                if (originalTable !== table) {
-                    await supabase.from(originalTable).delete().eq('id', editingId);
-                    result = await supabase.from(table).insert([data]);
+            if (editingId) {
+                // Descobre em qual tabela o item estava originalmente
+                const originalTable = transactions.find(t => t.id === editingId) ? 'transactions'
+                    : installments.find(i => i.id === editingId) ? 'installments'
+                        : recurring.find(r => r.id === editingId) ? 'recurring'
+                            : null;
+
+                if (originalTable && originalTable !== table) {
+                    // MUDANÇA DE TIPO: Deleta da antiga -> Insere na nova
+                    const { error: delError } = await supabase.from(originalTable).delete().eq('id', editingId);
+                    if (delError) throw delError;
+
+                    const { error: insError } = await supabase.from(table).insert([data]);
+                    error = insError;
                 } else {
-                    result = await supabase.from(table).update(data).eq('id', editingId);
+                    // MESMA TABELA: Apenas atualiza
+                    const { error: updError } = await supabase.from(table).update(data).eq('id', editingId);
+                    error = updError;
                 }
             } else {
-                result = await supabase.from(table).insert([data]);
+                // NOVO ITEM: Insere
+                const { error: insError } = await supabase.from(table).insert([data]);
+                error = insError;
             }
 
-            if (result.error) throw result.error;
+            if (error) throw error;
 
             toast.success("Dados salvos com sucesso!");
+
+            // Limpa o formulário e fecha o modal
             setIsFormOpen(false);
             setEditingId(null);
+            resetForm(); // Certifique-se de ter essa função ou limpar os estados manualmente aqui
 
-            // Recarrega os dados para atualizar a tela
+            // Recarrega os dados para atualizar a tela sem duplicar
             if (activeId) loadData(activeId, context);
 
         } catch (error: any) {
             console.error("Erro ao salvar:", error);
-            toast.error("Erro ao salvar: " + error.message);
+            toast.error("Erro ao salvar: " + (error.message || "Erro desconhecido"));
         }
     };
     // --- FUNÇÕES DE METAS (NOVO) ---
@@ -1512,7 +1547,7 @@ export default function FinancialDashboard() {
                 onOpenAI={() => setIsAIOpen(true)}
             />
 
-            
+
 
             {/* --- NOVO CARD DE PENDÊNCIAS (SÓ APARECE SE TIVER DÍVIDA) --- */}
             {currentMonthData.accumulatedDebt > 0 && (
@@ -1544,7 +1579,7 @@ export default function FinancialDashboard() {
                 </div>
 
             )}
-           {/* --- RENDERIZAÇÃO DOS LAYOUTS (Sintaxe Corrigida) --- */}
+            {/* --- RENDERIZAÇÃO DOS LAYOUTS (Sintaxe Corrigida) --- */}
             {/* =================================================================================
     CONTEÚDO DA ABA: DASHBOARD (FLUXO)
    ================================================================================= */}
