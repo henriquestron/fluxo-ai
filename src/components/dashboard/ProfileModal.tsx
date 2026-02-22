@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Lock, Camera, Save, Loader2, Mail, Phone, Shield, Link as LinkIcon, ExternalLink, Copy, Check, Zap } from 'lucide-react'; 
+import { X, User, Lock, Camera, Save, Loader2, Mail, Phone, Shield, Link as LinkIcon, ExternalLink, Copy, Check, Zap, AlertTriangle, Trash2 } from 'lucide-react'; 
 import { supabase } from '@/supabase'; // Ajuste o caminho se for diferente (ex: '@/supabase')
 import { toast } from 'sonner';
 
@@ -10,7 +10,7 @@ interface ProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
   user: any;
-  userPlan: string; // <--- ADICIONEI ISSO (IMPORTANTE)
+  userPlan: string;
 }
 
 export default function ProfileModal({ isOpen, onClose, user, userPlan }: ProfileModalProps) {
@@ -18,19 +18,23 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
 
   const [activeTab, setActiveTab] = useState<'details' | 'security'>('details');
   
-  // States
+  // States Pessoais
   const [fullName, setFullName] = useState(user.user_metadata?.full_name || '');
   const [avatarUrl, setAvatarUrl] = useState(user.user_metadata?.avatar_url || '');
   const [whatsapp, setWhatsapp] = useState('');
+  
+  // States de Segurança
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   
+  // Status de Carregamento
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // 🔒 VERIFICAÇÃO DE PLANO PARA WHATSAPP
-  // Apenas Pro, Agent e Admin podem usar a automação
   const canUseWhatsapp = ['pro', 'agent', 'admin'].includes(userPlan || '');
 
   // 1. BUSCAR TELEFONE AO ABRIR
@@ -86,7 +90,7 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
       });
       if (authError) throw authError;
 
-      // 2. Tabela user_settings (Salva o telefone mesmo se não for Pro)
+      // 2. Tabela user_settings
       const cleanPhone = whatsapp.replace(/\D/g, ''); 
       
       const { error: dbError } = await supabase
@@ -100,7 +104,6 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
 
       toast.success("Perfil atualizado com sucesso!");
       
-      // Pequeno delay para atualizar a UI
       setTimeout(() => {
           window.location.reload();
       }, 1000);
@@ -129,16 +132,40 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
     setLoading(false);
   };
 
-  // --- FUNÇÃO DO LINK MÁGICO (COM TRAVA) ---
+  // 🛑 Excluir Conta (LGPD)
+  const handleDeleteAccount = async () => {
+    setIsDeleting(true);
+    try {
+      // 1. Apaga os dados financeiros das tabelas públicas (Garante a LGPD)
+      await supabase.from('transactions').delete().eq('user_id', user.id);
+      await supabase.from('installments').delete().eq('user_id', user.id);
+      await supabase.from('recurring').delete().eq('user_id', user.id);
+      await supabase.from('goals').delete().eq('user_id', user.id);
+      await supabase.from('user_settings').delete().eq('user_id', user.id);
+
+      // 2. Desloga o usuário
+      await supabase.auth.signOut();
+      
+      toast.success("Sua conta e seus dados foram excluídos.");
+      
+      // 3. Recarrega a página para voltar pro login
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+
+    } catch (error: any) {
+      console.error(error);
+      toast.error("Erro ao excluir dados: " + error.message);
+      setIsDeleting(false);
+    }
+  };
+
+  // --- FUNÇÕES DO WHATSAPP ---
   const handleConnectWhatsapp = () => {
-    // Trava de segurança no clique
     if (!canUseWhatsapp) {
-        toast.error("Recurso Bloqueado 🔒", { 
-            description: "A IA no WhatsApp é exclusiva dos planos Pro e Agent." 
-        });
+        toast.error("Recurso Bloqueado 🔒", { description: "A IA no WhatsApp é exclusiva dos planos Pro e Agent." });
         return;
     }
-
     const cleanPhone = whatsapp.replace(/\D/g, '');
     if (cleanPhone.length < 10) return toast.error("Número incompleto.");
     
@@ -147,13 +174,11 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
     window.open(link, '_blank');
   };
 
-  // --- FUNÇÃO DE COPIAR CÓDIGO (COM TRAVA) ---
   const handleCopyCode = () => {
     if (!canUseWhatsapp) {
         toast.error("Recurso Bloqueado 🔒", { description: "Faça o upgrade para ativar." });
         return;
     }
-
     const cleanPhone = whatsapp.replace(/\D/g, '');
     if (cleanPhone.length < 10) return toast.error("Digite um número válido primeiro.");
 
@@ -162,7 +187,6 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
     
     setCopied(true);
     toast.success("Código copiado! Envie para o Bot no WhatsApp.");
-    
     setTimeout(() => setCopied(false), 3000);
   };
 
@@ -190,13 +214,14 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
             onClick={() => setActiveTab('security')}
             className={`flex-1 py-4 text-sm font-bold border-b-2 transition ${activeTab === 'security' ? 'border-purple-500 text-purple-400 bg-purple-500/5' : 'border-transparent text-gray-500 hover:text-gray-300'}`}
           >
-            Segurança
+            Segurança & Privacidade
           </button>
         </div>
 
         {/* CONTENT */}
-        <div className="p-8 overflow-y-auto">
+        <div className="p-8 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800">
           
+          {/* ABA 1: DADOS PESSOAIS */}
           {activeTab === 'details' && (
             <div className="space-y-6">
               {/* Avatar */}
@@ -238,15 +263,10 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
                     <label className="text-xs text-gray-400 font-bold flex items-center gap-1">
                       <Phone size={12} /> WhatsApp (IA)
                     </label>
-                    
                     {canUseWhatsapp ? (
-                        <span className="bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                            <Zap size={10} /> Ativo
-                        </span>
+                        <span className="bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"><Zap size={10} /> Ativo</span>
                     ) : (
-                        <span className="bg-gray-800 text-gray-500 border border-gray-700 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                            <Lock size={10} /> Exclusivo Pro
-                        </span>
+                        <span className="bg-gray-800 text-gray-500 border border-gray-700 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"><Lock size={10} /> Exclusivo Pro</span>
                     )}
                   </div>
                   
@@ -263,38 +283,17 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
                     Salve seu número para integrar com a IA. {canUseWhatsapp ? "Clique abaixo para ativar." : "Faça upgrade para ativar."}
                   </p>
 
-                  {/* --- ÁREA DE CONEXÃO --- */}
                   {whatsapp.length > 8 && (
                     <div className="flex gap-2">
-                        {/* Botão Principal (Link) */}
-                        <button 
-                            onClick={handleConnectWhatsapp}
-                            className={`flex-1 py-2.5 rounded-xl font-bold transition flex items-center justify-center gap-2 ${
-                                canUseWhatsapp 
-                                ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/20' 
-                                : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
-                            }`}
-                        >
+                        <button onClick={handleConnectWhatsapp} className={`flex-1 py-2.5 rounded-xl font-bold transition flex items-center justify-center gap-2 ${canUseWhatsapp ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/20' : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'}`}>
                             {canUseWhatsapp ? <LinkIcon size={16} /> : <Lock size={16} />}
                             {canUseWhatsapp ? "Conectar Agora" : "Bloqueado"}
                         </button>
-
-                        {/* Botão Copiar (Backup) */}
-                        <button 
-                            onClick={handleCopyCode}
-                            className={`w-12 py-2.5 rounded-xl transition flex items-center justify-center ${
-                                canUseWhatsapp
-                                ? 'bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300'
-                                : 'bg-gray-800 text-gray-600 cursor-not-allowed border border-gray-700'
-                            }`}
-                            title="Copiar código de ativação"
-                        >
+                        <button onClick={handleCopyCode} className={`w-12 py-2.5 rounded-xl transition flex items-center justify-center ${canUseWhatsapp ? 'bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300' : 'bg-gray-800 text-gray-600 cursor-not-allowed border border-gray-700'}`} title="Copiar código de ativação">
                             {copied ? <Check size={16} className="text-green-500"/> : <Copy size={16} />} 
                         </button>
                     </div>
                   )}
-                  {/* ----------------------------- */}
-
                 </div>
 
                 {/* Email */}
@@ -306,23 +305,20 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
                 </div>
               </div>
 
-              <button 
-                onClick={handleUpdateProfile} 
-                disabled={loading || uploading}
-                className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl transition shadow-lg flex items-center justify-center gap-2"
-              >
+              <button onClick={handleUpdateProfile} disabled={loading || uploading} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl transition shadow-lg flex items-center justify-center gap-2">
                 {loading ? <Loader2 className="animate-spin"/> : <><Save size={18}/> Salvar Alterações</>}
               </button>
             </div>
           )}
 
+          {/* ABA 2: SEGURANÇA E PRIVACIDADE */}
           {activeTab === 'security' && (
             <div className="space-y-6">
                <div className="bg-orange-500/10 border border-orange-500/20 p-4 rounded-xl flex items-start gap-3">
                  <Lock className="text-orange-500 mt-1" size={20}/>
                  <div>
-                   <h4 className="text-orange-400 font-bold text-sm">Área Sensível</h4>
-                   <p className="text-orange-500/70 text-xs mt-1">Alterar senha pode desconectar outros dispositivos.</p>
+                   <h4 className="text-orange-400 font-bold text-sm">Atualizar Senha</h4>
+                   <p className="text-orange-500/70 text-xs mt-1">Sugerimos usar uma senha forte e única para proteger seus dados financeiros.</p>
                  </div>
                </div>
 
@@ -337,17 +333,50 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
                  </div>
                </div>
 
-               <button 
-                 onClick={handleChangePassword} 
-                 disabled={loading || !password}
-                 className="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded-xl transition border border-gray-600 flex items-center justify-center gap-2"
-               >
+               <button onClick={handleChangePassword} disabled={loading || !password} className="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded-xl transition border border-gray-600 flex items-center justify-center gap-2">
                  {loading ? <Loader2 className="animate-spin"/> : "Atualizar Senha"}
                </button>
+
+               <div className="h-px bg-gray-800 w-full my-6"></div>
+
+               {/* ZONA DE RISCO (LGPD) */}
+               <div className="bg-red-500/5 border border-red-500/20 p-5 rounded-xl">
+                 <h4 className="text-red-500 font-bold flex items-center gap-2 mb-2"><AlertTriangle size={18}/> Zona de Risco</h4>
+                 <p className="text-gray-400 text-xs mb-4 leading-relaxed">
+                   De acordo com a LGPD, você tem o direito de apagar sua conta. Esta ação <strong>excluirá todos os seus dados financeiros, históricos e metas imediatamente.</strong> Esta ação é irreversível.
+                 </p>
+                 <button onClick={() => setIsDeleteModalOpen(true)} className="w-full bg-red-500/10 hover:bg-red-600 text-red-500 hover:text-white font-bold py-2.5 rounded-lg transition border border-red-500/20 hover:border-red-600 flex items-center justify-center gap-2">
+                   <Trash2 size={16}/> Excluir Minha Conta Permanentemente
+                 </button>
+               </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 bg-black/95 backdrop-blur-md flex items-center justify-center z-[400] p-4 animate-in zoom-in duration-200">
+          <div className="bg-[#111] border border-red-900/50 p-6 rounded-3xl w-full max-w-sm text-center shadow-2xl shadow-red-900/20">
+             <div className="flex justify-center mb-4">
+               <div className="bg-red-500/20 p-4 rounded-full"><AlertTriangle className="text-red-500" size={32} /></div>
+             </div>
+             <h2 className="text-xl font-bold text-white mb-2">Você tem certeza absoluta?</h2>
+             <p className="text-gray-400 text-sm mb-6">
+               Isso apagará seu cadastro e <strong>todos os seus registros financeiros</strong> para sempre. Você perderá o acesso à plataforma.
+             </p>
+             <div className="flex gap-3">
+               <button onClick={() => setIsDeleteModalOpen(false)} disabled={isDeleting} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded-xl transition">
+                 Cancelar
+               </button>
+               <button onClick={handleDeleteAccount} disabled={isDeleting} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2">
+                 {isDeleting ? <Loader2 className="animate-spin" size={18}/> : "Sim, Excluir"}
+               </button>
+             </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
