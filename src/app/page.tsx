@@ -58,7 +58,12 @@ export default function FinancialDashboard() {
     // --- WORKSPACES (PERFIS DE DADOS) ---
     const [workspaces, setWorkspaces] = useState<any[]>([]);
     const [currentWorkspace, setCurrentWorkspace] = useState<any>(null);
+    const [newWorkspaceName, setNewWorkspaceName] = useState('');
     const [isNewProfileModalOpen, setIsNewProfileModalOpen] = useState(false);
+    const [isDeleteWorkspaceModalOpen, setIsDeleteWorkspaceModalOpen] = useState(false);
+    const [isDeletingWorkspace, setIsDeletingWorkspace] = useState(false);
+    const [isSavingWorkspace, setIsSavingWorkspace] = useState(false);
+
     const [newProfileName, setNewProfileName] = useState('');
 
     // --- MODAIS ---
@@ -1505,16 +1510,104 @@ export default function FinancialDashboard() {
             <div className="flex justify-between items-center mb-6">
                 <div className="flex items-center gap-2">
                     <div className="bg-gray-900 border border-gray-800 rounded-xl p-1 flex gap-1">
+                        
+                        {/* Botões das Workspaces */}
                         {workspaces.map(ws => (
                             <button key={ws.id} onClick={() => switchWorkspace(ws)} className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 ${currentWorkspace?.id === ws.id ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>
                                 {currentWorkspace?.id === ws.id ? <Layers size={14} className="text-cyan-500" /> : null}
                                 {ws.title}
                             </button>
                         ))}
-                        <button onClick={() => setIsNewProfileModalOpen(true)} className="px-3 py-2 rounded-lg text-gray-500 hover:bg-gray-800 hover:text-white transition" title="Criar Novo Perfil"><FolderPlus size={14} /></button>
+                        
+                        <div className="w-px bg-gray-800 mx-1"></div>
+
+                        {/* Botão de Adicionar Nova */}
+                        <button onClick={() => setIsNewProfileModalOpen(true)} className="px-3 py-2 rounded-lg text-gray-500 hover:bg-gray-800 hover:text-cyan-400 transition" title="Criar Novo Perfil">
+                            <FolderPlus size={16} />
+                        </button>
+
+                        {/* NOVO: Botão de Excluir (Só aparece se tiver numa workspace selecionada que não seja a principal) */}
+                        {currentWorkspace && currentWorkspace.id && (
+                            <button 
+                                onClick={() => setIsDeleteWorkspaceModalOpen(true)} 
+                                className="px-3 py-2 rounded-lg text-gray-500 hover:bg-red-950/50 hover:text-red-500 transition" 
+                                title="Excluir este Perfil"
+                            >
+                                <Trash2 size={16} />
+                            </button>
+                        )}
+
                     </div>
                 </div>
             </div>
+
+            {/* MODAL DE EXCLUIR WORKSPACE */}
+            {isDeleteWorkspaceModalOpen && currentWorkspace && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[300] p-4 animate-in zoom-in duration-200">
+                    <div className="bg-[#111] border border-red-900/50 p-6 rounded-3xl w-full max-w-sm text-center shadow-2xl shadow-red-900/20 relative">
+                        <button onClick={() => setIsDeleteWorkspaceModalOpen(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white transition">
+                            <X size={20} />
+                        </button>
+                        
+                        <div className="flex justify-center mb-4">
+                            <div className="bg-red-500/20 p-4 rounded-full">
+                                <Trash2 className="text-red-500" size={32} />
+                            </div>
+                        </div>
+                        
+                        <h2 className="text-xl font-bold text-white mb-2">Excluir Perfil?</h2>
+                        <p className="text-gray-400 text-sm mb-6">
+                            Tem certeza que deseja apagar o perfil <strong>{currentWorkspace.title}</strong>? <br/><br/>
+                            <span className="text-red-400">Esta ação apagará todas as transações vinculadas a este perfil e não pode ser desfeita.</span>
+                        </p>
+                        
+                        <div className="flex gap-3">
+                            <button 
+                                onClick={() => setIsDeleteWorkspaceModalOpen(false)} 
+                                disabled={isDeletingWorkspace} 
+                                className="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded-xl transition"
+                            >
+                                Cancelar
+                            </button>
+                            
+                            <button 
+                                onClick={async () => {
+                                    setIsDeletingWorkspace(true);
+                                    try {
+                                        // 1. (Opcional) Se o seu banco não tiver "Delete Cascade", você pode precisar apagar as transações primeiro:
+                                        // await supabase.from('transactions').delete().eq('workspace_id', currentWorkspace.id);
+                                        // await supabase.from('installments').delete().eq('workspace_id', currentWorkspace.id);
+
+                                        // 2. Apaga a Workspace
+                                        const { error } = await supabase
+                                            .from('workspaces') 
+                                            .delete()
+                                            .eq('id', currentWorkspace.id);
+
+                                        if (error) throw error;
+
+                                        toast.success("Perfil excluído com sucesso!");
+                                        setIsDeleteWorkspaceModalOpen(false);
+                                        
+                                        // Volta para o perfil principal e recarrega
+                                        window.location.reload(); 
+                                        
+                                    } catch (error: any) {
+                                        console.error(error);
+                                        toast.error("Erro ao excluir perfil: " + error.message);
+                                    } finally {
+                                        setIsDeletingWorkspace(false);
+                                    }
+                                }} 
+                                disabled={isDeletingWorkspace}
+                                className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-red-900/20"
+                            >
+                                {isDeletingWorkspace ? <Loader2 className="animate-spin" size={18} /> : "Sim, Excluir"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* ... HEADER PRINCIPAL ... */}
             {/* ... HEADER PRINCIPAL (Visual Original + Travas Novas) ... */}
@@ -1848,6 +1941,75 @@ export default function FinancialDashboard() {
             )}
 
             {/* MODAL IA */}
+            {/* MODAL DE CRIAR NOVA WORKSPACE (PERFIL) */}
+            {isNewProfileModalOpen && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[300] p-4 animate-in zoom-in duration-200">
+                    <div className="bg-[#111] border border-gray-800 p-6 rounded-3xl w-full max-w-sm shadow-2xl relative">
+                        <button 
+                            onClick={() => setIsNewProfileModalOpen(false)} 
+                            className="absolute top-4 right-4 text-gray-500 hover:text-white transition"
+                        >
+                            <X size={20} />
+                        </button>
+                        
+                        <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+                            <FolderPlus className="text-cyan-500" /> Novo Perfil
+                        </h2>
+                        <p className="text-gray-400 text-xs mb-6">
+                            Crie um novo espaço (ex: Empresa, Projetos) para separar suas finanças.
+                        </p>
+                        
+                        <input 
+                            type="text" 
+                            value={newWorkspaceName} 
+                            onChange={(e) => setNewWorkspaceName(e.target.value)} 
+                            placeholder="Nome (ex: Empresa)" 
+                            className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none transition mb-6"
+                            autoFocus
+                        />
+                        
+                        <button 
+                            onClick={async () => {
+                                if (!newWorkspaceName.trim()) {
+                                    toast.error("Digite um nome para o perfil.");
+                                    return;
+                                }
+                                setIsSavingWorkspace(true);
+                                try {
+                                    const userId = getActiveUserId(); // Ou user?.id dependendo de como está no seu page.tsx
+                                    
+                                    // Salva no Supabase (ajuste o nome da tabela se for diferente de 'workspaces')
+                                    const { data, error } = await supabase
+                                        .from('workspaces') // Confirme se o nome da sua tabela é esse mesmo
+                                        .insert([{ 
+                                            user_id: userId, 
+                                            title: newWorkspaceName 
+                                        }]);
+
+                                    if (error) throw error;
+
+                                    toast.success("Novo perfil criado com sucesso!");
+                                    setIsNewProfileModalOpen(false);
+                                    setNewWorkspaceName('');
+                                    
+                                    // Recarrega a página para puxar o novo perfil
+                                    window.location.reload(); 
+                                    
+                                } catch (error: any) {
+                                    console.error(error);
+                                    toast.error("Erro ao criar perfil: " + error.message);
+                                } finally {
+                                    setIsSavingWorkspace(false);
+                                }
+                            }} 
+                            disabled={isSavingWorkspace}
+                            className="w-full bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-cyan-900/20"
+                        >
+                            {isSavingWorkspace ? <Loader2 className="animate-spin" size={18} /> : "Criar Perfil"}
+                        </button>
+                    </div>
+                </div>
+            )}
 
 
             {isRolloverModalOpen && (
