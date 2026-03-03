@@ -115,9 +115,23 @@ export default function FinancialDashboard() {
 
     const [formMode, setFormMode] = useState<'income' | 'expense' | 'installment' | 'fixed_expense'>('income');
     const [editingId, setEditingId] = useState<number | null>(null);
-    const initialFormState = {
-        title: '', amount: '', installments: '', dueDay: '', category: 'Outros', targetMonth: currentSystemMonthName, isFixedIncome: false, fixedMonthlyValue: '', receiptUrl: '', icon: '', paymentMethod: 'outros'
-    };
+    // Crie essa variável de "hoje" logo acima do initialFormState
+const diaDeHoje = String(new Date().getDate()).padStart(2, '0');
+
+const initialFormState = {
+    title: '',
+    amount: '',
+    installments: '',
+    dueDay: '',
+    day: diaDeHoje, // <--- AGORA ELE SEMPRE COMEÇA COM O DIA DE HOJE! (ex: "03")
+    category: 'Outros',
+    targetMonth: 'Jan', 
+    isFixedIncome: false,
+    fixedMonthlyValue: '',
+    receiptUrl: '', 
+    icon: '',
+    paymentMethod: ''
+};
     const [formData, setFormData] = useState(initialFormState);
     const [uploadingFile, setUploadingFile] = useState(false);
     const [aiResponse, setAiResponse] = useState<any>('');
@@ -923,6 +937,7 @@ export default function FinancialDashboard() {
             isFixedIncome: mode === 'income' && item.category === 'Salário',
             fixedMonthlyValue: item.fixed_monthly_value || '',
             receiptUrl: currentReceipt || '',
+            day: '',
             icon: item.icon || '',
             paymentMethod: item.payment_method || 'outros'
         });
@@ -955,16 +970,19 @@ export default function FinancialDashboard() {
     // Função para limpar o formulário após salvar ou fechar
     // Função para limpar o formulário
     const resetForm = () => {
+        const diaDeHoje = String(new Date().getDate()).padStart(2, '0');
+        
         setFormData({
             title: '',
             amount: '',
             installments: '',
             dueDay: '',
-            category: '',
-            targetMonth: activeTab || 'Jan', // Usa a aba ativa (ex: "Fev")
+            day: diaDeHoje, // <--- AQUI TAMBÉM!
+            category: 'Outros',
+            targetMonth: activeTab || 'Jan', 
             isFixedIncome: false,
             fixedMonthlyValue: '',
-            receiptUrl: '', // O erro diz que deve ser string, então usamos aspas vazias
+            receiptUrl: '', 
             icon: '',
             paymentMethod: ''
         });
@@ -993,7 +1011,16 @@ export default function FinancialDashboard() {
             'Jul': '07', 'Ago': '08', 'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12'
         };
 
-        const dayValue = formData.dueDay ? formData.dueDay.toString().padStart(2, '0') : '01';
+        // 🟢 CORREÇÃO DO "DIA 01": Verifica qual campo de dia usar dependendo do tipo de lançamento
+        let baseDay = '01';
+        if (formMode === 'income' || formMode === 'expense') {
+            // Se estiver vazio, pega o dia de hoje como segurança
+            baseDay = formData.day ? formData.day.toString() : String(new Date().getDate()); 
+        } else {
+            baseDay = formData.dueDay ? formData.dueDay.toString() : '01';
+        }
+        
+        const dayValue = baseDay.padStart(2, '0');
         const monthValue = monthMapNums[formData.targetMonth] || '01';
 
         // Criamos uma data no formato ISO (YYYY-MM-DD) para o banco aceitar no created_at
@@ -1034,13 +1061,13 @@ export default function FinancialDashboard() {
             // --- RECEITAS ---
             if (formMode === 'income') {
                 return formData.isFixedIncome
-                    ? { table: 'recurring', data: { ...base, value: amountVal, due_day: 1, category: 'Salário', type: 'income', status: 'active', created_at: isoDateForDatabase } }
-                    : { table: 'transactions', data: { ...base, amount: amountVal, type: 'income', date: dateStringBR, category: 'Receita', target_month: formData.targetMonth, status: 'active', created_at: isoDateForDatabase } };
+                    ? { table: 'recurring', data: { ...base, value: amountVal, due_day: parseInt(dayValue), category: 'Salário', type: 'income', status: 'active', created_at: isoDateForDatabase } }
+                    : { table: 'transactions', data: { ...base, amount: amountVal, type: 'income', date: dateStringBR, category: 'Receita', target_month: formData.targetMonth, status: 'active', created_at: isoDateForDatabase} };
             }
 
             // --- DESPESAS AVULSAS ---
             if (formMode === 'expense') {
-                return { table: 'transactions', data: { ...base, amount: amountVal, type: 'expense', date: dateStringBR, category: formData.category, target_month: formData.targetMonth, status: 'active', created_at: isoDateForDatabase } };
+                return { table: 'transactions', data: { ...base, amount: amountVal, type: 'expense', date: dateStringBR, category: formData.category, target_month: formData.targetMonth, status: 'active', created_at: isoDateForDatabase, is_paid: true } };
             }
 
             // --- PARCELAMENTOS ---
@@ -1057,7 +1084,7 @@ export default function FinancialDashboard() {
                         installments_count: qtd,
                         current_installment: 0, // 0 significa que no mês da "created_at" ele será 1
                         value_per_month: valuePerMonth,
-                        due_day: parseInt(formData.dueDay.toString()) || 10,
+                        due_day: parseInt(dayValue) || 10,
                         status: 'active',
                         created_at: isoDateForDatabase
                     }
@@ -1065,7 +1092,7 @@ export default function FinancialDashboard() {
             }
 
             // --- DESPESAS FIXAS ---
-            return { table: 'recurring', data: { ...base, value: amountVal, due_day: parseInt(formData.dueDay.toString()) || 10, category: formData.category || 'Fixa', type: 'expense', status: 'active', created_at: isoDateForDatabase } };
+            return { table: 'recurring', data: { ...base, value: amountVal, due_day: parseInt(dayValue) || 10, category: formData.category || 'Fixa', type: 'expense', status: 'active', created_at: isoDateForDatabase } };
         };
 
         const { table, data } = getPayload();
@@ -1103,12 +1130,18 @@ export default function FinancialDashboard() {
 
             toast.success("Dados salvos com sucesso!");
 
-            // Limpa o formulário e fecha o modal
-            setIsFormOpen(false);
+            // Limpa o formulário e fecha o modal usando o NOME CERTO
+            setIsFormOpen(false); // <--- AQUI ESTAVA O ERRO!
             setEditingId(null);
-            resetForm(); // Certifique-se de ter essa função ou limpar os estados manualmente aqui
+            
+            // Limpa o form, agora o TypeScript já conhece o 'day'
+            setFormData({
+                title: '', amount: '', targetMonth: activeTab, icon: 'dollar-sign',
+                paymentMethod: 'outros', isFixedIncome: false, category: 'Outros',
+                installments: '1', fixedMonthlyValue: '', dueDay: '10', day: '', receiptUrl: ''
+            }); 
 
-            // Recarrega os dados para atualizar a tela sem duplicar
+            // Recarrega os dados
             if (activeId) loadData(activeId, context);
 
         } catch (error: any) {
@@ -1359,93 +1392,140 @@ export default function FinancialDashboard() {
             if (data.error) throw new Error(data.error);
 
             let aiResponseText = data.response;
-            const jsonMatch = aiResponseText.match(/\[[\s\S]*\]/);
+            
+            // Tenta encontrar algo parecido com um Array JSON na resposta (mesmo se a IA mandar texto junto)
+            const jsonMatch = aiResponseText.match(/\[\s*\{[\s\S]*\}\s*\]/);
 
             if (jsonMatch) {
                 try {
+                    // Limpa crases de markdown do bloco de código
                     let cleanJson = jsonMatch[0].replace(/```json/g, '').replace(/```/g, '').trim();
                     const commands = JSON.parse(cleanJson);
 
                     if (Array.isArray(commands)) {
                         let actionsPerformed = 0;
+                        let lastSavedItemName = "";
                         const activeId = getActiveUserId();
 
                         for (const cmd of commands) {
                             if (cmd.action === 'add') {
-                                // 1. TRATAMENTO DE DATA
+                                // 1. TRATAMENTO DE DATA E MÊS
+                                // 1. TRATAMENTO DE DATA E MÊS (Com Tradutor de Letras)
                                 let finalDate = cmd.data.date;
-                                if (finalDate && finalDate.split('/').length === 2) finalDate = `${finalDate}/${selectedYear}`;
-                                if (!finalDate && cmd.data.target_month) {
-                                    const map: any = { 'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04', 'Mai': '05', 'Jun': '06', 'Jul': '07', 'Ago': '08', 'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12' };
-                                    finalDate = `01/${map[cmd.data.target_month] || '01'}/${selectedYear}`;
+                                const mapMes: any = { 'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04', 'Mai': '05', 'Jun': '06', 'Jul': '07', 'Ago': '08', 'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12' };
+
+                                if (finalDate) {
+                                    // Separa o dia, mês e ano
+                                    const parts = finalDate.split('/');
+                                    if (parts.length >= 2) {
+                                        let d = parts[0].padStart(2, '0'); // Garante que o dia tenha 2 casas (ex: 03)
+                                        let m = parts[1];
+                                        let y = parts.length === 3 ? parts[2] : selectedYear;
+                                        
+                                        // Se a IA mandou o mês com letras (Ex: 'Mar' ou 'MAR')
+                                        if (isNaN(Number(m))) {
+                                            // Converte para o padrão 'Mar' e pega o número correspondente
+                                            const mFormatado = m.charAt(0).toUpperCase() + m.slice(1).toLowerCase();
+                                            m = mapMes[mFormatado] || '01';
+                                        } else {
+                                            // Se já for número, só garante as 2 casas (ex: '3' vira '03')
+                                            m = String(m).padStart(2, '0');
+                                        }
+                                        
+                                        finalDate = `${d}/${m}/${y}`;
+                                    }
+                                } else if (cmd.data.target_month) {
+                                    // Se não veio data, monta usando o dia 01 do mês alvo
+                                    finalDate = `01/${mapMes[cmd.data.target_month] || '01'}/${selectedYear}`;
                                 }
 
-                                // 2. WHITELIST (Só passa o que o banco aceita)
-                                // Isso remove campos alucinados pela IA como "is_paid", "confidence", etc.
+                                // 2. WHITELIST BÁSICA (Apenas os campos universais)
                                 const safeData: any = {
                                     user_id: activeId,
                                     context: currentWorkspace?.id,
                                     title: cmd.data.title,
-                                    amount: cmd.data.amount || cmd.data.value || 0, // Aceita value ou amount
-                                    type: cmd.data.type,
+                                    type: cmd.data.type || 'expense',
                                     category: cmd.data.category || 'Outros',
                                     icon: cmd.data.icon || 'dollar-sign',
-                                    status: cmd.data.status || 'active'
+                                    status: cmd.data.status || 'active',
+                                    is_paid: cmd.data.is_paid === true // Apenas marca como pago se a IA disser explicitamente que é true. Qualquer outro valor (ex: "true", "yes", "1") será considerado como não pago para evitar erros.
                                 };
 
-                                // Campos específicos por tabela
+                                // Pega o valor independente do nome que a IA mandar
+                                const extractedValue = parseFloat(cmd.data.amount) || parseFloat(cmd.data.value) || 0;
+
+                                // 3. CAMPOS ESPECÍFICOS POR TABELA
                                 if (cmd.table === 'transactions') {
+                                    safeData.amount = extractedValue;
                                     safeData.date = finalDate;
                                     safeData.target_month = cmd.data.target_month || activeTab;
-                                    // Se a IA mandou 'paid', garantimos que o status seja 'paid'
-                                    if (cmd.data.is_paid === true) safeData.is_paid = true; // Só inclui se sua tabela tiver essa coluna, se não tiver, REMOVA essa linha.
-                                    // Se sua tabela usa APENAS o campo 'status'='paid', use esta linha:
-                                    // if (cmd.data.is_paid === true || cmd.data.status === 'paid') safeData.status = 'paid';
+                                    safeData.is_paid = true;
+                                    if (cmd.data.is_paid === true) safeData.is_paid = true;
                                 }
 
                                 if (cmd.table === 'installments') {
-                                    safeData.total_value = cmd.data.total_value || (safeData.amount * (cmd.data.installments_count || 1));
-                                    safeData.installments_count = cmd.data.installments_count || 1;
-                                    safeData.current_installment = 0; // Sempre começa do 0
-                                    safeData.value_per_month = cmd.data.value_per_month || safeData.amount;
+                                    const qtd = parseInt(cmd.data.installments_count) || 1;
+                                    const perMonth = parseFloat(cmd.data.value_per_month) || extractedValue;
+                                    
+                                    safeData.total_value = cmd.data.total_value || (perMonth * qtd);
+                                    safeData.installments_count = qtd;
+                                    safeData.current_installment = 0; // Sempre 0!
+                                    safeData.value_per_month = perMonth;
                                     safeData.due_day = parseInt(cmd.data.due_day) || 10;
-                                    // Removemos amount da tabela installments se ela não tiver essa coluna específica
+                                    safeData.payment_method = cmd.data.payment_method || 'outros';
+                                    safeData.paid_months = [];
+                                    
+                                    // 🚫 IMPORTANTE: Remove campos que a tabela Installments não tem
+                                    delete safeData.start_date;
                                     delete safeData.amount;
+                                    delete safeData.date;
+                                    delete safeData.target_month;
+                                    delete safeData.category; // <--- ADICIONAMOS ISSO AQUI!
+                                    delete safeData.type;     // <--- E ISSO AQUI TAMBÉM!
                                 }
 
                                 if (cmd.table === 'recurring') {
-                                    safeData.value = safeData.amount; // Recurring usa 'value'
-                                    delete safeData.amount;
+                                    safeData.value = extractedValue;
                                     safeData.due_day = parseInt(cmd.data.due_day) || 10;
-                                    safeData.start_date = finalDate; // Recurring usa start_date
+                                    safeData.start_date = finalDate;
+                                    
+                                    // 🚫 Remove campos inúteis
+                                    delete safeData.amount;
+                                    delete safeData.date;
                                 }
 
-                                // 3. INSERÇÃO
+                                // 4. INSERÇÃO NO SUPABASE
                                 const { error } = await supabase.from(cmd.table).insert([safeData]);
 
                                 if (!error) {
                                     actionsPerformed++;
+                                    lastSavedItemName = safeData.title;
                                 } else {
-                                    console.error("Erro detalhado Supabase:", JSON.stringify(error, null, 2)); // Log detalhado
+                                    console.error("Erro detalhado Supabase:", JSON.stringify(error, null, 2));
                                 }
                             }
                         }
 
+                        // Substitui COMPLETAMENTE a resposta da IA se uma ação deu certo
                         if (actionsPerformed > 0) {
-                            aiResponseText = `✅ Pronto! Adicionei ${actionsPerformed} item(s) com sucesso.`;
+                            aiResponseText = `✅ Pronto! Lançado: **${lastSavedItemName}**. O que mais precisa?`;
                             if (user && activeId) loadData(activeId, currentWorkspace?.id);
+                        } else {
+                            aiResponseText = `Ops, entendi o que você queria, mas deu um erro ao tentar salvar no banco de dados.`;
                         }
                     }
                 } catch (e) {
-                    console.error("Erro JSON IA", e);
+                    console.error("Erro ao analisar JSON da IA", e);
+                    // Se a IA mandou um JSON quebrado ou não obedeceu, não joga o JSON na tela
+                    aiResponseText = "Entendi o seu pedido, mas tive uma falha técnica ao tentar formatar a ação. Pode tentar falar de outro jeito?";
                 }
             }
 
             setChatHistory(prev => [...prev, { role: 'assistant', content: aiResponseText, type: 'text' }]);
 
         } catch (error: any) {
-            console.error(error);
-            setChatHistory(prev => [...prev, { role: 'assistant', content: "Erro técnico.", type: 'error' }]);
+            console.error("Erro na Requisição:", error);
+            setChatHistory(prev => [...prev, { role: 'assistant', content: "Parece que minha conexão caiu. Tente de novo em alguns segundos.", type: 'error' }]);
         } finally {
             setIsAiLoading(false);
         }

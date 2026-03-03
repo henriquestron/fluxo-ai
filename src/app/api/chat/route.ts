@@ -11,30 +11,18 @@ export async function POST(req: Request) {
 
     const canPerformActions = ['premium', 'pro', 'agent', 'admin'].includes(userPlan);
 
-    // --- 1. DEFINIÇÃO DE PAPÉIS (LÓGICA CORRIGIDA) ---
-    
-    // Nome de quem está no chat (Você)
-    // Se vier vazio, usa "Investidor" como fallback elegante
     const rawOwnerName = contextData?.owner_name;
     const myRealName = (rawOwnerName && rawOwnerName !== "Você") ? rawOwnerName : "Investidor";
-
     const isConsultant = contextData?.is_consultant || false;
     const viewingClient = contextData?.viewing_as_client || false;
 
-    // QUEM FALA (Interlocutor): É sempre você (seja dono ou consultor)
     const interlocutorName = myRealName;
-
-    // QUEM É O DONO DO DINHEIRO (Sujeito): Pode ser você ou seu cliente
     const dataOwnerName = viewingClient ? (contextData.client_name || "o Cliente") : myRealName;
-
-    // Contexto do cargo
     const userRole = isConsultant ? "CONSULTOR FINANCEIRO" : "DONO DA CONTA";
 
-    // --- 2. DATAS E CONTEXTO TEMPORAL ---
-    const todayReal = new Date().toLocaleDateString('pt-BR'); // Data real (ex: 16/02/2026)
-    const viewingPeriod = `${contextData.mes_visualizado}/${selectedYear}`; // O que está na tela (ex: Fev/2027)
+    const todayReal = new Date().toLocaleDateString('pt-BR');
+    const viewingPeriod = `${contextData.mes_visualizado}/${selectedYear}`;
 
-    // --- 3. PROMPT DO SISTEMA ---
     let systemInstructionText = `
         ATUE COMO: "Meu Aliado", um estrategista financeiro pessoal.
         
@@ -64,20 +52,19 @@ export async function POST(req: Request) {
     if (canPerformActions) {
         systemInstructionText += `
         --- MODO OPERACIONAL (CRIAR DADOS) ---
-        Se ${interlocutorName} pedir para registrar algo (ex: "Gastei 50 reais no mercado"):
+        Se ${interlocutorName} pedir para registrar algo (ex: "Gastei 50 reais no mercado"), VOCÊ DEVE EXECUTAR A AÇÃO.
         
         Use como data padrão para o registro: DIA ATUAL/${contextData.mes_visualizado}/${selectedYear}.
-        (Se hoje for dia 16 e o usuário estiver olhando Fevereiro, a data será 16/02/${selectedYear}).
         
-        FORMATO JSON OBRIGATÓRIO (Responda APENAS o JSON se for ação):
+        ⚠️ REGRA CRÍTICA PARA AÇÕES: Se a sua resposta for registrar uma transação, sua resposta DEVE SER EXCLUSIVAMENTE O ARRAY JSON ABAIXO. NÃO adicione nenhum texto antes ou depois. NENHUM.
         
-        1. GASTOS (transactions):
-        [{"action":"add", "table":"transactions", "data":{ "title": "Ex: Mercado", "amount": 0.00, "type": "expense", "category": "Outros", "icon": "shopping-cart", "date": "DD/${contextData.mes_visualizado}/${selectedYear}", "target_month": "${contextData.mes_visualizado}", "status": "active" }}]
+        1. GASTOS E RECEITAS (transactions):
+        [{"action":"add", "table":"transactions", "data":{ "title": "Ex: Mercado", "amount": 50.00, "type": "expense", "category": "Outros", "icon": "shopping-cart", "is_paid": true, "date": "10/${contextData.mes_visualizado}/${selectedYear}", "target_month": "${contextData.mes_visualizado}", "status": "active" }}]
 
-        2. PARCELAS (installments):
+        2. PARCELAS DE CARTÃO DE CRÉDITO (installments):
         [{"action":"add", "table":"installments", "data":{ "title": "Nome", "total_value": 0.00, "installments_count": 1, "value_per_month": 0.00, "due_day": 10, "status": "active", "icon": "credit-card" }}]
 
-        3. FIXAS (recurring):
+        3. CONTAS E RECEITAS FIXAS (recurring):
         [{"action":"add", "table":"recurring", "data":{ "title": "Nome", "value": 0.00, "type": "expense", "category": "Fixa", "due_day": 10, "status": "active", "start_date": "01/${contextData.mes_visualizado}/${selectedYear}" }}]
         `;
     } else {
@@ -88,7 +75,6 @@ export async function POST(req: Request) {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    // Uso o modelo 2.0 Flash que é mais rápido e inteligente que o flash-latest genérico
     const model = genAI.getGenerativeModel({ 
         model: "gemini-flash-latest", 
         systemInstruction: systemInstructionText 
@@ -105,7 +91,6 @@ export async function POST(req: Request) {
     
     if (images && images.length > 0) {
         const img = images[0];
-        // Limpeza extra para garantir que o Gemini aceite a imagem
         const base64Data = img.base64.replace(/^data:.*;base64,/, "");
         messageParts = [
             { inlineData: { data: base64Data, mimeType: img.mimeType || "image/jpeg" } },

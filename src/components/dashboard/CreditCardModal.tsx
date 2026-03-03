@@ -74,7 +74,7 @@ const BANK_STYLES: any = {
         bg: 'bg-emerald-900/10', 
         border: 'border-emerald-500/30', 
         text: 'text-emerald-400', 
-        icon: null // Dinheiro usa ícone padrão do sistema
+        icon: null 
     },
     'outros': { 
         label: 'Outros', 
@@ -91,7 +91,7 @@ interface CreditCardModalProps {
     onClose: () => void;
     user: any;
     activeTab: string;
-    contextId: string; // <--- NOVO: Recebe o ID do Workspace
+    contextId: string; 
     onSuccess: () => void;
 }
 
@@ -132,27 +132,34 @@ export default function CreditCardModal({ isOpen, onClose, user, activeTab, cont
 
         setIsSaving(true);
         try {
+            const currentYear = new Date().getFullYear();
+            const currentRealMonth = new Date().getMonth(); // Pega o mês real de hoje (0 a 11)
+            
+            const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+            const targetMonthIndex = months.indexOf(activeTab);
+            
+            // 🟢 A MATEMÁTICA MÁGICA:
+            // Isso calcula a diferença exata entre hoje e a aba que você está olhando,
+            // garantindo que a parcela 1 caia exatamente na aba ativa!
+            const startOffset = currentRealMonth - targetMonthIndex;
+
             const inserts = items.map(item => {
                 const valParcela = parseFloat(item.value.toString().replace(',', '.')) || 0;
                 const qtd = parseInt(item.installments.toString()) || 1;
                 const totalCompra = valParcela * qtd;
-                
-                const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-                const targetMonthIndex = months.indexOf(activeTab);
-                const startOffset = 1 - targetMonthIndex;
 
                 return {
                     user_id: user.id,
-                    context: contextId, // <--- CORREÇÃO: Salva o ID do Workspace!
+                    context: contextId, 
                     title: item.title,
                     total_value: totalCompra,
                     installments_count: qtd,
-                    current_installment: startOffset,
+                    current_installment: startOffset, // 🟢 Usa o compensador aqui
                     value_per_month: valParcela,
                     payment_method: selectedBank,
                     due_day: 10,
                     status: 'active',
-                    paid_months: item.isPaid ? [activeTab] : [],
+                    paid_months: item.isPaid ? [`${activeTab}/${currentYear}`] : [],
                     icon: 'shopping-cart'
                 };
             });

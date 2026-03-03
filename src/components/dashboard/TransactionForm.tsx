@@ -7,7 +7,7 @@ interface TransactionFormProps {
     onClose: () => void;
     formMode: 'income' | 'expense' | 'installment' | 'fixed_expense';
     setFormMode: (mode: 'income' | 'expense' | 'installment' | 'fixed_expense') => void;
-    formData: any; // Você pode tipar isso melhor depois com a interface FormState
+    formData: any; 
     setFormData: (data: any) => void;
     onSubmit: () => void;
     editingId: number | null;
@@ -88,9 +88,26 @@ export default function TransactionForm({
                         </div>
                     </div>
 
-                    <div className="mb-2">
-                        <label className="text-xs text-gray-500 ml-1 mb-1 block">{formMode === 'installment' ? "Valor TOTAL da Compra (Opcional se souber a parcela)" : "Valor (R$)"}</label>
-                        <input type="number" value={formData.amount} onChange={(e) => setFormData({ ...formData, amount: e.target.value })} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none font-mono text-lg" placeholder={formMode === 'installment' ? "Total: 1200.00" : "0.00"} />
+                    {/* NOVO: Linha com DIA e VALOR */}
+                    <div className="flex gap-3 mb-2">
+                        {(formMode === 'income' || formMode === 'expense') && (
+                            <div className="w-1/3">
+                                <label className="text-xs text-gray-500 ml-1 mb-1 block">Dia</label>
+                                <input 
+                                    type="number" 
+                                    min="1" 
+                                    max="31" 
+                                    value={formData.day || ''} 
+                                    onChange={(e) => setFormData({ ...formData, day: e.target.value })} 
+                                    className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none" 
+                                    placeholder="Ex: 15" 
+                                />
+                            </div>
+                        )}
+                        <div className={(formMode === 'income' || formMode === 'expense') ? 'w-2/3' : 'w-full'}>
+                            <label className="text-xs text-gray-500 ml-1 mb-1 block">{formMode === 'installment' ? "Valor TOTAL da Compra (Opcional)" : "Valor (R$)"}</label>
+                            <input type="number" value={formData.amount} onChange={(e) => setFormData({ ...formData, amount: e.target.value })} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none font-mono text-lg" placeholder={formMode === 'installment' ? "Total: 1200.00" : "0.00"} />
+                        </div>
                     </div>
 
                     {formMode === 'installment' && (
