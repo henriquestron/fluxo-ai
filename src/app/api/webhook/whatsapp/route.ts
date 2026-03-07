@@ -65,58 +65,84 @@ async function downloadMedia(url: string) {
 
 // 🧠 CÁLCULO FINANCEIRO
 
+// 🧠 CÁLCULO FINANCEIRO (Agora idêntico ao site!)
 async function getFinancialContext(supabase: any, userId: string, workspaceId: string) {
-
     const today = new Date();
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+    const monthStr = String(currentMonth + 1).padStart(2, '0');
+    const yearStr = currentYear.toString();
 
-    const monthStr = String(today.getMonth() + 1).padStart(2, '0');
+    const monthMap = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const currentMonthName = monthMap[currentMonth];
+    const currentTag = `${currentMonthName}/${currentYear}`;
 
-    const yearStr = today.getFullYear();
-
-
-
-    const { data: transactions } = await supabase.from('transactions').select('type, amount').eq('user_id', userId).eq('context', workspaceId).like('date', `%/${monthStr}/${yearStr}`).neq('status', 'delayed');
-
-    const { data: recurring } = await supabase.from('recurring').select('type, value').eq('user_id', userId).eq('context', workspaceId).eq('status', 'active');
-
-    const { data: installments } = await supabase.from('installments').select('value_per_month').eq('user_id', userId).eq('context', workspaceId).eq('status', 'active');
-
+    // Busca os dados do banco
+    const { data: transactions } = await supabase.from('transactions').select('*').eq('user_id', userId).eq('context', workspaceId).like('date', `%/${monthStr}/${yearStr}`);
+    const { data: recurring } = await supabase.from('recurring').select('*').eq('user_id', userId).eq('context', workspaceId);
+    const { data: installments } = await supabase.from('installments').select('*').eq('user_id', userId).eq('context', workspaceId);
 
     let totalEntradas = 0;
-
     let totalSaidas = 0;
 
-
-    transactions?.forEach((t: any) => t.type === 'income' ? totalEntradas += t.amount : totalSaidas += t.amount);
-
-    recurring?.forEach((r: any) => r.type === 'income' ? totalEntradas += r.value : totalSaidas += r.value);
-
-    installments?.forEach((i: any) => totalSaidas += i.value_per_month);
-
-
-    const saldo = totalEntradas - totalSaidas;
-
-    let estado = "ESTÁVEL";
-
-    if (saldo < 0) estado = "CRÍTICO (VERMELHO)";
-
-    else if (saldo < (totalEntradas * 0.1)) estado = "ALERTA (POUCA MARGEM)";
-
-
-    return {
-
-        saldo: saldo.toFixed(2),
-
-        entradas: totalEntradas.toFixed(2),
-
-        saidas: totalSaidas.toFixed(2),
-
-        estado_conta: estado,
-
-        resumo_texto: `Receita: R$${totalEntradas.toFixed(2)} | Despesas Totais: R$${totalSaidas.toFixed(2)} | SALDO FINAL: R$${saldo.toFixed(2)}`
-
+    const getStartData = (item: any) => {
+        if (item.start_date && item.start_date.includes('/')) {
+            const p = item.start_date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+        }
+        if (item.date && item.date.includes('/')) {
+            const p = item.date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+        }
+        if (item.created_at) {
+            const d = new Date(item.created_at); return { m: d.getMonth(), y: d.getFullYear() };
+        }
+        return { m: 0, y: currentYear };
     };
 
+    // 1. Soma Transações
+    transactions?.forEach((t: any) => {
+        if (t.status !== 'delayed' && t.status !== 'standby') {
+            if (t.type === 'income') totalEntradas += Number(t.amount);
+            else totalSaidas += Number(t.amount);
+        }
+    });
+
+    // 2. Soma Recorrentes (Ignorando Standby e Pulados)
+    recurring?.forEach((r: any) => {
+        if (r.status === 'delayed' || r.status === 'standby' || r.standby_months?.includes(currentTag)) return;
+        const { m: startM, y: startY } = getStartData(r);
+
+        if (currentYear > startY || (currentYear === startY && currentMonth >= startM)) {
+            if (!r.skipped_months?.includes(currentMonthName)) {
+                if (r.type === 'income') totalEntradas += Number(r.value);
+                else totalSaidas += Number(r.value);
+            }
+        }
+    });
+
+    // 3. Soma Parcelas (Respeitando a contagem de meses e Standby)
+    installments?.forEach((i: any) => {
+        if (i.status === 'delayed' || i.status === 'standby' || i.standby_months?.includes(currentTag)) return;
+        const { m: startM, y: startY } = getStartData(i);
+        const monthsDiff = ((currentYear - startY) * 12) + (currentMonth - startM);
+        const actualInstallment = 1 + (i.current_installment || 0) + monthsDiff;
+
+        if (actualInstallment >= 1 && actualInstallment <= i.installments_count) {
+            totalSaidas += Number(i.value_per_month);
+        }
+    });
+
+    const saldo = totalEntradas - totalSaidas;
+    let estado = "ESTÁVEL 🟢";
+    if (saldo < 0) estado = "CRÍTICO (VERMELHO) 🔴";
+    else if (saldo < (totalEntradas * 0.1)) estado = "ALERTA (POUCA MARGEM) 🟡";
+
+    return {
+        saldo: saldo.toFixed(2),
+        entradas: totalEntradas.toFixed(2),
+        saidas: totalSaidas.toFixed(2),
+        estado_conta: estado,
+        resumo_texto: `Receitas: R$ ${totalEntradas.toFixed(2)} | Despesas: R$ ${totalSaidas.toFixed(2)} | Saldo: R$ ${saldo.toFixed(2)}`
+    };
 }
 
 
@@ -323,53 +349,44 @@ export async function POST(req: Request) {
 
         // 3. CONTEXTO FINANCEIRO
 
-        let contextInfo = { saldo: "0", resumo_texto: "Sem dados", estado_conta: "Indefinido" };
-
+        let contextInfo = { saldo: "0", entradas: "0", saidas: "0", resumo_texto: "Sem dados", estado_conta: "Indefinido" };
         if (workspace) contextInfo = await getFinancialContext(supabase, userSettings.user_id, workspace.id);
 
 
         // 4. PROMPT DA IA
 
+        // 4. PROMPT DA IA MELHORADO
         const systemPrompt = `
+        ATUE COMO: "Meu Aliado", um assistente financeiro pessoal de WhatsApp. Você é educado, inteligente, prestativo e direto ao ponto.
+        HOJE É: ${new Date().toLocaleDateString('pt-BR')}.
 
-        ATUE COMO: "Meu Aliado", assistente financeiro.
+        --- SEU CONTEXTO FINANCEIRO NESTE MÊS ---
+        Receitas: R$ ${contextInfo.entradas}
+        Despesas: R$ ${contextInfo.saidas}
+        Saldo Atual: R$ ${contextInfo.saldo}
+        Situação: ${contextInfo.estado_conta}
+        -----------------------------------------
 
-        HOJE: ${new Date().toLocaleDateString('pt-BR')}.
+        SUAS REGRAS DE COMPORTAMENTO:
+        1. BATER PAPO/CONSULTA: Se o usuário perguntar como estão as contas, responda de forma natural e amigável usando os dados acima.
+        2. ADICIONAR CONTA: Entenda o valor e o título relatados pelo usuário e monte a ação no JSON.
+        3. DICAS GENTIS: Se a situação estiver CRÍTICO, avise com carinho para segurar os gastos.
+        4. SEJA CURTO: Ninguém lê textos gigantes no WhatsApp.
 
-        --- DADOS FINANCEIROS REAIS ---
+        REGRA DE OURO DA PROGRAMAÇÃO:
+        Sua saída DEVE ser ÚNICA E EXCLUSIVAMENTE um array JSON válido. NUNCA escreva textos normais fora da estrutura JSON.
+        
+        FORMATO OBRIGATÓRIO (ARRAY DE JSON):
+        [
+            {"action": "add", "table": "transactions", "data":{ "title": "...", "amount": 0.00, "type": "expense", "date": "DD/MM/YYYY", "category": "Outros", "target_month": "Mês" }},
+            {"reply": "Sua resposta humanizada e natural para o WhatsApp aqui..."}
+        ]
 
-        ${JSON.stringify(contextInfo)}
+        Outros exemplos de JSON de Ação (caso precise lançar parcela ou fixo em vez de transação comum):
+        - Parcela: {"action": "add", "table": "installments", "data":{ "title": "...", "total_value": 0.00, "installments_count": 1, "value_per_month": 0.00, "due_day": 10, "status": "active" }}
+        - Fixo: {"action": "add", "table": "recurring", "data":{ "title": "...", "value": 0.00, "type": "expense", "due_day": 10, "status": "active" }}
 
-        -------------------------------
-
-        SUA MISSÃO:
-
-        1. ADICIONAR CONTA:
-
-           - SE estiver 'CRÍTICO' ou 'ALERTA', INCLUA UM ALERTA GRAVE.
-
-        2. CONSULTA:
-
-           - Se perguntar "Como estou?", use o 'resumo_texto'.
-
-        FORMATO (JSON ARRAY):
-
-        [{"action": "add", ...}, {"reply": "Texto..."}]
-
-        AÇÕES JSON:
-
-        1. ADICIONAR (add):
-
-           - transactions: [{"action":"add", "table":"transactions", "data":{ "title": "...", "amount": 0.00, "type": "expense", "date": "DD/MM/YYYY", "category": "Outros", "target_month": "Mês" }}]
-
-           - installments: [{"action":"add", "table":"installments", "data":{ "title": "...", "total_value": 0.00, "installments_count": 1, "value_per_month": 0.00, "due_day": 10, "status": "active" }}]
-
-        2. CONVERSAR (reply):
-
-           - [{"reply": "Sua resposta..."}]
-
-        ${hasAudio ? "Transcrição do Áudio: O usuário falou algo. Entenda e execute." : ""}
-
+        ${hasAudio ? "⚠️ IMPORTANTE: O usuário enviou um ÁUDIO. Entenda a voz dele e responda apropriadamente ou execute a ação." : ""}
         `;
 
 
