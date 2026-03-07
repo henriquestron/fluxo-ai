@@ -5,7 +5,7 @@ import {
     ShoppingCart, Home, Car, Utensils, Zap, GraduationCap,
     HeartPulse, Plane, Gamepad2, Smartphone, Check, Clock,
     FileText, Trash2, Pencil, List, AlertTriangle,
-    ChevronDown, ChevronUp 
+    ChevronDown, ChevronUp
 } from 'lucide-react';
 import { Transaction, Installment, Recurring } from '@/types';
 // --- MAPA DE ÍCONES ---
@@ -77,19 +77,19 @@ interface StandardViewProps {
     transactions: Transaction[];
     installments: Installment[];
     recurring: Recurring[];
-    
+
     activeTab: string;
     months: string[];
     setActiveTab: (tab: string) => void;
-    
+
     // Esse aqui podemos deixar any por enquanto ou criar um tipo 'DashboardSummary' depois
-    currentMonthData: any; 
-    
+    currentMonthData: any;
+
     previousSurplus: number;
     displayBalance: number;
     viewingAs: any;
     selectedYear: number;
-    
+
     // Funções mantêm a assinatura, mas agora o 'item' pode ser tipado também se quiser
     onTogglePaid: (table: string, id: number, currentStatus: boolean) => void;
     onToggleSkip: (item: Recurring) => void; // ✅ Agora sabemos que é Recurring
@@ -100,7 +100,7 @@ interface StandardViewProps {
     getReceipt: (item: any, month: string) => any;
 }
 export default function StandardView({
-    transactions, installments,  recurring, activeTab, months, setActiveTab,
+    transactions, installments, recurring, activeTab, months, setActiveTab,
     currentMonthData, previousSurplus, displayBalance, viewingAs, selectedYear,
     onTogglePaid, onToggleSkip, onToggleDelay, onDelete, onEdit, onTogglePaidMonth, getReceipt
 }: StandardViewProps) {
@@ -110,9 +110,12 @@ export default function StandardView({
 
     const monthIndex = months.indexOf(activeTab);
     const monthMap: Record<string, string> = { 'Jan': '/01', 'Fev': '/02', 'Mar': '/03', 'Abr': '/04', 'Mai': '/05', 'Jun': '/06', 'Jul': '/07', 'Ago': '/08', 'Set': '/09', 'Out': '/10', 'Nov': '/11', 'Dez': '/12' };
-    const dateFilter = `${monthMap[activeTab]}/${selectedYear}`; 
+    const dateFilter = `${monthMap[activeTab]}/${selectedYear}`;
 
-    // Helper Unificado de Datas (Exatamente igual ao do page.tsx)
+    // 🟢 NOVA TAG: Para verificar o mês atual no array de Stand-by
+    
+
+    // Helper Unificado de Datas
     const getStartData = (item: any) => {
         if (item.start_date && item.start_date.includes('/')) {
             const p = item.start_date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
@@ -125,13 +128,24 @@ export default function StandardView({
         }
         return { m: 0, y: new Date().getFullYear() };
     };
+    // 🟢 HELPER DA IMUNIDADE VISUAL
+    const currentTag = `${activeTab}/${selectedYear}`;
+    const isPaidThisMonth = (item: any, isTrans = false) => {
+        if (isTrans) return item.is_paid;
+        return item.paid_months?.includes(currentTag) || item.paid_months?.includes(activeTab);
+    };
 
     // --- FILTRO TRANSAÇÕES ---
-    const monthTransactions = transactions.filter(t => t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby');
+    const monthTransactions = transactions.filter(t => 
+        t.date?.includes(dateFilter) && 
+        ((t.status !== 'delayed' && t.status !== 'standby') || isPaidThisMonth(t, true))
+    );
 
     // --- FILTRO RECORRENTES (Salário/Fixas) ---
     const activeRecurring = recurring.filter(r => {
-        if (r.status === 'delayed' || r.status === 'standby') return false;
+        const paid = isPaidThisMonth(r);
+        if ((r.status === 'delayed' || r.status === 'standby') && !paid) return false;
+        if (r.standby_months?.includes(currentTag) && !paid) return false;
         
         const { m: startM, y: startY } = getStartData(r);
 
@@ -140,45 +154,43 @@ export default function StandardView({
         return false;
     });
 
-    // --- FILTRO PARCELAS (Lógica Corrigida) ---
+    // --- FILTRO PARCELAS ---
     const groupedInstallments = installments.reduce((acc: any, curr: any) => {
-        if (curr.status === 'delayed' || curr.status === 'standby') return acc;
+        const paid = isPaidThisMonth(curr);
+        if ((curr.status === 'delayed' || curr.status === 'standby') && !paid) return acc;
+        if (curr.standby_months?.includes(currentTag) && !paid) return acc;
         
-        // Usa o MESMO helper para garantir consistência
         const { m: startM, y: startY } = getStartData(curr);
-
-        // Cálculo de Ano: 12 meses de diferença para cada ano
         const monthsDiff = ((selectedYear - startY) * 12) + (monthIndex - startM);
         const actualInstallment = 1 + (curr.current_installment || 0) + monthsDiff;
 
-        // Filtro de exibição
         if (actualInstallment < 1 || actualInstallment > curr.installments_count) return acc;
 
         const bank = curr.payment_method || 'outros';
         if (!acc[bank]) acc[bank] = { items: [], total: 0 };
         
-        acc[bank].items.push({ ...curr, actualInstallment });
+        const baseValue = Number(curr.value_per_month || 0);
+        acc[bank].items.push({ ...curr, actualInstallment, value_per_month: baseValue });
+        acc[bank].total += baseValue;
         
-        // 🔥 CORREÇÃO: Força conversão para Number para evitar erro de string
-        acc[bank].total += Number(curr.value_per_month || 0);
         return acc;
     }, {});
     
     const sortedBanks = Object.keys(groupedInstallments).sort((a, b) => groupedInstallments[b].total - groupedInstallments[a].total);
 
-    // --- RENDER STANDBY ---
+    // --- RENDER STANDBY (Garante que contas pagas não apareçam na caixa vermelha) ---
     const renderDelayed = () => {
         const delayedItems = [
-            ...transactions.filter(t => t.status === 'delayed' || t.status === 'standby').map(t => ({ ...t, _source: 'trans', _amount: Number(t.amount) })),
-            ...installments.filter(i => i.status === 'delayed' || i.status === 'standby').map(i => ({ ...i, _source: 'inst', _amount: Number(i.value_per_month) })),
-            ...recurring.filter(r => r.status === 'delayed' || r.status === 'standby').map(r => ({ ...r, _source: 'recur', _amount: Number(r.value) }))
+            ...transactions.filter(t => (t.status === 'delayed' || t.status === 'standby') && !isPaidThisMonth(t, true)).map(t => ({ ...t, _source: 'trans', _amount: Number(t.amount) })),
+            ...installments.filter(i => (i.status === 'delayed' || i.status === 'standby' || i.standby_months?.includes(currentTag)) && !isPaidThisMonth(i)).map(i => ({ ...i, _source: 'inst', _amount: Number(i.value_per_month) })),
+            ...recurring.filter(r => (r.status === 'delayed' || r.status === 'standby' || r.standby_months?.includes(currentTag)) && !isPaidThisMonth(r)).map(r => ({ ...r, _source: 'recur', _amount: Number(r.value) }))
         ];
 
         if (delayedItems.length === 0) return null;
 
         return (
             <div className="mt-8 border border-red-900/30 bg-red-950/10 rounded-2xl p-6">
-                <h3 className="text-red-400 font-bold flex items-center gap-2 mb-4"><AlertTriangle size={18} /> Em Stand-by (Congelados)</h3>
+                <h3 className="text-red-400 font-bold flex items-center gap-2 mb-4"><AlertTriangle size={18} /> Em Stand-by (Congelados neste mês)</h3>
                 <div className="space-y-2 max-h-[200px] overflow-y-auto scrollbar-thin scrollbar-thumb-red-900 scrollbar-track-transparent pr-2">
                     {delayedItems.map((item: any) => (
                         <div key={`del-${item._source}-${item.id}`} className="flex justify-between items-center p-3 bg-red-900/10 rounded-lg border border-red-900/20">
@@ -191,9 +203,8 @@ export default function StandardView({
                     ))}
                 </div>
             </div>
-        )
+        );
     };
-
     const hasDelayed = currentMonthData.delayedTotal > 0;
     const gridClass = hasDelayed ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-4" : "grid-cols-1 md:grid-cols-3";
 
@@ -325,8 +336,9 @@ export default function StandardView({
                                                                 </div>
                                                             </div>
                                                             <div className="text-right">
-                                                                <p className={`font-mono text-sm font-medium ${isPaid ? 'text-gray-600' : 'text-gray-300'}`}>R$ {Number(item.value_per_month).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                                                                <div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">                                                                    <button onClick={() => onToggleDelay('installments', item)} className="text-gray-500 hover:text-orange-400" title="Stand-by"><Clock size={12} /></button>
+                                                                <p className={`font-mono text-sm font-medium ${isPaid ? 'text-gray-600' : (item.has_arrears ? 'text-orange-400' : 'text-gray-300')}`}>
+                                                                    R$ {Number(item.value_per_month).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                                </p>                                                                <div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">                                                                    <button onClick={() => onToggleDelay('installments', item)} className="text-gray-500 hover:text-orange-400" title="Stand-by"><Clock size={12} /></button>
                                                                     <button onClick={() => onEdit(item, 'installment')} className="text-gray-500 hover:text-cyan-400" title="Editar"><Pencil size={12} /></button>
                                                                     <button onClick={() => onDelete('installments', item.id)} className="text-gray-500 hover:text-red-400" title="Excluir"><Trash2 size={12} /></button>
                                                                     {getReceipt(item, activeTab) && (<a href={getReceipt(item, activeTab)} target="_blank" className="text-emerald-500 hover:text-emerald-300" title="Ver Recibo"><FileText size={12} /></a>)}

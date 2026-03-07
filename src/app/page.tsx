@@ -33,6 +33,7 @@ import GoalsView from '@/components/dashboard/GoalsView';
 import TabNavigation from '@/components/dashboard/TabNavigation';
 import YearSelector from '@/components/dashboard/YearSelector';
 import CalculatorModal from '@/components/dashboard/CalculatorModal';
+
 // COMPONENTES
 import StandardView from '@/components/dashboard/StandardView';
 import TraderView from '@/components/dashboard/TraderView';
@@ -65,6 +66,7 @@ export default function FinancialDashboard() {
     const [isDeleteWorkspaceModalOpen, setIsDeleteWorkspaceModalOpen] = useState(false);
     const [isDeletingWorkspace, setIsDeletingWorkspace] = useState(false);
     const [isSavingWorkspace, setIsSavingWorkspace] = useState(false);
+    const [standbyModal, setStandbyModal] = useState<{isOpen: boolean, item: any, origin: string} | null>(null);
 
     const [newProfileName, setNewProfileName] = useState('');
     // Adicione junto com os outros states (ex: perto de const [isAiLoading, setIsAiLoading] = useState(false);)
@@ -660,7 +662,6 @@ export default function FinancialDashboard() {
     };
 
     const checkForPastDueItems = () => {
-        // 🔒 TRAVA DE SESSÃO: Se já mostrou nesta sessão, não mostra de novo
         if (sessionStorage.getItem('hasShownRollover')) return;
 
         const now = new Date();
@@ -670,7 +671,6 @@ export default function FinancialDashboard() {
 
         const overdueItems: any[] = [];
 
-        // Helper de Data
         const getStartData = (item: any) => {
             if (item.date && item.date.includes('/')) {
                 const p = item.date.split('/');
@@ -709,10 +709,39 @@ export default function FinancialDashboard() {
                         if (checkYear === currentRealYear && checkMonthIndex === currentRealMonth && todayDay < inst.due_day) continue;
 
                         const checkMonthName = MONTHS[checkMonthIndex];
-                        if (!inst.paid_months?.includes(checkMonthName)) {
+                        const checkTag = `${checkMonthName}/${checkYear}`;
+
+                        // 🟢 Só entra na lista de cobrança se NÃO estiver em Stand-by!
+                        if (!inst.paid_months?.includes(checkMonthName) && !inst.paid_months?.includes(checkTag) && !inst.standby_months?.includes(checkTag)) {
                             const alreadyAdded = overdueItems.find(o => o.id === inst.id && o.origin === 'installments');
-                            if (!alreadyAdded) overdueItems.push({ ...inst, origin: 'installments', month: `${checkMonthName}/${checkYear}`, amount: inst.value_per_month });
+                            if (!alreadyAdded) overdueItems.push({ ...inst, origin: 'installments', month: checkTag, amount: inst.value_per_month });
                         }
+                    }
+                }
+            }
+        });
+
+        // 3. Recorrentes
+        recurring.forEach(rec => {
+            if (rec.type === 'expense' && rec.status !== 'delayed' && rec.status !== 'standby') {
+                const { d: startDay, m: startMonth, y: startYear } = getStartData(rec);
+                const monthsDiff = ((currentRealYear - startYear) * 12) + (currentRealMonth - startMonth);
+
+                for (let i = 0; i <= monthsDiff; i++) {
+                    const absMonthIndex = startMonth + i;
+                    const checkYear = startYear + Math.floor(absMonthIndex / 12);
+                    const checkMonthIndex = absMonthIndex % 12;
+
+                    if (checkYear > currentRealYear || (checkYear === currentRealYear && checkMonthIndex > currentRealMonth)) continue;
+                    if (checkYear === currentRealYear && checkMonthIndex === currentRealMonth && todayDay < rec.due_day) continue;
+
+                    const checkMonthName = MONTHS[checkMonthIndex];
+                    const checkTag = `${checkMonthName}/${checkYear}`;
+
+                    // 🟢 Só entra na lista de cobrança se NÃO estiver em Stand-by ou Pulado!
+                    if (!rec.paid_months?.includes(checkMonthName) && !rec.paid_months?.includes(checkTag) && !rec.skipped_months?.includes(checkMonthName) && !rec.standby_months?.includes(checkTag)) {
+                        const alreadyAdded = overdueItems.find(o => o.id === rec.id && o.origin === 'recurring');
+                        if (!alreadyAdded) overdueItems.push({ ...rec, origin: 'recurring', month: checkTag, amount: rec.value });
                     }
                 }
             }
@@ -722,7 +751,7 @@ export default function FinancialDashboard() {
             setPastDueItems(overdueItems);
             setTimeout(() => {
                 setIsRolloverModalOpen(true);
-                sessionStorage.setItem('hasShownRollover', 'true'); // ✅ Marca como visto
+                sessionStorage.setItem('hasShownRollover', 'true');
             }, 1500);
         }
     };
@@ -889,33 +918,115 @@ export default function FinancialDashboard() {
         return acc + val;
     }, 0);
 
-    const toggleDelay = async (origin: string, item: any) => {
-        // Mapeia a "origin" do modal para o nome real da tabela no banco
-        const tableMap: Record<string, string> = {
-            'transactions': 'transactions',
-            'installments': 'installments',
-            'recurring': 'recurring'
-        };
+    // 1. O clique no botão do reloginho
+    const toggleDelay = (origin: string, item: any) => {
+        const currentTag = `${activeTab}/${selectedYear}`;
+        
+        // Verifica se a conta já está congelada
+        let isStandby = false;
+        if (origin === 'transactions') {
+            isStandby = (item.status === 'delayed' || item.status === 'standby');
+        } else {
+            const arr = item.standby_months || [];
+            isStandby = arr.includes(currentTag) || item.status === 'standby' || item.status === 'delayed';
+        }
+
+        if (isStandby) {
+            // Se já está congelada, o usuário quer RESTAURAR (fazemos direto, sem perguntar)
+            confirmDelayChoice(origin, item, 'restore');
+        } else {
+            // Se está ativa, o usuário quer CONGELAR. 
+            if (origin === 'transactions') {
+                // Transações avulsas só acontecem uma vez, então não precisa perguntar o mês.
+                confirmDelayChoice(origin, item, 'global');
+            } else {
+                // Abre o modal de escolha para Parcelas e Fixas!
+                setStandbyModal({ isOpen: true, item, origin });
+            }
+        }
+    };
+
+    // 2. A execução da escolha
+    // 2. A execução da escolha
+    const confirmDelayChoice = async (origin: string, item: any, choice: 'restore' | 'single' | 'global') => {
+        setStandbyModal(null); 
+        
+        const tableMap: Record<string, string> = { 'transactions': 'transactions', 'installments': 'installments', 'recurring': 'recurring' };
         const table = tableMap[origin] || origin;
+        const currentTag = `${activeTab}/${selectedYear}`;
 
-        // Se já está delayed ou standby, volta para active. Senão, vira standby.
-        const newStatus = (item.status === 'delayed' || item.status === 'standby') ? 'active' : 'standby';
+        let newStatusGlobal = item.status;
+        let newStandbyArray = Array.isArray(item.standby_months) ? [...item.standby_months] : [];
+
+        if (table === 'transactions') {
+            // Transações avulsas não têm passado/futuro, então o status global funciona perfeito.
+            newStatusGlobal = choice === 'restore' ? 'active' : 'standby';
+        } else {
+            // Parcelas e Fixas: Vamos PROTEGER O PASSADO!
+            if (choice === 'restore') {
+                newStatusGlobal = 'active'; // 🟢 Força ativo para curar bugs antigos
+                newStandbyArray = newStandbyArray.filter((m: string) => m !== currentTag); 
+            } else if (choice === 'single') {
+                newStatusGlobal = 'active'; // 🟢 Força ativo
+                if (!newStandbyArray.includes(currentTag)) newStandbyArray.push(currentTag); 
+            } else if (choice === 'global') {
+                newStatusGlobal = 'active'; // 🟢 FORÇA ATIVO: A mágica acontece na lista abaixo!
+                
+                // Gera os próximos 60 meses (5 anos) a partir de hoje e congela um por um.
+                // O passado fica totalmente seguro!
+                const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+                const startIdx = monthNames.indexOf(activeTab);
+                let currentY = selectedYear;
+                let currentM = startIdx;
+                
+                for (let i = 0; i < 60; i++) {
+                    const tag = `${monthNames[currentM]}/${currentY}`;
+                    if (!newStandbyArray.includes(tag)) newStandbyArray.push(tag);
+                    currentM++;
+                    if (currentM > 11) {
+                        currentM = 0;
+                        currentY++;
+                    }
+                }
+            }
+        }
+
+        // ⚡ ATUALIZAÇÃO INSTANTÂNEA NA TELA
+        const applyInstantVisualUpdate = () => {
+            if (table === 'transactions') {
+                setTransactions(prev => prev.map(t => t.id === item.id ? { ...t, status: newStatusGlobal } : t));
+            } else if (table === 'installments') {
+                setInstallments(prev => prev.map(i => i.id === item.id ? { ...i, status: newStatusGlobal, standby_months: newStandbyArray } : i));
+            } else if (table === 'recurring') {
+                setRecurring(prev => prev.map(r => r.id === item.id ? { ...r, status: newStatusGlobal, standby_months: newStandbyArray } : r));
+            }
+        };
+        
+        applyInstantVisualUpdate(); 
+
+        if (isSimulationMode) {
+            toast.success(`[Simulação] Atualizado!`);
+            return; 
+        }
+
         const activeId = getActiveUserId();
-
         if (user && activeId) {
-            await supabase.from(table).update({ status: newStatus }).eq('id', item.id);
-            // Recarrega os dados para atualizar o Card de Standby e os Totais
-            loadData(activeId, currentWorkspace?.id);
+            try {
+                const payload = table === 'transactions' 
+                    ? { status: newStatusGlobal } 
+                    : { standby_months: newStandbyArray, status: newStatusGlobal };
+                    
+                const { error } = await supabase.from(table).update(payload).eq('id', item.id);
+                if (error) throw error;
+                
+                if (choice === 'restore') toast.success(`Restaurado!`);
+                else if (choice === 'single') toast.success(`Congelado apenas em ${activeTab}. O valor acumulará.`);
+                else toast.success("Congelado em todos os meses futuros!");
+            } catch (error) {
+                toast.error("Erro no Banco de Dados.");
+                loadData(activeId, currentWorkspace?.id);
+            }
         }
-
-        // Remove visualmente do Modal de Pendências imediatamente
-        if (isRolloverModalOpen) {
-            setPastDueItems(prev => prev.filter(i => i.id !== item.id || i.origin !== origin));
-            // Se acabar os itens, fecha o modal
-            if (pastDueItems.length <= 1) setIsRolloverModalOpen(false);
-        }
-
-        toast.success(newStatus === 'active' ? "Reativado!" : "Movido para Stand-by (Não soma no total)");
     };
 
     const toggleSkipMonth = async (item: any) => {
@@ -1266,8 +1377,6 @@ export default function FinancialDashboard() {
         const monthMap: Record<string, string> = { 'Jan': '/01', 'Fev': '/02', 'Mar': '/03', 'Abr': '/04', 'Mai': '/05', 'Jun': '/06', 'Jul': '/07', 'Ago': '/08', 'Set': '/09', 'Out': '/10', 'Nov': '/11', 'Dez': '/12' };
 
         const dateFilter = `${monthMap[monthName]}/${selectedYear}`;
-
-        // Tag de pagamento atual (ex: "Jan/2027")
         const currentPaymentTag = `${monthName}/${selectedYear}`;
 
         const getStartData = (item: any) => {
@@ -1283,29 +1392,24 @@ export default function FinancialDashboard() {
             return { d: 1, m: 0, y: new Date().getFullYear() };
         };
 
-        // 1. RECORRENTES (CORREÇÃO DO BUG DE JANEIRO 2027)
-        const activeRecurring = recurring.filter(r => {
-            if (r.status === 'standby' || r.status === 'delayed') return false;
-
-            const { m: startMonth, y: startYear } = getStartData(r);
-
-            // CASO 1: Ano selecionado é MAIOR que o início (Ex: 2027 > 2026)
-            // MOSTRA SEMPRE! Não importa se é Janeiro e a conta é de Março/26.
-            if (selectedYear > startYear) return true;
-
-            // CASO 2: Mesmo ano (Ex: 2026 == 2026)
-            // Mostra só se o mês já chegou
-            if (selectedYear === startYear && monthIndex >= startMonth) return true;
-
-            return false;
-        });
-
-        // Helper para checar pagamento (Compatibilidade: checa "Mar/2026" OU "Mar")
+        // 🟢 HELPER DA IMUNIDADE: Conta paga não pode sumir!
         const isPaid = (item: any, tag: string) => {
             if (!item.paid_months) return false;
-            // Prioriza a tag com ano. Se não tiver ano salvo, aceita a tag simples (legado)
             return item.paid_months.includes(tag) || item.paid_months.includes(tag.split('/')[0]);
         };
+
+        // 1. RECORRENTES
+        const activeRecurring = recurring.filter(r => {
+            const paid = isPaid(r, currentPaymentTag);
+            // Se estiver em stand-by, mas FOI PAGA neste mês, o pagamento anula o stand-by!
+            if ((r.status === 'delayed' || r.status === 'standby') && !paid) return false; 
+            if (r.standby_months?.includes(currentPaymentTag) && !paid) return false; 
+
+            const { m: startMonth, y: startYear } = getStartData(r);
+            if (selectedYear > startYear) return true;
+            if (selectedYear === startYear && monthIndex >= startMonth) return true;
+            return false;
+        });
 
         // --- CÁLCULO DE ENTRADAS ---
         const incomeFixed = activeRecurring.filter(r => r.type === 'income' && !r.skipped_months?.includes(monthName)).reduce((acc, curr) => acc + Number(curr.value), 0);
@@ -1314,10 +1418,15 @@ export default function FinancialDashboard() {
 
         // --- CÁLCULO DE SAÍDAS DO MÊS ---
         const expenseFixed = activeRecurring.filter(r => r.type === 'expense' && !r.skipped_months?.includes(monthName)).reduce((acc, curr) => acc + Number(curr.value), 0);
+        
         const expenseVariable = transactions.filter(t => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc, curr) => acc + Number(curr.amount), 0);
 
         const installTotal = installments.reduce((acc, curr) => {
-            if (curr.status === 'delayed' || curr.status === 'standby') return acc;
+            const paid = isPaid(curr, currentPaymentTag);
+            // Mesma imunidade para as parcelas do cartão
+            if ((curr.status === 'delayed' || curr.status === 'standby') && !paid) return acc;
+            if (curr.standby_months?.includes(currentPaymentTag) && !paid) return acc; 
+
             const { m: startMonth, y: startYear } = getStartData(curr);
             const monthsDiff = ((selectedYear - startYear) * 12) + (monthIndex - startMonth);
             const currentInstNum = 1 + (curr.current_installment || 0) + monthsDiff;
@@ -1328,16 +1437,15 @@ export default function FinancialDashboard() {
             return acc;
         }, 0);
 
-        // --- STAND-BY ---
+        // --- STAND-BY TOTAL (Só soma se NÃO estiver pago) ---
         const delayedTotal =
-            transactions.filter(t => t.status === 'delayed' || t.status === 'standby').reduce((acc, curr) => acc + Number(curr.amount), 0) +
-            installments.filter(i => i.status === 'delayed' || i.status === 'standby').reduce((acc, curr) => acc + (Number(curr.value_per_month) || Number(curr.value) || 0), 0) +
-            recurring.filter(r => (r.status === 'delayed' || r.status === 'standby') && r.type === 'expense').reduce((acc, curr) => acc + Number(curr.value), 0);
+            transactions.filter(t => (t.status === 'delayed' || t.status === 'standby') && !t.is_paid).reduce((acc, curr) => acc + Number(curr.amount), 0) +
+            installments.filter(i => (i.status === 'delayed' || i.status === 'standby' || i.standby_months?.includes(currentPaymentTag)) && !isPaid(i, currentPaymentTag)).reduce((acc, curr) => acc + (Number(curr.value_per_month) || 0), 0) +
+            recurring.filter(r => r.type === 'expense' && (r.status === 'delayed' || r.status === 'standby' || r.standby_months?.includes(currentPaymentTag)) && !isPaid(r, currentPaymentTag)).reduce((acc, curr) => acc + Number(curr.value), 0);
 
         // --- DÍVIDA ACUMULADA ---
         let accumulatedDebt = 0;
 
-        // A. Transações
         transactions.forEach(t => {
             if (t.type === 'expense' && !t.is_paid && t.status !== 'standby' && t.status !== 'delayed') {
                 const { m, y } = getStartData(t);
@@ -1347,7 +1455,6 @@ export default function FinancialDashboard() {
             }
         });
 
-        // B. Parcelas
         installments.forEach(inst => {
             if (inst.status !== 'standby' && inst.status !== 'delayed') {
                 const { m: startMonth, y: startYear } = getStartData(inst);
@@ -1360,9 +1467,9 @@ export default function FinancialDashboard() {
                         const pYear = startYear + Math.floor(absMonthIndex / 12);
                         const pMonthName = MONTHS[absMonthIndex % 12];
 
-                        // Checa se está pago usando ANO (Ex: Mar/2026)
                         const paymentTag = `${pMonthName}/${pYear}`;
-                        if (!isPaid(inst, paymentTag)) {
+                        // 🟢 Só vira Dívida Acumulada se NÃO estiver pago E NÃO estiver em Standby
+                        if (!isPaid(inst, paymentTag) && !inst.standby_months?.includes(paymentTag)) {
                             accumulatedDebt += Number(inst.value_per_month);
                         }
                     }
@@ -1370,7 +1477,6 @@ export default function FinancialDashboard() {
             }
         });
 
-        // C. RECORRENTES (Correção do Loop)
         recurring.forEach(rec => {
             if (rec.type === 'expense' && rec.status !== 'standby' && rec.status !== 'delayed') {
                 const { m: startMonth, y: startYear } = getStartData(rec);
@@ -1382,7 +1488,8 @@ export default function FinancialDashboard() {
                     const checkMonthName = MONTHS[absMonthIndex % 12];
                     const checkTag = `${checkMonthName}/${checkYear}`;
 
-                    if (!isPaid(rec, checkTag) && !rec.skipped_months?.includes(checkMonthName)) {
+                    // 🟢 Mesma regra para as fixas
+                    if (!isPaid(rec, checkTag) && !rec.skipped_months?.includes(checkMonthName) && !rec.standby_months?.includes(checkTag)) {
                         accumulatedDebt += Number(rec.value);
                     }
                 }
@@ -2018,6 +2125,44 @@ export default function FinancialDashboard() {
                     setEditingGoal={setEditingGoal}
                     handleDeleteGoal={handleDeleteGoal}
                 />
+            )}
+
+            {/* 🥶 MODAL DE ESCOLHA DO STAND-BY */}
+            {standbyModal && standbyModal.isOpen && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[999] p-4 animate-in fade-in zoom-in duration-200">
+                    <div className="bg-[#0f0f10] border border-gray-800 p-6 rounded-3xl w-full max-w-sm shadow-2xl relative">
+                        <button onClick={() => setStandbyModal(null)} className="absolute top-4 right-4 text-gray-500 hover:text-white transition">
+                            <X size={20} />
+                        </button>
+                        
+                        <div className="w-16 h-16 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center justify-center mb-4 mx-auto">
+                            <Clock size={32} />
+                        </div>
+                        
+                        <h3 className="text-xl font-bold text-center text-white mb-2">Congelar Conta</h3>
+                        <p className="text-gray-400 text-sm text-center mb-6">Como você quer colocar a conta "<span className="text-white font-bold">{standbyModal.item.title}</span>" em Stand-by?</p>
+                        
+                        <div className="space-y-3">
+                            {/* Opção 1: Só este mês */}
+                            <button 
+                                onClick={() => confirmDelayChoice(standbyModal.origin, standbyModal.item, 'single')} 
+                                className="w-full bg-gray-900 border border-gray-800 hover:border-blue-500/50 text-white p-4 rounded-xl flex flex-col items-center justify-center gap-1 transition group"
+                            >
+                                <span className="font-bold group-hover:text-blue-400 transition">Apenas em {activeTab}</span>
+                                <span className="text-xs text-gray-500 text-center">A fatura some este mês, mas o valor é somado na parcela do mês que vem.</span>
+                            </button>
+
+                            {/* Opção 2: Global */}
+                            <button 
+                                onClick={() => confirmDelayChoice(standbyModal.origin, standbyModal.item, 'global')} 
+                                className="w-full bg-gray-900 border border-gray-800 hover:border-red-500/50 text-white p-4 rounded-xl flex flex-col items-center justify-center gap-1 transition group"
+                            >
+                                <span className="font-bold group-hover:text-red-400 transition">Todos os meses futuros</span>
+                                <span className="text-xs text-gray-500 text-center">A conta inteira é paralisada e para de aparecer em todos os meses.</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
             {/* 🧪 ALERTA E BOTÃO DO MODO SIMULAÇÃO */}
             {isSimulationMode ? (
