@@ -1510,7 +1510,23 @@ export default function FinancialDashboard() {
     const currentMonthData = getMonthData(activeTab);
     let previousSurplus = 0;
     const currentIndex = MONTHS.indexOf(activeTab);
-    if (currentIndex > 0) { const prevData = getMonthData(MONTHS[currentIndex - 1]); if (prevData.balance > 0) previousSurplus = prevData.balance; }
+
+    // 🟢 MÁQUINA DO TEMPO (EFEITO CASCATA): Simula o fechamento exato de cada mês
+    for (let i = 0; i < currentIndex; i++) {
+        const pastData = getMonthData(MONTHS[i]);
+        
+        // O fechamento do mês é o que ele rendeu + a sobra que ele herdou do mês anterior a ele
+        const fechamentoDoMes = pastData.balance + previousSurplus;
+        
+        // Se sobrou dinheiro, essa vira a sobra para o próximo mês.
+        // Se fechou no negativo, a sobra zera (pois a dívida já aparece no card vermelho lá em cima).
+        if (fechamentoDoMes > 0) {
+            previousSurplus = fechamentoDoMes;
+        } else {
+            previousSurplus = 0;
+        }
+    }
+
     const displayBalance = currentMonthData.balance + previousSurplus;
 
     // Função para chamar a IA (Agora aceita arquivos!)
