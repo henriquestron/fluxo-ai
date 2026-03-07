@@ -7,7 +7,7 @@ import {
     Mail, Loader2, Lock, BarChart3, Search, Target, Upload, FileText, ExternalLink,
     Users, ChevronDown, UserPlus, Briefcase, HelpCircle, Star, Zap, Shield, Palette,
     Layout, MousePointerClick, FolderPlus, Layers, FileSpreadsheet, Wallet, Landmark, Rocket, Paperclip, ChevronRight, ChevronLeft,
-    ShoppingCart, Home, Car, Utensils, GraduationCap, HeartPulse, Plane, Gamepad2, Smartphone
+    ShoppingCart, Home, Car, Utensils, GraduationCap, HeartPulse, Plane, Gamepad2, Smartphone,Calculator
 }
     from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -32,6 +32,7 @@ import DashboardHeader from '@/components/dashboard/DashboardHeader';
 import GoalsView from '@/components/dashboard/GoalsView';
 import TabNavigation from '@/components/dashboard/TabNavigation';
 import YearSelector from '@/components/dashboard/YearSelector';
+import CalculatorModal from '@/components/dashboard/CalculatorModal';
 // COMPONENTES
 import StandardView from '@/components/dashboard/StandardView';
 import TraderView from '@/components/dashboard/TraderView';
@@ -39,6 +40,7 @@ import CustomizationModal from '@/components/dashboard/CustomizationModal';
 import ZenView from '@/components/dashboard/ZenView';
 import CalendarView from '@/components/dashboard/CalendarView';
 import GoalModal from '@/components/dashboard/GoalModal'; // <--- ADICIONE ISSO
+
 import { Transaction, Installment, Recurring, Goal, ClientUser } from '@/types';
 
 
@@ -65,6 +67,8 @@ export default function FinancialDashboard() {
     const [isSavingWorkspace, setIsSavingWorkspace] = useState(false);
 
     const [newProfileName, setNewProfileName] = useState('');
+    // Adicione junto com os outros states (ex: perto de const [isAiLoading, setIsAiLoading] = useState(false);)
+    const [isSimulationMode, setIsSimulationMode] = useState(false);
 
     // --- MODAIS ---
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -100,6 +104,7 @@ export default function FinancialDashboard() {
     const [loadingAuth, setLoadingAuth] = useState(false);
     const [authMessage, setAuthMessage] = useState('');
     const [userPlan, setUserPlan] = useState<string>('free');
+    const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
 
     // --- DADOS FINANCEIROS ---
     const [transactions, setTransactions] = useState<any[]>([]);
@@ -116,22 +121,22 @@ export default function FinancialDashboard() {
     const [formMode, setFormMode] = useState<'income' | 'expense' | 'installment' | 'fixed_expense'>('income');
     const [editingId, setEditingId] = useState<number | null>(null);
     // Crie essa variável de "hoje" logo acima do initialFormState
-const diaDeHoje = String(new Date().getDate()).padStart(2, '0');
+    const diaDeHoje = String(new Date().getDate()).padStart(2, '0');
 
-const initialFormState = {
-    title: '',
-    amount: '',
-    installments: '',
-    dueDay: '',
-    day: diaDeHoje, // <--- AGORA ELE SEMPRE COMEÇA COM O DIA DE HOJE! (ex: "03")
-    category: 'Outros',
-    targetMonth: 'Jan', 
-    isFixedIncome: false,
-    fixedMonthlyValue: '',
-    receiptUrl: '', 
-    icon: '',
-    paymentMethod: ''
-};
+    const initialFormState = {
+        title: '',
+        amount: '',
+        installments: '',
+        dueDay: '',
+        day: diaDeHoje, // <--- AGORA ELE SEMPRE COMEÇA COM O DIA DE HOJE! (ex: "03")
+        category: 'Outros',
+        targetMonth: 'Jan',
+        isFixedIncome: false,
+        fixedMonthlyValue: '',
+        receiptUrl: '',
+        icon: '',
+        paymentMethod: ''
+    };
     const [formData, setFormData] = useState(initialFormState);
     const [uploadingFile, setUploadingFile] = useState(false);
     const [aiResponse, setAiResponse] = useState<any>('');
@@ -410,6 +415,19 @@ const initialFormState = {
             setNewProfileName('');
             setIsNewProfileModalOpen(false);
             setTransactions([]); setInstallments([]); setRecurring([]);
+        }
+    };
+    const toggleSimulationMode = () => {
+        if (isSimulationMode) {
+            // SAIR DA SIMULAÇÃO: Recarrega os dados reais do banco
+            setIsSimulationMode(false);
+            const activeId = getActiveUserId();
+            if (activeId) loadData(activeId, currentWorkspace?.id);
+            toast.info("Simulação Encerrada. Dados reais restaurados! 🔄");
+        } else {
+            // ENTRAR NA SIMULAÇÃO: Apenas liga o modo visual
+            setIsSimulationMode(true);
+            toast.success("🧪 Modo Simulação Ativado! Brinque à vontade, nada será salvo.");
         }
     };
 
@@ -786,23 +804,45 @@ const initialFormState = {
 
     const handleDelete = async (table: string, id: number) => {
         if (!confirm("Tem certeza?")) return;
+
+        // 🧪 SEQUESTRO DA SIMULAÇÃO (Não deixa excluir de verdade)
+        if (isSimulationMode) {
+            if (table === 'transactions') setTransactions(prev => prev.filter(t => t.id !== id));
+            else if (table === 'installments') setInstallments(prev => prev.filter(i => i.id !== id));
+            else if (table === 'recurring') setRecurring(prev => prev.filter(r => r.id !== id));
+
+            toast.success("Excluído apenas na simulação! 🧪");
+            return; // 🛑 Impede que o código continue e delete no banco!
+        }
+
         const activeId = getActiveUserId();
-        if (user && activeId) { await supabase.from(table).delete().eq('id', id); loadData(activeId, currentWorkspace?.id); }
-        else {
+        if (user && activeId) {
+            await supabase.from(table).delete().eq('id', id);
+            loadData(activeId, currentWorkspace?.id);
+        } else {
             if (table === 'transactions') saveDataLocal(transactions.filter(t => t.id !== id), installments, recurring);
-            else if (table === 'installments') saveDataLocal(transactions, installments.filter(i => i.id !== id), recurring); else saveDataLocal(transactions, installments, recurring.filter(r => r.id !== id));
+            else if (table === 'installments') saveDataLocal(transactions, installments.filter(i => i.id !== id), recurring);
+            else saveDataLocal(transactions, installments, recurring.filter(r => r.id !== id));
         }
     };
-
     const togglePaid = async (table: string, id: number, currentStatus: boolean) => {
+        // 🧪 SEQUESTRO DA SIMULAÇÃO
+        if (isSimulationMode) {
+            if (table === 'transactions') {
+                setTransactions(prev => prev.map(t => t.id === id ? { ...t, is_paid: !currentStatus } : t));
+            }
+            return; // O 'return' impede que vá para o banco de dados!
+        }
+
         const activeId = getActiveUserId();
-        if (user && activeId) { await supabase.from(table).update({ is_paid: !currentStatus }).eq('id', id); loadData(activeId, currentWorkspace?.id); }
-        else {
+        if (user && activeId) {
+            await supabase.from(table).update({ is_paid: !currentStatus }).eq('id', id);
+            loadData(activeId, currentWorkspace?.id);
+        } else {
             const updateList = (list: any[]) => list.map(i => i.id === id ? { ...i, is_paid: !currentStatus } : i);
             if (table === 'transactions') saveDataLocal(updateList(transactions), installments, recurring);
         }
     };
-
     // --- FUNÇÕES DO ROLLOVER (ITEM 7 REFINADO) ---
 
     // 1. Marcar TUDO como pago (Esqueci de dar baixa)
@@ -890,24 +930,21 @@ const initialFormState = {
 
     const togglePaidMonth = async (table: string, item: any) => {
         const currentPaid = item.paid_months || [];
-
-        // AGORA SALVAMOS: "Mar/2026" ao invés de só "Mar"
-        // Isso impede que o pagamento de um ano conte para o outro
         const monthTag = `${activeTab}/${selectedYear}`;
-
         let newPaidList;
 
-        // Verifica se já tem a tag exata "Mar/2026"
         if (currentPaid.includes(monthTag)) {
-            // Se tem, remove (desmarcar)
             newPaidList = currentPaid.filter((m: string) => m !== monthTag);
         } else {
-            // Se não tem, adiciona
             newPaidList = [...currentPaid, monthTag];
-
-            // LIMPEZA LEGADA: Remove tags antigas sem ano (ex: "Mar") para não dar conflito
-            // Isso conserta automaticamente dados velhos quando você clica
             newPaidList = newPaidList.filter((m: string) => m !== activeTab);
+        }
+
+        // 🧪 SEQUESTRO DA SIMULAÇÃO
+        if (isSimulationMode) {
+            if (table === 'installments') setInstallments(prev => prev.map(i => i.id === item.id ? { ...i, paid_months: newPaidList } : i));
+            else if (table === 'recurring') setRecurring(prev => prev.map(r => r.id === item.id ? { ...r, paid_months: newPaidList } : r));
+            return; // Impede que vá para o banco!
         }
 
         const activeId = getActiveUserId();
@@ -915,7 +952,6 @@ const initialFormState = {
             await supabase.from(table).update({ paid_months: newPaidList }).eq('id', item.id);
             loadData(activeId, currentWorkspace?.id);
         } else {
-            // Modo offline (se estiver usando)
             const updateList = (list: any[]) => list.map(i => i.id === item.id ? { ...i, paid_months: newPaidList } : i);
             if (table === 'installments') saveDataLocal(transactions, updateList(installments), recurring);
             else saveDataLocal(transactions, installments, updateList(recurring));
@@ -971,7 +1007,7 @@ const initialFormState = {
     // Função para limpar o formulário
     const resetForm = () => {
         const diaDeHoje = String(new Date().getDate()).padStart(2, '0');
-        
+
         setFormData({
             title: '',
             amount: '',
@@ -979,10 +1015,10 @@ const initialFormState = {
             dueDay: '',
             day: diaDeHoje, // <--- AQUI TAMBÉM!
             category: 'Outros',
-            targetMonth: activeTab || 'Jan', 
+            targetMonth: activeTab || 'Jan',
             isFixedIncome: false,
             fixedMonthlyValue: '',
-            receiptUrl: '', 
+            receiptUrl: '',
             icon: '',
             paymentMethod: ''
         });
@@ -1015,11 +1051,11 @@ const initialFormState = {
         let baseDay = '01';
         if (formMode === 'income' || formMode === 'expense') {
             // Se estiver vazio, pega o dia de hoje como segurança
-            baseDay = formData.day ? formData.day.toString() : String(new Date().getDate()); 
+            baseDay = formData.day ? formData.day.toString() : String(new Date().getDate());
         } else {
             baseDay = formData.dueDay ? formData.dueDay.toString() : '01';
         }
-        
+
         const dayValue = baseDay.padStart(2, '0');
         const monthValue = monthMapNums[formData.targetMonth] || '01';
 
@@ -1062,7 +1098,7 @@ const initialFormState = {
             if (formMode === 'income') {
                 return formData.isFixedIncome
                     ? { table: 'recurring', data: { ...base, value: amountVal, due_day: parseInt(dayValue), category: 'Salário', type: 'income', status: 'active', created_at: isoDateForDatabase } }
-                    : { table: 'transactions', data: { ...base, amount: amountVal, type: 'income', date: dateStringBR, category: 'Receita', target_month: formData.targetMonth, status: 'active', created_at: isoDateForDatabase} };
+                    : { table: 'transactions', data: { ...base, amount: amountVal, type: 'income', date: dateStringBR, category: 'Receita', target_month: formData.targetMonth, status: 'active', created_at: isoDateForDatabase } };
             }
 
             // --- DESPESAS AVULSAS ---
@@ -1096,6 +1132,37 @@ const initialFormState = {
         };
 
         const { table, data } = getPayload();
+
+        // 🧪 SEQUESTRO DA SIMULAÇÃO (Não deixa salvar no banco)
+        if (isSimulationMode) {
+            // Cria um ID falso só para a tela conseguir renderizar
+            const fakeItem = { ...data, id: editingId ? editingId : Date.now() };
+
+            if (table === 'transactions') {
+                if (editingId) setTransactions(prev => prev.map(t => t.id === editingId ? fakeItem : t));
+                else setTransactions(prev => [...prev, fakeItem]);
+            } else if (table === 'installments') {
+                if (editingId) setInstallments(prev => prev.map(i => i.id === editingId ? fakeItem : i));
+                else setInstallments(prev => [...prev, fakeItem]);
+            } else if (table === 'recurring') {
+                if (editingId) setRecurring(prev => prev.map(r => r.id === editingId ? fakeItem : r));
+                else setRecurring(prev => [...prev, fakeItem]);
+            }
+
+            toast.success("Salvo no laboratório! 🧪");
+
+            // Fecha o form e limpa os dados
+            setIsFormOpen(false);
+            setEditingId(null);
+            const diaDeHoje = String(new Date().getDate()).padStart(2, '0');
+            setFormData({
+                title: '', amount: '', targetMonth: activeTab, icon: 'dollar-sign',
+                paymentMethod: 'outros', isFixedIncome: false, category: 'Outros',
+                installments: '1', fixedMonthlyValue: '', dueDay: '10', day: diaDeHoje, receiptUrl: ''
+            });
+
+            return; // 🛑 Para a função aqui e não envia pro Supabase!
+        }
 
         // 4. Execução no Supabase (Com lógica robusta de Update/Insert)
         try {
@@ -1133,13 +1200,13 @@ const initialFormState = {
             // Limpa o formulário e fecha o modal usando o NOME CERTO
             setIsFormOpen(false); // <--- AQUI ESTAVA O ERRO!
             setEditingId(null);
-            
+
             // Limpa o form, agora o TypeScript já conhece o 'day'
             setFormData({
                 title: '', amount: '', targetMonth: activeTab, icon: 'dollar-sign',
                 paymentMethod: 'outros', isFixedIncome: false, category: 'Outros',
                 installments: '1', fixedMonthlyValue: '', dueDay: '10', day: '', receiptUrl: ''
-            }); 
+            });
 
             // Recarrega os dados
             if (activeId) loadData(activeId, context);
@@ -1392,7 +1459,7 @@ const initialFormState = {
             if (data.error) throw new Error(data.error);
 
             let aiResponseText = data.response;
-            
+
             // Tenta encontrar algo parecido com um Array JSON na resposta (mesmo se a IA mandar texto junto)
             const jsonMatch = aiResponseText.match(/\[\s*\{[\s\S]*\}\s*\]/);
 
@@ -1421,7 +1488,7 @@ const initialFormState = {
                                         let d = parts[0].padStart(2, '0'); // Garante que o dia tenha 2 casas (ex: 03)
                                         let m = parts[1];
                                         let y = parts.length === 3 ? parts[2] : selectedYear;
-                                        
+
                                         // Se a IA mandou o mês com letras (Ex: 'Mar' ou 'MAR')
                                         if (isNaN(Number(m))) {
                                             // Converte para o padrão 'Mar' e pega o número correspondente
@@ -1431,7 +1498,7 @@ const initialFormState = {
                                             // Se já for número, só garante as 2 casas (ex: '3' vira '03')
                                             m = String(m).padStart(2, '0');
                                         }
-                                        
+
                                         finalDate = `${d}/${m}/${y}`;
                                     }
                                 } else if (cmd.data.target_month) {
@@ -1466,7 +1533,7 @@ const initialFormState = {
                                 if (cmd.table === 'installments') {
                                     const qtd = parseInt(cmd.data.installments_count) || 1;
                                     const perMonth = parseFloat(cmd.data.value_per_month) || extractedValue;
-                                    
+
                                     safeData.total_value = cmd.data.total_value || (perMonth * qtd);
                                     safeData.installments_count = qtd;
                                     safeData.current_installment = 0; // Sempre 0!
@@ -1474,7 +1541,7 @@ const initialFormState = {
                                     safeData.due_day = parseInt(cmd.data.due_day) || 10;
                                     safeData.payment_method = cmd.data.payment_method || 'outros';
                                     safeData.paid_months = [];
-                                    
+
                                     // 🚫 IMPORTANTE: Remove campos que a tabela Installments não tem
                                     delete safeData.start_date;
                                     delete safeData.amount;
@@ -1488,7 +1555,7 @@ const initialFormState = {
                                     safeData.value = extractedValue;
                                     safeData.due_day = parseInt(cmd.data.due_day) || 10;
                                     safeData.start_date = finalDate;
-                                    
+
                                     // 🚫 Remove campos inúteis
                                     delete safeData.amount;
                                     delete safeData.date;
@@ -1590,7 +1657,7 @@ const initialFormState = {
             <div className="flex justify-between items-center mb-6">
                 <div className="flex items-center gap-2">
                     <div className="bg-gray-900 border border-gray-800 rounded-xl p-1 flex gap-1">
-                        
+
                         {/* Botões das Workspaces */}
                         {workspaces.map(ws => (
                             <button key={ws.id} onClick={() => switchWorkspace(ws)} className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 ${currentWorkspace?.id === ws.id ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>
@@ -1598,7 +1665,7 @@ const initialFormState = {
                                 {ws.title}
                             </button>
                         ))}
-                        
+
                         <div className="w-px bg-gray-800 mx-1"></div>
 
                         {/* Botão de Adicionar Nova */}
@@ -1608,9 +1675,9 @@ const initialFormState = {
 
                         {/* NOVO: Botão de Excluir (Só aparece se tiver numa workspace selecionada que não seja a principal) */}
                         {currentWorkspace && currentWorkspace.id && (
-                            <button 
-                                onClick={() => setIsDeleteWorkspaceModalOpen(true)} 
-                                className="px-3 py-2 rounded-lg text-gray-500 hover:bg-red-950/50 hover:text-red-500 transition" 
+                            <button
+                                onClick={() => setIsDeleteWorkspaceModalOpen(true)}
+                                className="px-3 py-2 rounded-lg text-gray-500 hover:bg-red-950/50 hover:text-red-500 transition"
                                 title="Excluir este Perfil"
                             >
                                 <Trash2 size={16} />
@@ -1628,29 +1695,29 @@ const initialFormState = {
                         <button onClick={() => setIsDeleteWorkspaceModalOpen(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white transition">
                             <X size={20} />
                         </button>
-                        
+
                         <div className="flex justify-center mb-4">
                             <div className="bg-red-500/20 p-4 rounded-full">
                                 <Trash2 className="text-red-500" size={32} />
                             </div>
                         </div>
-                        
+
                         <h2 className="text-xl font-bold text-white mb-2">Excluir Perfil?</h2>
                         <p className="text-gray-400 text-sm mb-6">
-                            Tem certeza que deseja apagar o perfil <strong>{currentWorkspace.title}</strong>? <br/><br/>
+                            Tem certeza que deseja apagar o perfil <strong>{currentWorkspace.title}</strong>? <br /><br />
                             <span className="text-red-400">Esta ação apagará todas as transações vinculadas a este perfil e não pode ser desfeita.</span>
                         </p>
-                        
+
                         <div className="flex gap-3">
-                            <button 
-                                onClick={() => setIsDeleteWorkspaceModalOpen(false)} 
-                                disabled={isDeletingWorkspace} 
+                            <button
+                                onClick={() => setIsDeleteWorkspaceModalOpen(false)}
+                                disabled={isDeletingWorkspace}
                                 className="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 rounded-xl transition"
                             >
                                 Cancelar
                             </button>
-                            
-                            <button 
+
+                            <button
                                 onClick={async () => {
                                     setIsDeletingWorkspace(true);
                                     try {
@@ -1660,7 +1727,7 @@ const initialFormState = {
 
                                         // 2. Apaga a Workspace
                                         const { error } = await supabase
-                                            .from('workspaces') 
+                                            .from('workspaces')
                                             .delete()
                                             .eq('id', currentWorkspace.id);
 
@@ -1668,17 +1735,17 @@ const initialFormState = {
 
                                         toast.success("Perfil excluído com sucesso!");
                                         setIsDeleteWorkspaceModalOpen(false);
-                                        
+
                                         // Volta para o perfil principal e recarrega
-                                        window.location.reload(); 
-                                        
+                                        window.location.reload();
+
                                     } catch (error: any) {
                                         console.error(error);
                                         toast.error("Erro ao excluir perfil: " + error.message);
                                     } finally {
                                         setIsDeletingWorkspace(false);
                                     }
-                                }} 
+                                }}
                                 disabled={isDeletingWorkspace}
                                 className="flex-1 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-red-900/20"
                             >
@@ -1688,9 +1755,14 @@ const initialFormState = {
                     </div>
                 </div>
             )}
+            
 
             {/* ... HEADER PRINCIPAL ... */}
             {/* ... HEADER PRINCIPAL (Visual Original + Travas Novas) ... */}
+            <CalculatorModal
+                isOpen={isCalculatorOpen}
+                onClose={() => setIsCalculatorOpen(false)}
+            />
             <DashboardHeader
                 user={user}
                 userPlan={userPlan}
@@ -1712,6 +1784,7 @@ const initialFormState = {
                 setIsAIOpen={setIsAIOpen}
                 setIsCreditCardModalOpen={setIsCreditCardModalOpen}
                 openNewTransactionModal={openNewTransactionModal}
+                setIsCalculatorOpen={setIsCalculatorOpen}
             />
             <TabNavigation
                 activeSection={activeSection}
@@ -1719,6 +1792,7 @@ const initialFormState = {
                 goalsCount={goals.length}
                 onOpenAI={() => setIsAIOpen(true)}
             />
+            
 
 
 
@@ -1945,7 +2019,28 @@ const initialFormState = {
                     handleDeleteGoal={handleDeleteGoal}
                 />
             )}
-
+            {/* 🧪 ALERTA E BOTÃO DO MODO SIMULAÇÃO */}
+            {isSimulationMode ? (
+                <div className="bg-purple-600 border border-purple-400 text-white p-3 rounded-2xl mb-6 shadow-xl shadow-purple-900/50 flex flex-col md:flex-row items-center justify-between gap-4 animate-in slide-in-from-top-4">
+                    <div className="flex items-center gap-3">
+                        <div className="bg-white/20 p-2 rounded-full animate-pulse">🧪</div>
+                        <div>
+                            <h3 className="font-bold">Modo Simulação Ativado</h3>
+                            <p className="text-xs text-purple-200">Marque e desmarque contas livremente para simular seu saldo. Nada está sendo salvo.</p>
+                        </div>
+                    </div>
+                    <button onClick={toggleSimulationMode} className="bg-black/30 hover:bg-black/50 px-6 py-2 rounded-xl font-bold transition whitespace-nowrap">
+                        Sair da Simulação
+                    </button>
+                </div>
+            ) : (
+                <div className="flex justify-end mb-4">
+                    <button onClick={toggleSimulationMode} className="text-xs bg-purple-900/30 text-purple-400 hover:text-white border border-purple-900 hover:bg-purple-600 px-4 py-1.5 rounded-full transition flex items-center gap-2">
+                        🧪 Entrar no Laboratório (Simular Saldo)
+                    </button>
+                </div>
+            )}
+            
             {/* MODAL DE PREÇOS (O QUE TINHA SUMIDO!) */}
 
             {/* MODAL DE PREÇOS (LIMPO E ATUALIZADO) */}
@@ -2020,35 +2115,36 @@ const initialFormState = {
                 </div>
             )}
 
+
             {/* MODAL IA */}
             {/* MODAL DE CRIAR NOVA WORKSPACE (PERFIL) */}
             {isNewProfileModalOpen && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[300] p-4 animate-in zoom-in duration-200">
                     <div className="bg-[#111] border border-gray-800 p-6 rounded-3xl w-full max-w-sm shadow-2xl relative">
-                        <button 
-                            onClick={() => setIsNewProfileModalOpen(false)} 
+                        <button
+                            onClick={() => setIsNewProfileModalOpen(false)}
                             className="absolute top-4 right-4 text-gray-500 hover:text-white transition"
                         >
                             <X size={20} />
                         </button>
-                        
+
                         <h2 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
                             <FolderPlus className="text-cyan-500" /> Novo Perfil
                         </h2>
                         <p className="text-gray-400 text-xs mb-6">
                             Crie um novo espaço (ex: Empresa, Projetos) para separar suas finanças.
                         </p>
-                        
-                        <input 
-                            type="text" 
-                            value={newWorkspaceName} 
-                            onChange={(e) => setNewWorkspaceName(e.target.value)} 
-                            placeholder="Nome (ex: Empresa)" 
+
+                        <input
+                            type="text"
+                            value={newWorkspaceName}
+                            onChange={(e) => setNewWorkspaceName(e.target.value)}
+                            placeholder="Nome (ex: Empresa)"
                             className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none transition mb-6"
                             autoFocus
                         />
-                        
-                        <button 
+
+                        <button
                             onClick={async () => {
                                 if (!newWorkspaceName.trim()) {
                                     toast.error("Digite um nome para o perfil.");
@@ -2057,13 +2153,13 @@ const initialFormState = {
                                 setIsSavingWorkspace(true);
                                 try {
                                     const userId = getActiveUserId(); // Ou user?.id dependendo de como está no seu page.tsx
-                                    
+
                                     // Salva no Supabase (ajuste o nome da tabela se for diferente de 'workspaces')
                                     const { data, error } = await supabase
                                         .from('workspaces') // Confirme se o nome da sua tabela é esse mesmo
-                                        .insert([{ 
-                                            user_id: userId, 
-                                            title: newWorkspaceName 
+                                        .insert([{
+                                            user_id: userId,
+                                            title: newWorkspaceName
                                         }]);
 
                                     if (error) throw error;
@@ -2071,17 +2167,17 @@ const initialFormState = {
                                     toast.success("Novo perfil criado com sucesso!");
                                     setIsNewProfileModalOpen(false);
                                     setNewWorkspaceName('');
-                                    
+
                                     // Recarrega a página para puxar o novo perfil
-                                    window.location.reload(); 
-                                    
+                                    window.location.reload();
+
                                 } catch (error: any) {
                                     console.error(error);
                                     toast.error("Erro ao criar perfil: " + error.message);
                                 } finally {
                                     setIsSavingWorkspace(false);
                                 }
-                            }} 
+                            }}
                             disabled={isSavingWorkspace}
                             className="w-full bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-cyan-900/20"
                         >

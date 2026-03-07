@@ -33,6 +33,7 @@ export interface Installment {
     created_at?: string;
     start_date?: string;
     icon?: string;
+    standby_months?: string[];
     context?: string;
 }
 
@@ -51,6 +52,7 @@ export interface Recurring {
     receipts?: Record<string, string>;
     start_date?: string;
     icon?: string;
+    standby_months?: string[];
     context?: string;
 }
 

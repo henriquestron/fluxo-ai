@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
     ShieldCheck, Briefcase, User, UserPlus, BarChart3, FileSpreadsheet,
     Lock, HelpCircle, ChevronDown, CreditCard, Smartphone, Palette,
-    LogOut, Sparkles, Plus, Search
+    LogOut, Sparkles, Plus, Search,Calculator
 } from 'lucide-react';
 import NotificationBell from '@/components/dashboard/NotificationBell'; // Ajuste o caminho se necessário!
 
@@ -26,6 +26,7 @@ interface DashboardHeaderProps {
     setIsAIOpen: (v: boolean) => void;
     setIsCreditCardModalOpen: (v: boolean) => void;
     openNewTransactionModal: () => void;
+    setIsCalculatorOpen: (isOpen: boolean) => void;
 }
 
 export default function DashboardHeader({
@@ -33,7 +34,7 @@ export default function DashboardHeader({
     setIsHistoryOpen, setIsExportModalOpen, openPricingModal, runTour,
     setIsProfileModalOpen, handleManageSubscription, whatsappEnabled, toggleWhatsappNotification,
     setIsCustomizationOpen, handleCheckout, handleLogout,
-    setIsAIOpen, setIsCreditCardModalOpen, openNewTransactionModal
+    setIsAIOpen, setIsCreditCardModalOpen, openNewTransactionModal, setIsCalculatorOpen
 }: DashboardHeaderProps) {
 
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -92,6 +93,13 @@ export default function DashboardHeader({
                         <button onClick={runTour} className="h-10 w-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition">
                             <HelpCircle size={20} />
                         </button>
+                        <button
+                                onClick={() => setIsCalculatorOpen(true)}
+                                className="h-10 w-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition"
+                                title="Abrir Calculadora"
+                            >
+                                <Calculator size={20} />
+                            </button>
                     </div>
 
                     <div className="hidden xl:block w-px h-8 bg-gray-800 mx-1"></div>
@@ -110,6 +118,7 @@ export default function DashboardHeader({
                                 <span className="hidden md:inline text-gray-400 text-sm font-medium">Menu</span>
                                 <ChevronDown size={14} className="text-gray-500 hidden md:block" />
                             </button>
+                            
 
                             {isUserMenuOpen && (
                                 <>
