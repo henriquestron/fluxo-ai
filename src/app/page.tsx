@@ -7,7 +7,7 @@ import {
     Mail, Loader2, Lock, BarChart3, Search, Target, Upload, FileText, ExternalLink,
     Users, ChevronDown, UserPlus, Briefcase, HelpCircle, Star, Zap, Shield, Palette,
     Layout, MousePointerClick, FolderPlus, Layers, FileSpreadsheet, Wallet, Landmark, Rocket, Paperclip, ChevronRight, ChevronLeft,
-    ShoppingCart, Home, Car, Utensils, GraduationCap, HeartPulse, Plane, Gamepad2, Smartphone,Calculator
+    ShoppingCart, Home, Car, Utensils, GraduationCap, HeartPulse, Plane, Gamepad2, Smartphone, Calculator
 }
     from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -66,7 +66,7 @@ export default function FinancialDashboard() {
     const [isDeleteWorkspaceModalOpen, setIsDeleteWorkspaceModalOpen] = useState(false);
     const [isDeletingWorkspace, setIsDeletingWorkspace] = useState(false);
     const [isSavingWorkspace, setIsSavingWorkspace] = useState(false);
-    const [standbyModal, setStandbyModal] = useState<{isOpen: boolean, item: any, origin: string} | null>(null);
+    const [standbyModal, setStandbyModal] = useState<{ isOpen: boolean, item: any, origin: string } | null>(null);
 
     const [newProfileName, setNewProfileName] = useState('');
     // Adicione junto com os outros states (ex: perto de const [isAiLoading, setIsAiLoading] = useState(false);)
@@ -921,7 +921,7 @@ export default function FinancialDashboard() {
     // 1. O clique no botão do reloginho
     const toggleDelay = (origin: string, item: any) => {
         const currentTag = `${activeTab}/${selectedYear}`;
-        
+
         // Verifica se a conta já está congelada
         let isStandby = false;
         if (origin === 'transactions') {
@@ -949,8 +949,8 @@ export default function FinancialDashboard() {
     // 2. A execução da escolha
     // 2. A execução da escolha
     const confirmDelayChoice = async (origin: string, item: any, choice: 'restore' | 'single' | 'global') => {
-        setStandbyModal(null); 
-        
+        setStandbyModal(null);
+
         const tableMap: Record<string, string> = { 'transactions': 'transactions', 'installments': 'installments', 'recurring': 'recurring' };
         const table = tableMap[origin] || origin;
         const currentTag = `${activeTab}/${selectedYear}`;
@@ -965,20 +965,20 @@ export default function FinancialDashboard() {
             // Parcelas e Fixas: Vamos PROTEGER O PASSADO!
             if (choice === 'restore') {
                 newStatusGlobal = 'active'; // 🟢 Força ativo para curar bugs antigos
-                newStandbyArray = newStandbyArray.filter((m: string) => m !== currentTag); 
+                newStandbyArray = newStandbyArray.filter((m: string) => m !== currentTag);
             } else if (choice === 'single') {
                 newStatusGlobal = 'active'; // 🟢 Força ativo
-                if (!newStandbyArray.includes(currentTag)) newStandbyArray.push(currentTag); 
+                if (!newStandbyArray.includes(currentTag)) newStandbyArray.push(currentTag);
             } else if (choice === 'global') {
                 newStatusGlobal = 'active'; // 🟢 FORÇA ATIVO: A mágica acontece na lista abaixo!
-                
+
                 // Gera os próximos 60 meses (5 anos) a partir de hoje e congela um por um.
                 // O passado fica totalmente seguro!
                 const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
                 const startIdx = monthNames.indexOf(activeTab);
                 let currentY = selectedYear;
                 let currentM = startIdx;
-                
+
                 for (let i = 0; i < 60; i++) {
                     const tag = `${monthNames[currentM]}/${currentY}`;
                     if (!newStandbyArray.includes(tag)) newStandbyArray.push(tag);
@@ -1001,24 +1001,24 @@ export default function FinancialDashboard() {
                 setRecurring(prev => prev.map(r => r.id === item.id ? { ...r, status: newStatusGlobal, standby_months: newStandbyArray } : r));
             }
         };
-        
-        applyInstantVisualUpdate(); 
+
+        applyInstantVisualUpdate();
 
         if (isSimulationMode) {
             toast.success(`[Simulação] Atualizado!`);
-            return; 
+            return;
         }
 
         const activeId = getActiveUserId();
         if (user && activeId) {
             try {
-                const payload = table === 'transactions' 
-                    ? { status: newStatusGlobal } 
+                const payload = table === 'transactions'
+                    ? { status: newStatusGlobal }
                     : { standby_months: newStandbyArray, status: newStatusGlobal };
-                    
+
                 const { error } = await supabase.from(table).update(payload).eq('id', item.id);
                 if (error) throw error;
-                
+
                 if (choice === 'restore') toast.success(`Restaurado!`);
                 else if (choice === 'single') toast.success(`Congelado apenas em ${activeTab}. O valor acumulará.`);
                 else toast.success("Congelado em todos os meses futuros!");
@@ -1402,8 +1402,8 @@ export default function FinancialDashboard() {
         const activeRecurring = recurring.filter(r => {
             const paid = isPaid(r, currentPaymentTag);
             // Se estiver em stand-by, mas FOI PAGA neste mês, o pagamento anula o stand-by!
-            if ((r.status === 'delayed' || r.status === 'standby') && !paid) return false; 
-            if (r.standby_months?.includes(currentPaymentTag) && !paid) return false; 
+            if ((r.status === 'delayed' || r.status === 'standby') && !paid) return false;
+            if (r.standby_months?.includes(currentPaymentTag) && !paid) return false;
 
             const { m: startMonth, y: startYear } = getStartData(r);
             if (selectedYear > startYear) return true;
@@ -1418,14 +1418,14 @@ export default function FinancialDashboard() {
 
         // --- CÁLCULO DE SAÍDAS DO MÊS ---
         const expenseFixed = activeRecurring.filter(r => r.type === 'expense' && !r.skipped_months?.includes(monthName)).reduce((acc, curr) => acc + Number(curr.value), 0);
-        
+
         const expenseVariable = transactions.filter(t => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc, curr) => acc + Number(curr.amount), 0);
 
         const installTotal = installments.reduce((acc, curr) => {
             const paid = isPaid(curr, currentPaymentTag);
             // Mesma imunidade para as parcelas do cartão
             if ((curr.status === 'delayed' || curr.status === 'standby') && !paid) return acc;
-            if (curr.standby_months?.includes(currentPaymentTag) && !paid) return acc; 
+            if (curr.standby_months?.includes(currentPaymentTag) && !paid) return acc;
 
             const { m: startMonth, y: startYear } = getStartData(curr);
             const monthsDiff = ((selectedYear - startYear) * 12) + (monthIndex - startMonth);
@@ -1514,10 +1514,10 @@ export default function FinancialDashboard() {
     // 🟢 MÁQUINA DO TEMPO (EFEITO CASCATA): Simula o fechamento exato de cada mês
     for (let i = 0; i < currentIndex; i++) {
         const pastData = getMonthData(MONTHS[i]);
-        
+
         // O fechamento do mês é o que ele rendeu + a sobra que ele herdou do mês anterior a ele
         const fechamentoDoMes = pastData.balance + previousSurplus;
-        
+
         // Se sobrou dinheiro, essa vira a sobra para o próximo mês.
         // Se fechou no negativo, a sobra zera (pois a dívida já aparece no card vermelho lá em cima).
         if (fechamentoDoMes > 0) {
@@ -1878,13 +1878,18 @@ export default function FinancialDashboard() {
                     </div>
                 </div>
             )}
-            
+
 
             {/* ... HEADER PRINCIPAL ... */}
             {/* ... HEADER PRINCIPAL (Visual Original + Travas Novas) ... */}
             <CalculatorModal
                 isOpen={isCalculatorOpen}
                 onClose={() => setIsCalculatorOpen(false)}
+                transactions={transactions}
+                installments={installments}
+                recurring={recurring}
+                activeTab={activeTab}
+                selectedYear={selectedYear}
             />
             <DashboardHeader
                 user={user}
@@ -1915,7 +1920,7 @@ export default function FinancialDashboard() {
                 goalsCount={goals.length}
                 onOpenAI={() => setIsAIOpen(true)}
             />
-            
+
 
 
 
@@ -2150,18 +2155,18 @@ export default function FinancialDashboard() {
                         <button onClick={() => setStandbyModal(null)} className="absolute top-4 right-4 text-gray-500 hover:text-white transition">
                             <X size={20} />
                         </button>
-                        
+
                         <div className="w-16 h-16 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center justify-center mb-4 mx-auto">
                             <Clock size={32} />
                         </div>
-                        
+
                         <h3 className="text-xl font-bold text-center text-white mb-2">Congelar Conta</h3>
                         <p className="text-gray-400 text-sm text-center mb-6">Como você quer colocar a conta "<span className="text-white font-bold">{standbyModal.item.title}</span>" em Stand-by?</p>
-                        
+
                         <div className="space-y-3">
                             {/* Opção 1: Só este mês */}
-                            <button 
-                                onClick={() => confirmDelayChoice(standbyModal.origin, standbyModal.item, 'single')} 
+                            <button
+                                onClick={() => confirmDelayChoice(standbyModal.origin, standbyModal.item, 'single')}
                                 className="w-full bg-gray-900 border border-gray-800 hover:border-blue-500/50 text-white p-4 rounded-xl flex flex-col items-center justify-center gap-1 transition group"
                             >
                                 <span className="font-bold group-hover:text-blue-400 transition">Apenas em {activeTab}</span>
@@ -2169,8 +2174,8 @@ export default function FinancialDashboard() {
                             </button>
 
                             {/* Opção 2: Global */}
-                            <button 
-                                onClick={() => confirmDelayChoice(standbyModal.origin, standbyModal.item, 'global')} 
+                            <button
+                                onClick={() => confirmDelayChoice(standbyModal.origin, standbyModal.item, 'global')}
                                 className="w-full bg-gray-900 border border-gray-800 hover:border-red-500/50 text-white p-4 rounded-xl flex flex-col items-center justify-center gap-1 transition group"
                             >
                                 <span className="font-bold group-hover:text-red-400 transition">Todos os meses futuros</span>
@@ -2201,7 +2206,7 @@ export default function FinancialDashboard() {
                     </button>
                 </div>
             )}
-            
+
             {/* MODAL DE PREÇOS (O QUE TINHA SUMIDO!) */}
 
             {/* MODAL DE PREÇOS (LIMPO E ATUALIZADO) */}
