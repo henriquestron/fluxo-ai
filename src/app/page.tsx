@@ -1636,20 +1636,16 @@ export default function FinancialDashboard() {
     let previousSurplus = 0;
     const currentIndex = MONTHS.indexOf(activeTab);
 
-    // 🟢 MÁQUINA DO TEMPO (EFEITO CASCATA): Simula o fechamento exato de cada mês
+    // 🟢 MÁQUINA DO TEMPO (EFEITO CASCATA REAL): Simula o extrato exato de cada mês
     for (let i = 0; i < currentIndex; i++) {
         const pastData = getMonthData(MONTHS[i]);
-
-        // O fechamento do mês é o que ele rendeu + a sobra que ele herdou do mês anterior a ele
+        
+        // O fechamento do mês é o saldo gerado no mês + o saldo (positivo ou negativo) que veio do passado
         const fechamentoDoMes = pastData.balance + previousSurplus;
-
-        // Se sobrou dinheiro, essa vira a sobra para o próximo mês.
-        // Se fechou no negativo, a sobra zera (pois a dívida já aparece no card vermelho lá em cima).
-        if (fechamentoDoMes > 0) {
-            previousSurplus = fechamentoDoMes;
-        } else {
-            previousSurplus = 0;
-        }
+        
+        // 🚀 A MÁGICA: Agora ele carrega TUDO para o mês seguinte!
+        // Se sobrou, vai positivo. Se faltou (cheque especial), vai negativo.
+        previousSurplus = fechamentoDoMes; 
     }
 
     const displayBalance = currentMonthData.balance + previousSurplus;
