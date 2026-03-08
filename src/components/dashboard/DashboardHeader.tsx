@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import {
     ShieldCheck, Briefcase, User, UserPlus, BarChart3, FileSpreadsheet,
     Lock, HelpCircle, ChevronDown, CreditCard, Smartphone, Palette,
-    LogOut, Sparkles, Plus, Search,Calculator
+    LogOut, Sparkles, Plus, Search,Calculator,
+    Trash2
 } from 'lucide-react';
 import NotificationBell from '@/components/dashboard/NotificationBell'; // Ajuste o caminho se necessário!
 
@@ -27,6 +28,8 @@ interface DashboardHeaderProps {
     setIsCreditCardModalOpen: (v: boolean) => void;
     openNewTransactionModal: () => void;
     setIsCalculatorOpen: (isOpen: boolean) => void;
+    handleRemoveClient: (client: any) => void;
+    client: any;
 }
 
 export default function DashboardHeader({
@@ -34,7 +37,7 @@ export default function DashboardHeader({
     setIsHistoryOpen, setIsExportModalOpen, openPricingModal, runTour,
     setIsProfileModalOpen, handleManageSubscription, whatsappEnabled, toggleWhatsappNotification,
     setIsCustomizationOpen, handleCheckout, handleLogout,
-    setIsAIOpen, setIsCreditCardModalOpen, openNewTransactionModal, setIsCalculatorOpen
+    setIsAIOpen, setIsCreditCardModalOpen, openNewTransactionModal, setIsCalculatorOpen,handleRemoveClient, client
 }: DashboardHeaderProps) {
 
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -71,6 +74,9 @@ export default function DashboardHeader({
                                 <button id="btn-add-client" onClick={() => setIsClientModalOpen(true)} className="ml-auto flex items-center gap-1 text-[10px] bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white px-2 py-1 rounded border border-purple-500/30 transition whitespace-nowrap">
                                     <UserPlus size={10} /> Add
                                 </button>
+                                {viewingAs && (
+                                    <button onClick={() => handleRemoveClient(client)} className="text-red-500 hover:text-red-400"><Trash2 size={18}/></button>
+                                )}
                             </div>
                         </div>
                     )}

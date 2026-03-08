@@ -621,7 +621,46 @@ export default function FinancialDashboard() {
         const targetUserId = client ? client.client_id : user?.id;
         if (targetUserId) { await fetchWorkspaces(targetUserId, true); }
     };
+    // 🟢 DESVINCULAR CLIENTE E REBAIXAR PLANO
+    // 🟢 DESVINCULAR CLIENTE E REBAIXAR PLANO
+    const handleRemoveClient = async (client: any) => {
+        const confirmDelete = window.confirm(`Tem certeza que deseja desvincular ${client.client_email}? Ele perderá o plano Pro.`);
+        if (!confirmDelete) return;
 
+        const toastId = toast.loading("Desvinculando cliente...");
+
+        try {
+            // 1. Quebra a ligação
+            const { error: unlinkError } = await supabase
+                .from('manager_clients')
+                .delete()
+                .eq('manager_id', user.id)
+                .eq('client_id', client.client_id);
+
+            if (unlinkError) throw unlinkError;
+
+            // 2. Chama a função VIP para rebaixar o plano (Bypass de Segurança)
+            const { error: downgradeError } = await supabase.rpc('downgrade_client_plan', {
+                target_client_id: client.client_id
+            });
+
+            if (downgradeError) throw downgradeError;
+
+            // 3. Atualiza a tela
+            setClients(prev => prev.filter(c => c.client_id !== client.client_id));
+
+            if (viewingAs && viewingAs.client_id === client.client_id) {
+                switchView(null);
+            }
+
+            toast.success("Cliente desvinculado e plano rebaixado com sucesso! 👋", { id: toastId });
+
+        } catch (error: any) {
+            console.error(error);
+            toast.error("Erro ao desvincular: " + error.message, { id: toastId });
+        }
+    };
+    
     useEffect(() => {
         if (transactions.length > 0 || installments.length > 0) {
             checkForPastDueItems();
@@ -1910,6 +1949,8 @@ export default function FinancialDashboard() {
                 setIsCreditCardModalOpen={setIsCreditCardModalOpen}
                 openNewTransactionModal={openNewTransactionModal}
                 setIsCalculatorOpen={setIsCalculatorOpen}
+                handleRemoveClient={handleRemoveClient}
+                client={viewingAs}
             />
             <TabNavigation
                 activeSection={activeSection}
