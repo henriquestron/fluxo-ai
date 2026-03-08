@@ -66,7 +66,7 @@ export default function FinancialDashboard() {
     const [isDeleteWorkspaceModalOpen, setIsDeleteWorkspaceModalOpen] = useState(false);
     const [isDeletingWorkspace, setIsDeletingWorkspace] = useState(false);
     const [isSavingWorkspace, setIsSavingWorkspace] = useState(false);
-    const [standbyModal, setStandbyModal] = useState<{isOpen: boolean, item: any, origin: string, isRestore: boolean} | null>(null);
+    const [standbyModal, setStandbyModal] = useState<{ isOpen: boolean, item: any, origin: string, isRestore: boolean } | null>(null);
 
     const [newProfileName, setNewProfileName] = useState('');
     // Adicione junto com os outros states (ex: perto de const [isAiLoading, setIsAiLoading] = useState(false);)
@@ -602,65 +602,154 @@ export default function FinancialDashboard() {
         if (data) setClients(data);
     };
 
+    // 🟢 ADICIONAR CLIENTE (SISTEMA DE CONVITE SEGURO)
+
+    // 🟢 ADICIONAR CLIENTE (MODO DETETIVE COM LOGS)
     const handleAddClient = async () => {
-        if (!newClientEmail) return toast.warning("Digite o e-mail do cliente.");
+        if (!newClientEmail) return toast.warning("Digite o e-mail.");
         setAddingClient(true);
-        const { error } = await supabase.from('manager_clients').insert({ manager_id: user.id, client_email: newClientEmail, status: 'active' });
-        if (error) { toast.error("Erro ao adicionar: " + error.message); }
-        else {
+        const toastId = toast.loading("Enviando convite...");
+
+        try {
+            // 1. Busca o ID do cliente
+            const { data: foundUserId } = await supabase.rpc('get_user_id_by_email', {
+                search_email: newClientEmail
+            });
+
+            if (!foundUserId) {
+                // Se não achar o usuário, só cria o registro de e-mail (fluxo normal)
+                await supabase.from('manager_clients').insert({
+                    manager_id: user.id, client_email: newClientEmail, status: 'pending'
+                });
+                toast.success("E-mail convidado! Aguardando cadastro.", { id: toastId });
+            } else {
+                // 🔒 SE O USUÁRIO EXISTE:
+                // 2. Primeiro tenta criar a notificação
+                const { error: notifError } = await supabase.rpc('create_notification', {
+                    p_user_id: foundUserId,
+                    p_title: 'Convite de Consultoria',
+                    p_message: `O consultor ${user.email} quer gerenciar sua conta.`,
+                    p_type: 'consultant_invite',
+                    p_action_data: user.id // Certifique-se que user.id é o UUID do consultor
+                });
+
+                // 🔍 MUDANÇA AQUI: Vamos mostrar o erro real do Supabase
+                if (notifError) {
+                    console.error("Erro detalhado do RPC:", notifError);
+                    throw new Error(`Erro na notificação: ${notifError.message || 'Falha silenciosa no banco'}`);
+                }
+
+                // 3. Só agora cria o vínculo PENDENTE
+                const { error: insertError } = await supabase
+                    .from('manager_clients')
+                    .insert({
+                        manager_id: user.id,
+                        client_email: newClientEmail,
+                        client_id: foundUserId,
+                        status: 'pending'
+                    });
+
+                if (insertError) throw insertError;
+
+                toast.success("Convite enviado com sucesso! 🔔", { id: toastId });
+            }
             setNewClientEmail('');
             setIsClientModalOpen(false);
             fetchClients(user.id);
-            toast.success("Cliente adicionado com sucesso! 🎉");
+
+        } catch (error: any) {
+            toast.error(error.message, { id: toastId });
+        } finally {
+            setAddingClient(false);
         }
-        setAddingClient(false);
+    };
+    // 🟢 CLIENTE ACEITA O CONVITE DO CONSULTOR
+    const handleAcceptConsultant = async (notification: any) => {
+        const managerId = notification.action_data; // O ID do consultor que nós guardamos
+        const toastId = toast.loading("Confirmando vínculo...");
+
+        try {
+            // 1. Atualiza o vínculo para ATIVO
+            const { error: updateError } = await supabase
+                .from('manager_clients')
+                .update({ status: 'active' })
+                .eq('manager_id', managerId)
+                .eq('client_id', user.id); // Confirma que é o próprio usuário
+
+            if (updateError) throw updateError;
+
+            // 2. Sobe o plano do cliente para Pro de presente! (Usando aquele comando VIP que criamos antes)
+            await supabase.rpc('upgrade_client_plan', { target_client_id: user.id });
+
+            // 3. Marca a notificação como lida (ou deleta ela)
+            await supabase.from('notifications').update({ is_read: true }).eq('id', notification.id);
+
+            toast.success("Consultor vinculado! Você ganhou o plano PRO de presente! 🎉", { id: toastId });
+
+            // Opcional: Atualizar a lista de notificações na tela
+
+        } catch (error: any) {
+            console.error(error);
+            toast.error("Erro ao aceitar convite.", { id: toastId });
+        }
     };
 
     const switchView = async (client: any | null) => {
+        // 🔒 TRAVA DE SEGURANÇA: Se o cliente estiver pendente, o acesso é negado!
+        if (client && client.status === 'pending') {
+            toast.error("Acesso negado. Aguarde o cliente aceitar o convite.");
+            return;
+        }
+
         setViewingAs(client);
         const targetUserId = client ? client.client_id : user?.id;
-        if (targetUserId) { await fetchWorkspaces(targetUserId, true); }
+        if (targetUserId) {
+            await fetchWorkspaces(targetUserId, true);
+        }
     };
     // 🟢 DESVINCULAR CLIENTE E REBAIXAR PLANO
     // 🟢 DESVINCULAR CLIENTE E REBAIXAR PLANO
+    // 🟢 DESVINCULAR CLIENTE (À prova de dados fantasmas)
     const handleRemoveClient = async (client: any) => {
-        const confirmDelete = window.confirm(`Tem certeza que deseja desvincular ${client.client_email}? Ele perderá o plano Pro.`);
+        const confirmDelete = window.confirm(`Tem certeza que deseja remover ${client.client_email}?`);
         if (!confirmDelete) return;
 
-        const toastId = toast.loading("Desvinculando cliente...");
+        const toastId = toast.loading("Removendo...");
 
         try {
-            // 1. Quebra a ligação
+            // 1. Apaga a ligação usando o EMAIL e o seu ID (assim funciona mesmo se o ID do cliente for nulo)
             const { error: unlinkError } = await supabase
                 .from('manager_clients')
                 .delete()
                 .eq('manager_id', user.id)
-                .eq('client_id', client.client_id);
+                .eq('client_email', client.client_email);
 
             if (unlinkError) throw unlinkError;
 
-            // 2. Chama a função VIP para rebaixar o plano (Bypass de Segurança)
-            const { error: downgradeError } = await supabase.rpc('downgrade_client_plan', {
-                target_client_id: client.client_id
-            });
+            // 2. Só tenta rebaixar o plano se o cliente TIVER um ID real (ignora os convites pendentes)
+            // No passo 2 da função handleRemoveClient, mude para:
+            if (client.client_id && client.client_id !== 'null') { // 🟢 Garante que não é a string "null"
+                const { error: downgradeError } = await supabase.rpc('downgrade_client_plan', {
+                    target_client_id: client.client_id
+                });
+                if (downgradeError) console.error("Erro ao rebaixar plano:", downgradeError);
+            }
+            // 3. Atualiza a tela filtrando pelo e-mail (mais seguro que ID neste caso)
+            setClients(prev => prev.filter(c => c.client_email !== client.client_email));
 
-            if (downgradeError) throw downgradeError;
-
-            // 3. Atualiza a tela
-            setClients(prev => prev.filter(c => c.client_id !== client.client_id));
-
-            if (viewingAs && viewingAs.client_id === client.client_id) {
+            // Volta para a tela pessoal se estiver visualizando o cliente excluído
+            if (viewingAs && viewingAs.client_email === client.client_email) {
                 switchView(null);
             }
 
-            toast.success("Cliente desvinculado e plano rebaixado com sucesso! 👋", { id: toastId });
+            toast.success("Removido com sucesso! 🧹", { id: toastId });
 
         } catch (error: any) {
             console.error(error);
-            toast.error("Erro ao desvincular: " + error.message, { id: toastId });
+            toast.error("Erro ao remover: " + error.message, { id: toastId });
         }
     };
-    
+
     useEffect(() => {
         if (transactions.length > 0 || installments.length > 0) {
             checkForPastDueItems();
@@ -748,11 +837,11 @@ export default function FinancialDashboard() {
                         const paymentTag = `${pMonthName}/${pYear}`;
 
                         if (!isPaid(inst, paymentTag) && !inst.standby_months?.includes(paymentTag)) {
-                            pastDueList.push({ 
-                                ...inst, 
+                            pastDueList.push({
+                                ...inst,
                                 title: `${inst.title} (${instNum}/${inst.installments_count})`, // Já coloca o número da parcela pro usuário saber!
-                                _source: 'installments', 
-                                _pastMonth: pMonthName, 
+                                _source: 'installments',
+                                _pastMonth: pMonthName,
                                 _amount: Number(inst.value_per_month),
                                 _paymentTag: paymentTag // Guarda a etiqueta para a hora de pagar!
                             });
@@ -775,10 +864,10 @@ export default function FinancialDashboard() {
                     const checkTag = `${checkMonthName}/${checkYear}`;
 
                     if (!isPaid(rec, checkTag) && !rec.skipped_months?.includes(checkMonthName) && !rec.standby_months?.includes(checkTag)) {
-                        pastDueList.push({ 
-                            ...rec, 
-                            _source: 'recurring', 
-                            _pastMonth: checkMonthName, 
+                        pastDueList.push({
+                            ...rec,
+                            _source: 'recurring',
+                            _pastMonth: checkMonthName,
                             _amount: Number(rec.value),
                             _paymentTag: checkTag
                         });
@@ -790,7 +879,7 @@ export default function FinancialDashboard() {
         // Atualiza o estado que alimenta o Modal de Rollover!
         setPastDueItems(pastDueList);
     };
-    
+
 
     const handleAuth = async () => {
         setLoadingAuth(true);
@@ -938,16 +1027,16 @@ export default function FinancialDashboard() {
             }
 
             toast.success("Tudo pago! Que alívio! 🎉", { id: toastId });
-            
+
             // Recarrega os dados para a tela principal ficar toda verde e bonitona!
             const activeId = getActiveUserId();
             if (activeId) {
                 loadData(activeId, currentWorkspace?.id);
             }
-            
+
             // Limpa a lista
-            setPastDueItems([]); 
-            
+            setPastDueItems([]);
+
         } catch (error) {
             toast.error("Erro ao dar baixa nas contas.", { id: toastId });
         }
@@ -965,7 +1054,7 @@ export default function FinancialDashboard() {
     const toggleDelay = (origin: string, item: any) => {
         // 🟢 Lê a etiqueta se vier do Congelador, senão usa o mês atual
         const targetTag = item._targetTag || `${activeTab}/${selectedYear}`;
-        
+
         let isStandby = false;
         if (origin === 'transactions') {
             isStandby = (item.status === 'delayed' || item.status === 'standby');
@@ -984,11 +1073,11 @@ export default function FinancialDashboard() {
     // 2. A execução da escolha
     // 2. A execução da escolha
     const confirmDelayChoice = async (origin: string, item: any, choice: 'restore_single' | 'restore_global' | 'single' | 'global') => {
-        setStandbyModal(null); 
-        
+        setStandbyModal(null);
+
         const tableMap: Record<string, string> = { 'transactions': 'transactions', 'installments': 'installments', 'recurring': 'recurring' };
         const table = tableMap[origin] || origin;
-        
+
         const targetTag = item._targetTag || `${activeTab}/${selectedYear}`;
 
         let newStatusGlobal = item.status;
@@ -998,19 +1087,19 @@ export default function FinancialDashboard() {
             newStatusGlobal = choice.startsWith('restore') ? 'active' : 'standby';
         } else {
             if (choice === 'restore_single') {
-                newStatusGlobal = 'active'; 
+                newStatusGlobal = 'active';
                 newStandbyArray = newStandbyArray.filter((m: string) => m !== targetTag); // Tira SÓ o mês da etiqueta
             } else if (choice === 'restore_global') {
                 newStatusGlobal = 'active';
                 newStandbyArray = []; // Limpa TUDO
             } else if (choice === 'single') {
-                newStatusGlobal = 'active'; 
-                if (!newStandbyArray.includes(targetTag)) newStandbyArray.push(targetTag); 
+                newStatusGlobal = 'active';
+                if (!newStandbyArray.includes(targetTag)) newStandbyArray.push(targetTag);
             } else if (choice === 'global') {
                 // 🟢 AQUI ESTÁ A CORREÇÃO: Sem o loop maluco de 60 meses! 
                 // Como já temos a 'Imunidade', podemos usar o status global nativo.
-                newStatusGlobal = 'standby'; 
-                newStandbyArray = []; 
+                newStatusGlobal = 'standby';
+                newStandbyArray = [];
             }
         }
 
@@ -1019,7 +1108,7 @@ export default function FinancialDashboard() {
             else if (table === 'installments') setInstallments(prev => prev.map(i => i.id === item.id ? { ...i, status: newStatusGlobal, standby_months: newStandbyArray } : i));
             else if (table === 'recurring') setRecurring(prev => prev.map(r => r.id === item.id ? { ...r, status: newStatusGlobal, standby_months: newStandbyArray } : r));
         };
-        applyInstantVisualUpdate(); 
+        applyInstantVisualUpdate();
 
         if (isSimulationMode) { toast.success(`[Simulação] Atualizado!`); return; }
 
@@ -1028,7 +1117,7 @@ export default function FinancialDashboard() {
             try {
                 const payload = table === 'transactions' ? { status: newStatusGlobal } : { standby_months: newStandbyArray, status: newStatusGlobal };
                 await supabase.from(table).update(payload).eq('id', item.id);
-                
+
                 if (choice === 'restore_global') toast.success(`Restaurado para todos os meses!`);
                 else if (choice === 'restore_single') toast.success(`Restaurado com sucesso!`);
                 else if (choice === 'single') toast.success(`Congelado com sucesso!`);
@@ -1412,8 +1501,8 @@ export default function FinancialDashboard() {
         // 1. RECORRENTES ATIVOS NO MÊS
         const activeRecurring = recurring.filter(r => {
             const paid = isPaid(r, currentPaymentTag);
-            if ((r.status === 'delayed' || r.status === 'standby') && !paid) return false; 
-            if (r.standby_months?.includes(currentPaymentTag) && !paid) return false; 
+            if ((r.status === 'delayed' || r.status === 'standby') && !paid) return false;
+            if (r.standby_months?.includes(currentPaymentTag) && !paid) return false;
 
             const { m: startMonth, y: startYear } = getStartData(r);
             if (selectedYear > startYear) return true;
@@ -1428,13 +1517,13 @@ export default function FinancialDashboard() {
 
         // --- CÁLCULO DE SAÍDAS DO MÊS ---
         const expenseFixed = activeRecurring.filter(r => r.type === 'expense' && !r.skipped_months?.includes(monthName)).reduce((acc, curr) => acc + Number(curr.value), 0);
-        
+
         const expenseVariable = transactions.filter(t => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc, curr) => acc + Number(curr.amount), 0);
 
         const installTotal = installments.reduce((acc, curr) => {
             const paid = isPaid(curr, currentPaymentTag);
             if ((curr.status === 'delayed' || curr.status === 'standby') && !paid) return acc;
-            if (curr.standby_months?.includes(currentPaymentTag) && !paid) return acc; 
+            if (curr.standby_months?.includes(currentPaymentTag) && !paid) return acc;
 
             const { m: startMonth, y: startYear } = getStartData(curr);
             const monthsDiff = ((selectedYear - startYear) * 12) + (monthIndex - startMonth);
@@ -1456,12 +1545,12 @@ export default function FinancialDashboard() {
         installments.forEach(i => {
             // 🟢 PREVENÇÃO DE ERRO
             const standbyArr = Array.isArray(i.standby_months) ? i.standby_months : [];
-            
+
             if ((i.status === 'delayed' || i.status === 'standby') && standbyArr.length === 0) {
                 delayedTotal += Number(i.value_per_month);
             }
-            standbyArr.forEach((tag: string) => { 
-                if (!isPaid(i, tag)) delayedTotal += Number(i.value_per_month); 
+            standbyArr.forEach((tag: string) => {
+                if (!isPaid(i, tag)) delayedTotal += Number(i.value_per_month);
             });
         });
 
@@ -1469,12 +1558,12 @@ export default function FinancialDashboard() {
             if (r.type === 'expense') {
                 // 🟢 PREVENÇÃO DE ERRO
                 const standbyArr = Array.isArray(r.standby_months) ? r.standby_months : [];
-                
+
                 if ((r.status === 'delayed' || r.status === 'standby') && standbyArr.length === 0) {
                     delayedTotal += Number(r.value);
                 }
-                standbyArr.forEach((tag: string) => { 
-                    if (!isPaid(r, tag)) delayedTotal += Number(r.value); 
+                standbyArr.forEach((tag: string) => {
+                    if (!isPaid(r, tag)) delayedTotal += Number(r.value);
                 });
             }
         });
@@ -2194,11 +2283,11 @@ export default function FinancialDashboard() {
                         <button onClick={() => setStandbyModal(null)} className="absolute top-4 right-4 text-gray-500 hover:text-white transition">
                             <X size={20} />
                         </button>
-                        
+
                         <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 mx-auto ${standbyModal.isRestore ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'}`}>
                             <Clock size={32} />
                         </div>
-                        
+
                         <h3 className="text-xl font-bold text-center text-white mb-2">
                             {standbyModal.isRestore ? 'Restaurar Conta' : 'Congelar Conta'}
                         </h3>
@@ -2206,20 +2295,20 @@ export default function FinancialDashboard() {
                             {standbyModal.isRestore ? 'Como você quer restaurar a conta ' : 'Como você quer colocar a conta '}
                             "<span className="text-white font-bold">{standbyModal.item.title}</span>"?
                         </p>
-                        
+
                         <div className="space-y-3">
                             {standbyModal.isRestore ? (
                                 <>
                                     {/* OPÇÕES DE RESTAURAR (VERDE) */}
-                                    <button 
-                                        onClick={() => confirmDelayChoice(standbyModal.origin, standbyModal.item, 'restore_single')} 
+                                    <button
+                                        onClick={() => confirmDelayChoice(standbyModal.origin, standbyModal.item, 'restore_single')}
                                         className="w-full bg-gray-900 border border-gray-800 hover:border-emerald-500/50 text-white p-4 rounded-xl flex flex-col items-center justify-center gap-1 transition group"
                                     >
                                         <span className="font-bold group-hover:text-emerald-400 transition">Restaurar SÓ em {standbyModal.item._targetTag ? standbyModal.item._targetTag.split('/')[0] : activeTab}</span>
                                         <span className="text-xs text-gray-500 text-center">A conta volta a aparecer neste mês, mas continua congelada nos outros.</span>
                                     </button>
-                                    <button 
-                                        onClick={() => confirmDelayChoice(standbyModal.origin, standbyModal.item, 'restore_global')} 
+                                    <button
+                                        onClick={() => confirmDelayChoice(standbyModal.origin, standbyModal.item, 'restore_global')}
                                         className="w-full bg-gray-900 border border-gray-800 hover:border-emerald-500/50 text-white p-4 rounded-xl flex flex-col items-center justify-center gap-1 transition group"
                                     >
                                         <span className="font-bold group-hover:text-emerald-400 transition">Restaurar para SEMPRE</span>
@@ -2229,15 +2318,15 @@ export default function FinancialDashboard() {
                             ) : (
                                 <>
                                     {/* OPÇÕES DE CONGELAR (AZUL/VERMELHO) */}
-                                    <button 
-                                        onClick={() => confirmDelayChoice(standbyModal.origin, standbyModal.item, 'single')} 
+                                    <button
+                                        onClick={() => confirmDelayChoice(standbyModal.origin, standbyModal.item, 'single')}
                                         className="w-full bg-gray-900 border border-gray-800 hover:border-blue-500/50 text-white p-4 rounded-xl flex flex-col items-center justify-center gap-1 transition group"
                                     >
                                         <span className="font-bold group-hover:text-blue-400 transition">Apenas em {standbyModal.item._targetTag ? standbyModal.item._targetTag.split('/')[0] : activeTab}</span>
                                         <span className="text-xs text-gray-500 text-center">A fatura some este mês e o valor acumula para depois.</span>
                                     </button>
-                                    <button 
-                                        onClick={() => confirmDelayChoice(standbyModal.origin, standbyModal.item, 'global')} 
+                                    <button
+                                        onClick={() => confirmDelayChoice(standbyModal.origin, standbyModal.item, 'global')}
                                         className="w-full bg-gray-900 border border-gray-800 hover:border-red-500/50 text-white p-4 rounded-xl flex flex-col items-center justify-center gap-1 transition group"
                                     >
                                         <span className="font-bold group-hover:text-red-400 transition">Todos os meses futuros</span>
@@ -2426,7 +2515,7 @@ export default function FinancialDashboard() {
                             <h2 className="text-2xl font-bold text-white flex items-center gap-2 mb-6">
                                 <AlertTriangle className="text-red-500" size={24} /> Pendências
                             </h2>
-                            
+
                             <div className="max-h-[250px] overflow-y-auto space-y-2 mb-6 pr-2 scrollbar-thin scrollbar-thumb-gray-800">
                                 {pastDueItems.map((item, idx) => (
                                     <div key={idx} className="flex justify-between items-center p-3 bg-gray-900/50 rounded-xl border border-gray-800">
@@ -2441,11 +2530,11 @@ export default function FinancialDashboard() {
                                                 R$ {Number(item._amount || item.amount || item.value || item.value_per_month).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                             </span>
                                             {/* 🟢 CORREÇÃO: O botão de adiar sabe exatamente a origem (transactions, etc) */}
-                                            <button 
+                                            <button
                                                 onClick={() => {
                                                     setIsRolloverModalOpen(false); // Fecha esse modal
                                                     toggleDelay(item._source || item.origin, item); // Abre o modal do Stand-by!
-                                                }} 
+                                                }}
                                                 className="text-xs bg-gray-800 text-gray-400 p-2 rounded-lg hover:text-orange-400 hover:bg-orange-500/10 transition"
                                                 title="Adiar / Stand-by"
                                             >
@@ -2455,7 +2544,7 @@ export default function FinancialDashboard() {
                                     </div>
                                 ))}
                             </div>
-                            
+
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 <button onClick={handleMarkAllAsPaid} className="bg-emerald-600 hover:bg-emerald-500 transition text-white py-3 px-4 rounded-xl font-bold flex items-center justify-center gap-2 active:scale-95">
                                     <CheckSquare size={18} /> Já Paguei Tudo

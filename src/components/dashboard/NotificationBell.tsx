@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Check, Trash2 } from 'lucide-react';
 import { supabase } from '@/supabase';
+import { toast } from 'sonner'; // 🟢 ADICIONADO PARA OS AVISOS NA TELA
 
 export default function NotificationBell({ userId }: { userId: string }) {
     const [notifications, setNotifications] = useState<any[]>([]);
@@ -69,6 +70,37 @@ export default function NotificationBell({ userId }: { userId: string }) {
         setUnreadCount(0);
     };
 
+    // 🟢 NOVA FUNÇÃO: CLIENTE ACEITA O CONVITE DO CONSULTOR
+    const handleAcceptConsultant = async (notification: any) => {
+        const managerId = notification.action_data;
+        const toastId = toast.loading("Confirmando vínculo e ativando plano Pro...");
+
+        try {
+            // 🟢 CHAMA A SUPER FUNÇÃO VIP
+            // Ela faz tudo: muda o status para 'active' e o plano para 'pro'
+            const { error: rpcError } = await supabase.rpc('accept_consultant_invite', { 
+                p_manager_id: managerId, 
+                p_client_id: userId 
+            });
+
+            if (rpcError) throw rpcError;
+
+            // Marca a notificação como lida
+            await markAsRead(notification.id);
+
+            toast.success("Tudo pronto! Você agora é PRO e está vinculado ao consultor. 🎉", { id: toastId });
+            
+            // Recarrega para aplicar as mudanças de plano na interface
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
+
+        } catch (error: any) {
+            console.error(error);
+            toast.error("Erro ao aceitar convite: " + (error.message || "Falha no servidor"), { id: toastId });
+        }
+    };
+
     return (
         <div className="relative" ref={modalRef}>
             <button 
@@ -86,15 +118,9 @@ export default function NotificationBell({ userId }: { userId: string }) {
             {isOpen && (
                 <div className={`
                     bg-[#111] border border-gray-800 rounded-2xl shadow-2xl z-[101] overflow-hidden animate-in fade-in zoom-in-95 duration-200
-                    
-                    /* POSICIONAMENTO ESTRATÉGICO */
                     absolute top-full mt-3
-                    
-                    /* MOBILE: Centraliza em relação ao botão e define largura fixa segura */
                     left-1/2 -translate-x-1/2 
                     w-[300px] sm:w-80
-                    
-                    /* DESKTOP: Alinha à direita do botão normalmente */
                     md:left-auto md:translate-x-0 md:right-0
                 `}>
                     <div className="p-3 border-b border-gray-800 flex justify-between items-center bg-[#0a0a0a]">
@@ -116,6 +142,19 @@ export default function NotificationBell({ userId }: { userId: string }) {
                                     <div className="flex-1">
                                         <p className={`text-sm ${!n.is_read ? 'text-white font-bold' : 'text-gray-400'}`}>{n.title}</p>
                                         <p className="text-xs text-gray-500 mt-0.5 leading-snug">{n.message}</p>
+                                        
+                                        {/* 🟢 BOTÃO DE ACEITAR CONVITE APARECE AQUI */}
+                                        {n.type === 'consultant_invite' && !n.is_read && (
+                                            <div className="mt-2 flex gap-2">
+                                                <button 
+                                                    onClick={() => handleAcceptConsultant(n)} 
+                                                    className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition shadow-lg active:scale-95"
+                                                >
+                                                    Aceitar Consultoria
+                                                </button>
+                                            </div>
+                                        )}
+
                                         <p className="text-[10px] text-gray-700 mt-1">{new Date(n.created_at).toLocaleTimeString().slice(0,5)}</p>
                                     </div>
                                     {!n.is_read && (
