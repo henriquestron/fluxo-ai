@@ -179,25 +179,64 @@ export default function StandardView({
     const sortedBanks = Object.keys(groupedInstallments).sort((a, b) => groupedInstallments[b].total - groupedInstallments[a].total);
 
     // --- RENDER STANDBY (Garante que contas pagas não apareçam na caixa vermelha) ---
+    // --- RENDER STANDBY (Congelador Global) ---
+    // --- RENDER STANDBY (Congelador Global) ---
     const renderDelayed = () => {
-        const delayedItems = [
-            ...transactions.filter(t => (t.status === 'delayed' || t.status === 'standby') && !isPaidThisMonth(t, true)).map(t => ({ ...t, _source: 'trans', _amount: Number(t.amount) })),
-            ...installments.filter(i => (i.status === 'delayed' || i.status === 'standby' || i.standby_months?.includes(currentTag)) && !isPaidThisMonth(i)).map(i => ({ ...i, _source: 'inst', _amount: Number(i.value_per_month) })),
-            ...recurring.filter(r => (r.status === 'delayed' || r.status === 'standby' || r.standby_months?.includes(currentTag)) && !isPaidThisMonth(r)).map(r => ({ ...r, _source: 'recur', _amount: Number(r.value) }))
-        ];
+        const delayedItems: any[] = [];
+
+        transactions.forEach(t => {
+            if ((t.status === 'delayed' || t.status === 'standby') && !isPaidThisMonth(t, true)) {
+                delayedItems.push({ ...t, _source: 'trans', _amount: Number(t.amount) });
+            }
+        });
+
+        installments.forEach(i => {
+            // 🟢 PREVENÇÃO DE ERRO
+            const standbyArr = Array.isArray(i.standby_months) ? i.standby_months : [];
+            
+            if ((i.status === 'delayed' || i.status === 'standby') && standbyArr.length === 0) {
+                delayedItems.push({ ...i, _source: 'inst', _amount: Number(i.value_per_month) });
+            }
+            standbyArr.forEach((tag: string) => {
+                const isPaid = i.paid_months?.includes(tag) || i.paid_months?.includes(tag.split('/')[0]);
+                if (!isPaid) {
+                    delayedItems.push({ ...i, _source: 'inst', _amount: Number(i.value_per_month), _targetTag: tag, _displayTag: tag });
+                }
+            });
+        });
+
+        recurring.forEach(r => {
+            if (r.type === 'expense') {
+                // 🟢 PREVENÇÃO DE ERRO
+                const standbyArr = Array.isArray(r.standby_months) ? r.standby_months : [];
+                
+                if ((r.status === 'delayed' || r.status === 'standby') && standbyArr.length === 0) {
+                    delayedItems.push({ ...r, _source: 'recur', _amount: Number(r.value) });
+                }
+                standbyArr.forEach((tag: string) => {
+                    const isPaid = r.paid_months?.includes(tag) || r.paid_months?.includes(tag.split('/')[0]);
+                    if (!isPaid) {
+                        delayedItems.push({ ...r, _source: 'recur', _amount: Number(r.value), _targetTag: tag, _displayTag: tag });
+                    }
+                });
+            }
+        });
 
         if (delayedItems.length === 0) return null;
 
         return (
             <div className="mt-8 border border-red-900/30 bg-red-950/10 rounded-2xl p-6">
-                <h3 className="text-red-400 font-bold flex items-center gap-2 mb-4"><AlertTriangle size={18} /> Em Stand-by (Congelados neste mês)</h3>
-                <div className="space-y-2 max-h-[200px] overflow-y-auto scrollbar-thin scrollbar-thumb-red-900 scrollbar-track-transparent pr-2">
-                    {delayedItems.map((item: any) => (
-                        <div key={`del-${item._source}-${item.id}`} className="flex justify-between items-center p-3 bg-red-900/10 rounded-lg border border-red-900/20">
-                            <span className="text-red-200 text-sm">{item.title}</span>
+                <h3 className="text-red-400 font-bold flex items-center gap-2 mb-4"><AlertTriangle size={18} /> O Congelador (Todas as pendências)</h3>
+                <div className="space-y-2 max-h-[250px] overflow-y-auto scrollbar-thin scrollbar-thumb-red-900 scrollbar-track-transparent pr-2">
+                    {delayedItems.map((item: any, idx: number) => (
+                        <div key={`del-${item._source}-${item.id}-${idx}`} className="flex justify-between items-center p-3 bg-red-900/10 rounded-lg border border-red-900/20">
+                            <div>
+                                <span className="text-red-200 text-sm font-bold">{item.title}</span>
+                                {item._displayTag && <span className="text-[10px] text-red-400/80 ml-2 bg-red-950 px-2 py-1 rounded font-bold border border-red-900/50">Ref: {item._displayTag}</span>}
+                            </div>
                             <div className="flex items-center gap-3">
                                 <span className="font-mono text-red-400 font-bold">R$ {item._amount.toFixed(2)}</span>
-                                <button onClick={() => onToggleDelay(item._source === 'trans' ? 'transactions' : item._source === 'inst' ? 'installments' : 'recurring', item)} title="Restaurar" className="text-xs bg-red-500 text-white px-2 py-1 rounded hover:bg-red-400">Restaurar</button>
+                                <button onClick={() => onToggleDelay(item._source === 'trans' ? 'transactions' : item._source === 'inst' ? 'installments' : 'recurring', item)} title="Restaurar" className="text-xs bg-red-500 text-white px-3 py-1.5 rounded-lg hover:bg-red-400 transition">Restaurar</button>
                             </div>
                         </div>
                     ))}

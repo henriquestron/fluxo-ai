@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Plus, Trash2, CheckCircle2, Circle, CreditCard, Save, Loader2 } from 'lucide-react';
+import { X, Plus, Trash2, CheckCircle2, Circle, CreditCard, Save, Loader2, CalendarDays } from 'lucide-react';
 import { supabase } from '@/supabase';
 import { toast } from 'sonner';
 
@@ -101,6 +101,9 @@ export default function CreditCardModal({ isOpen, onClose, user, activeTab, cont
     const [selectedBank, setSelectedBank] = useState('nubank');
     const [isSaving, setIsSaving] = useState(false);
     
+    // 🟢 NOVA MEMÓRIA: Guarda o dia de vencimento de CADA banco separado
+    const [dueDays, setDueDays] = useState<Record<string, string>>({});
+    
     const [items, setItems] = useState([
         { id: 1, title: '', value: '', installments: '1', isPaid: false }
     ]);
@@ -133,15 +136,15 @@ export default function CreditCardModal({ isOpen, onClose, user, activeTab, cont
         setIsSaving(true);
         try {
             const currentYear = new Date().getFullYear();
-            const currentRealMonth = new Date().getMonth(); // Pega o mês real de hoje (0 a 11)
+            const currentRealMonth = new Date().getMonth();
             
             const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
             const targetMonthIndex = months.indexOf(activeTab);
             
-            // 🟢 A MATEMÁTICA MÁGICA:
-            // Isso calcula a diferença exata entre hoje e a aba que você está olhando,
-            // garantindo que a parcela 1 caia exatamente na aba ativa!
             const startOffset = currentRealMonth - targetMonthIndex;
+            
+            // 🟢 Pega o dia digitado para O BANCO SELECIONADO (ou assume 10 por padrão)
+            const finalDueDay = parseInt(dueDays[selectedBank] || '10') || 10;
 
             const inserts = items.map(item => {
                 const valParcela = parseFloat(item.value.toString().replace(',', '.')) || 0;
@@ -154,10 +157,10 @@ export default function CreditCardModal({ isOpen, onClose, user, activeTab, cont
                     title: item.title,
                     total_value: totalCompra,
                     installments_count: qtd,
-                    current_installment: startOffset, // 🟢 Usa o compensador aqui
+                    current_installment: startOffset, 
                     value_per_month: valParcela,
                     payment_method: selectedBank,
-                    due_day: 10,
+                    due_day: finalDueDay, // 🟢 Salva no banco com o dia individual daquele cartão
                     status: 'active',
                     paid_months: item.isPaid ? [`${activeTab}/${currentYear}`] : [],
                     icon: 'shopping-cart'
@@ -168,7 +171,7 @@ export default function CreditCardModal({ isOpen, onClose, user, activeTab, cont
 
             if (error) throw error;
 
-            toast.success(`${items.length} compras lançadas! 🚀`);
+            toast.success(`${items.length} compras lançadas no ${BANK_STYLES[selectedBank].label}! 🚀`);
             onSuccess();
             onClose();
             setItems([{ id: 1, title: '', value: '', installments: '1', isPaid: false }]);
@@ -181,20 +184,40 @@ export default function CreditCardModal({ isOpen, onClose, user, activeTab, cont
     };
 
     const currentBankStyle = BANK_STYLES[selectedBank];
+    const currentDueDay = dueDays[selectedBank] || '10';
 
     return (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-[150] p-4 animate-in fade-in zoom-in duration-300">
             <div className="bg-[#111] border border-gray-800 w-full max-w-3xl rounded-3xl shadow-2xl flex flex-col max-h-[90vh]">
                 
                 <div className="p-6 border-b border-gray-800 bg-[#0a0a0a]">
-                    <div className="flex justify-between items-center mb-6">
+                    <div className="flex justify-between items-start mb-6">
                         <div>
                             <h2 className="text-xl font-bold text-white flex items-center gap-2">
                                 <CreditCard className="text-purple-500" /> Fatura Rápida ({activeTab})
                             </h2>
                             <p className="text-gray-500 text-xs mt-1">Adicione vários gastos de uma vez no cartão.</p>
                         </div>
-                        <button onClick={onClose} className="text-gray-500 hover:text-white"><X size={24}/></button>
+                        
+                        <div className="flex items-center gap-4">
+                            {/* CAMPO DE VENCIMENTO INTELIGENTE (Muda de acordo com o banco) */}
+                            <div className="flex items-center gap-2 bg-gray-900 border border-gray-800 px-3 py-2 rounded-xl" title="Dia do Vencimento da Fatura">
+                                <CalendarDays size={16} className={currentBankStyle.text.replace('text-', 'text-').split(' ')[0] || "text-gray-500"} />
+                                <span className="text-xs text-gray-500 font-bold uppercase">Venc. {BANK_STYLES[selectedBank].label}:</span>
+                                <input 
+                                    type="number" 
+                                    min="1" 
+                                    max="31" 
+                                    value={currentDueDay} 
+                                    onChange={(e) => setDueDays({ ...dueDays, [selectedBank]: e.target.value })} 
+                                    className="bg-transparent text-white text-sm font-bold w-10 text-center outline-none" 
+                                    placeholder="10" 
+                                />
+                            </div>
+                            <button onClick={onClose} className="text-gray-500 hover:text-white transition bg-gray-900 hover:bg-gray-800 p-2 rounded-xl">
+                                <X size={20}/>
+                            </button>
+                        </div>
                     </div>
 
                     <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
