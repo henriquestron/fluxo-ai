@@ -2075,6 +2075,7 @@ export default function FinancialDashboard() {
                         clients={clients}
                         activeTab={activeTab}
                         selectedYear={selectedYear} // <--- OBRIGATÓRIO ADICIONAR ISSO
+                        currentWorkspace={currentWorkspace}
                     />
                     <CreditCardModal isOpen={isCreditCardModalOpen} onClose={() => setIsCreditCardModalOpen(false)} user={user} activeTab={activeTab} contextId={currentWorkspace?.id} onSuccess={() => loadData(getActiveUserId(), currentWorkspace?.id)} />
 
