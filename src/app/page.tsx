@@ -1294,6 +1294,7 @@ export default function FinancialDashboard() {
         }
 
         // 3. Montagem do Payload por Tipo de Lançamento
+        // 3. Montagem do Payload por Tipo de Lançamento
         const getPayload = () => {
             const base = {
                 user_id: activeId,
@@ -1305,16 +1306,34 @@ export default function FinancialDashboard() {
                 receipt_url: formData.receiptUrl || (originalItem?.receipt_url || null)
             };
 
+            // 🟢 A MÁQUINA DO TEMPO: Se estiver editando, NÃO reseta a data de criação original!
+            // Isso impede que as parcelas e contas fixas mudem de mês sozinhas ao adicionar um comprovante.
+            const safeCreatedAt = (editingId && originalItem?.created_at) ? originalItem.created_at : isoDateForDatabase;
+
             // --- RECEITAS ---
             if (formMode === 'income') {
                 return formData.isFixedIncome
-                    ? { table: 'recurring', data: { ...base, value: amountVal, due_day: parseInt(dayValue), category: 'Salário', type: 'income', status: 'active', created_at: isoDateForDatabase } }
-                    : { table: 'transactions', data: { ...base, amount: amountVal, type: 'income', date: dateStringBR, category: 'Receita', target_month: formData.targetMonth, status: 'active', created_at: isoDateForDatabase } };
+                    ? { table: 'recurring', data: { ...base, value: amountVal, due_day: parseInt(dayValue), category: 'Salário', type: 'income', status: 'active', start_date: editingId && originalItem?.start_date ? originalItem.start_date : isoDateForDatabase, created_at: safeCreatedAt } }
+                    : { table: 'transactions', data: { ...base, amount: amountVal, type: 'income', date: dateStringBR, category: 'Receita', target_month: formData.targetMonth, status: 'active', created_at: safeCreatedAt } };
             }
 
             // --- DESPESAS AVULSAS ---
             if (formMode === 'expense') {
-                return { table: 'transactions', data: { ...base, amount: amountVal, type: 'expense', date: dateStringBR, category: formData.category, target_month: formData.targetMonth, status: 'active', created_at: isoDateForDatabase, is_paid: true } };
+                return { 
+                    table: 'transactions', 
+                    data: { 
+                        ...base, 
+                        amount: amountVal, 
+                        type: 'expense', 
+                        date: dateStringBR, 
+                        category: formData.category, 
+                        target_month: formData.targetMonth, 
+                        status: 'active', 
+                        created_at: safeCreatedAt, 
+                        // 🟢 FIX 2: Mantém o status de pago original se estiver editando!
+                        is_paid: editingId && originalItem !== undefined ? originalItem.is_paid : true 
+                    } 
+                };
             }
 
             // --- PARCELAMENTOS ---
@@ -1329,17 +1348,30 @@ export default function FinancialDashboard() {
                         ...base,
                         total_value: totalValue,
                         installments_count: qtd,
-                        current_installment: 0, // 0 significa que no mês da "created_at" ele será 1
+                        // Mantém a parcela original se for edição
+                        current_installment: editingId && originalItem ? originalItem.current_installment : 0, 
                         value_per_month: valuePerMonth,
                         due_day: parseInt(dayValue) || 10,
                         status: 'active',
-                        created_at: isoDateForDatabase
+                        created_at: safeCreatedAt // 🟢 AQUI ESTÁ A SALVAÇÃO! A data original de Início é preservada!
                     }
                 };
             }
 
             // --- DESPESAS FIXAS ---
-            return { table: 'recurring', data: { ...base, value: amountVal, due_day: parseInt(dayValue) || 10, category: formData.category || 'Fixa', type: 'expense', status: 'active', created_at: isoDateForDatabase } };
+            return { 
+                table: 'recurring', 
+                data: { 
+                    ...base, 
+                    value: amountVal, 
+                    due_day: parseInt(dayValue) || 10, 
+                    category: formData.category || 'Fixa', 
+                    type: 'expense', 
+                    status: 'active', 
+                    start_date: editingId && originalItem?.start_date ? originalItem.start_date : isoDateForDatabase, 
+                    created_at: safeCreatedAt 
+                } 
+            };
         };
 
         const { table, data } = getPayload();
