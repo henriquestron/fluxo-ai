@@ -6,7 +6,7 @@ const EVOLUTION_URL = process.env.EVOLUTION_URL || "http://167.234.242.205:8080"
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "sua-senha-secreta";
 const INSTANCE_NAME = "MEO_ALIADO_INSTANCE";
 
-// 🛡️ ESCUDO ANTI-DUPLICIDADE (Fica na memória rápida do servidor)
+// 🛡️ ESCUDO ANTI-DUPLICIDADE
 const processedMessages = new Set<string>();
 
 // --- FUNÇÕES AUXILIARES ---
@@ -34,7 +34,7 @@ async function downloadMedia(url: string) {
     } catch (error) { return null; }
 }
 
-// 🧠 CÁLCULO FINANCEIRO (Agora idêntico à matemática real do seu site)
+// 🧠 CÁLCULO FINANCEIRO
 async function getFinancialContext(supabase: any, userId: string, workspaceId: string) {
     const today = new Date();
     const currentMonth = today.getMonth();
@@ -117,7 +117,7 @@ export async function POST(req: Request) {
 
         const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" }); // Usando o modelo mais rápido
+        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" }); 
 
         const body = await req.json();
 
@@ -134,7 +134,6 @@ export async function POST(req: Request) {
             return NextResponse.json({ status: 'Ignored Duplicate' });
         }
         
-        // Adiciona a mensagem no escudo e limpa para não estourar a memória RAM do servidor
         processedMessages.add(messageId);
         if (processedMessages.size > 1000) processedMessages.clear(); 
 
@@ -158,7 +157,7 @@ export async function POST(req: Request) {
                 hasAudio = true;
                 promptParts.push({ inlineData: { mimeType: "audio/ogg", data: audioBase64 } });
             } else {
-                await sendWhatsAppMessage(remoteJid, "⚠️ Erro no áudio. Mande texto.");
+                await sendWhatsAppMessage(remoteJid, "⚠️ Ocorreu um erro ao processar o seu áudio. Pode me mandar em texto?");
                 return NextResponse.json({ status: 'Audio Failed' });
             }
         } else {
@@ -252,81 +251,91 @@ export async function POST(req: Request) {
         `;
 
         const finalPrompt = [systemPrompt, ...promptParts];
-        const result = await model.generateContent(finalPrompt);
-
-        let cleanJson = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-        const arrayMatch = cleanJson.match(/\[[\s\S]*\]/);
-        if (arrayMatch) cleanJson = arrayMatch[0];
-
+        
+        // 🟢 BLINDAGEM DA IA: Tratamento de erros exclusivo para o Gemini
+        let commands: any[] = [];
         try {
-            let commands = JSON.parse(cleanJson);
+            const result = await model.generateContent(finalPrompt);
+            let cleanJson = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+            
+            const arrayMatch = cleanJson.match(/\[[\s\S]*\]/);
+            if (arrayMatch) cleanJson = arrayMatch[0];
+
+            commands = JSON.parse(cleanJson);
             if (!Array.isArray(commands)) commands = [commands];
+            
+        } catch (error: any) {
+            console.error("❌ ERRO NA IA OU NO JSON:", error);
+            if (error?.status === 503 || error?.message?.includes('503')) {
+                await sendWhatsAppMessage(targetPhone, "A IA está com muita demanda agora. Tente novamente em alguns segundos! ⏳");
+            } else {
+                await sendWhatsAppMessage(targetPhone, "Desculpe, meu cérebro (IA) deu uma travada agora. Pode me mandar a mensagem de novo de uma forma mais simples? 🤖");
+            }
+            return NextResponse.json({ success: false, reason: 'AI/JSON Error' });
+        }
 
-            let replySent = false;
+        // 5. PROCESSAMENTO DAS AÇÕES (Se a IA sobreviveu)
+        let replySent = false;
+        for (const cmd of commands) {
+            if (cmd.action === 'add') {
+                let payload: any = { ...cmd.data, user_id: userSettings.user_id, context: workspace?.id || null, created_at: new Date(), message_id: messageId };
 
-            for (const cmd of commands) {
-                if (cmd.action === 'add') {
-                    let payload: any = { ...cmd.data, user_id: userSettings.user_id, context: workspace?.id, created_at: new Date(), message_id: messageId };
+                if (cmd.table === 'installments') {
+                    payload.current_installment = 0; payload.status = 'active';
+                    delete payload.date; delete payload.target_month;
+                    const { error } = await supabase.from('installments').insert([payload]);
 
-                    if (cmd.table === 'installments') {
-                        payload.current_installment = 0; payload.status = 'active';
-                        delete payload.date; delete payload.target_month;
-                        const { error } = await supabase.from('installments').insert([payload]);
-
-                        if (error && error.code === '23505') { replySent = true; continue; }
-                        if (!error && !commands.some((c: any) => c.reply)) {
-                            const total = (cmd.data.total_value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                            await sendWhatsAppMessage(targetPhone, `✅ Parcelado: ${cmd.data.title} (${total})`);
-                        }
-                    }
-                    else if (cmd.table === 'recurring') {
-                        payload.status = 'active';
-                        const { error } = await supabase.from('recurring').insert([payload]);
-
-                        if (error && error.code === '23505') { replySent = true; continue; }
-                        if (!error && !commands.some((c: any) => c.reply)) await sendWhatsAppMessage(targetPhone, `✅ Fixo: ${cmd.data.title}`);
-                    }
-                    else if (cmd.table === 'transactions') {
-                        if (!payload.date) {
-                            const hoje = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
-                            const dStr = String(hoje.getDate()).padStart(2, '0');
-                            const mStr = String(hoje.getMonth() + 1).padStart(2, '0');
-                            payload.date = `${dStr}/${mStr}/${hoje.getFullYear()}`;
-                        }
-                        payload.is_paid = true; payload.status = 'paid';
-                        const { error } = await supabase.from('transactions').insert([payload]);
-
-                        if (error && error.code === '23505') { replySent = true; continue; }
-                        if (!error && !commands.some((c: any) => c.reply)) {
-                            const val = (cmd.data.amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                            await sendWhatsAppMessage(targetPhone, `✅ Lançado: ${cmd.data.title} (${val})`);
-                        }
+                    if (error && error.code === '23505') { replySent = true; continue; }
+                    if (!error && !commands.some((c: any) => c.reply)) {
+                        const total = Number(cmd.data.total_value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                        await sendWhatsAppMessage(targetPhone, `✅ Parcelado: ${cmd.data.title} (${total})`);
                     }
                 }
-                else if (cmd.action === 'remove') {
-                    const { data: items } = await supabase.from(cmd.table).select('id, title').eq('user_id', userSettings.user_id).ilike('title', `%${cmd.data.title}%`).order('created_at', { ascending: false }).limit(1);
-                    if (items?.length) {
-                        await supabase.from(cmd.table).delete().eq('id', items[0].id);
-                        if (!commands.some((c: any) => c.reply)) await sendWhatsAppMessage(targetPhone, `🗑️ Apagado: "${items[0].title}"`);
-                    } else {
-                        if (!commands.some((c: any) => c.reply)) await sendWhatsAppMessage(targetPhone, `⚠️ Não encontrei "${cmd.data.title}"`);
-                    }
-                }
+                else if (cmd.table === 'recurring') {
+                    payload.status = 'active';
+                    const { error } = await supabase.from('recurring').insert([payload]);
 
-                if (cmd.reply && !replySent) {
-                    await sendWhatsAppMessage(targetPhone, cmd.reply);
-                    replySent = true;
+                    if (error && error.code === '23505') { replySent = true; continue; }
+                    if (!error && !commands.some((c: any) => c.reply)) await sendWhatsAppMessage(targetPhone, `✅ Fixo: ${cmd.data.title}`);
+                }
+                else if (cmd.table === 'transactions') {
+                    if (!payload.date) {
+                        const hoje = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+                        const dStr = String(hoje.getDate()).padStart(2, '0');
+                        const mStr = String(hoje.getMonth() + 1).padStart(2, '0');
+                        payload.date = `${dStr}/${mStr}/${hoje.getFullYear()}`;
+                    }
+                    payload.is_paid = true; payload.status = 'paid';
+                    const { error } = await supabase.from('transactions').insert([payload]);
+
+                    if (error && error.code === '23505') { replySent = true; continue; }
+                    if (!error && !commands.some((c: any) => c.reply)) {
+                        const val = Number(cmd.data.amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                        await sendWhatsAppMessage(targetPhone, `✅ Lançado: ${cmd.data.title} (${val})`);
+                    }
                 }
             }
-        } catch (error) {
-            console.error("❌ ERRO JSON:", error);
-            if (hasAudio) await sendWhatsAppMessage(targetPhone, "Erro técnico na IA.");
-            else await sendWhatsAppMessage(targetPhone, result.response.text());
+            else if (cmd.action === 'remove') {
+                const { data: items } = await supabase.from(cmd.table).select('id, title').eq('user_id', userSettings.user_id).ilike('title', `%${cmd.data.title}%`).order('created_at', { ascending: false }).limit(1);
+                if (items?.length) {
+                    await supabase.from(cmd.table).delete().eq('id', items[0].id);
+                    if (!commands.some((c: any) => c.reply)) await sendWhatsAppMessage(targetPhone, `🗑️ Apagado: "${items[0].title}"`);
+                } else {
+                    if (!commands.some((c: any) => c.reply)) await sendWhatsAppMessage(targetPhone, `⚠️ Não encontrei "${cmd.data.title}"`);
+                }
+            }
+
+            if (cmd.reply && !replySent) {
+                await sendWhatsAppMessage(targetPhone, cmd.reply);
+                replySent = true;
+            }
         }
 
         return NextResponse.json({ success: true });
 
     } catch (e: any) {
-        return NextResponse.json({ error: e.message }, { status: 500 });
+        console.error("🔥 ERRO FATAL NO WEBHOOK:", e);
+        // 🟢 REGRA DE OURO DO WEBHOOK: SEMPRE devolva 200, mesmo se der erro, senão a Evolution fica em loop!
+        return NextResponse.json({ error: e.message, status: "Caught but returning 200 to prevent retries" }, { status: 200 });
     }
 }
