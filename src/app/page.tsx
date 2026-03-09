@@ -320,19 +320,20 @@ export default function FinancialDashboard() {
     }, [userPlan, transactions, user]);
 
     const getReceiptForMonth = (item: any, month: string) => {
-        // 1. Tenta pegar pela Tag Mês/Ano (Novo Padrão)
         const tag = `${month}/${selectedYear}`;
+        
+        // 1. Tenta pegar pela Tag Mês/Ano
         if (item.receipts && item.receipts[tag]) {
             return item.receipts[tag];
         }
 
-        // 2. Tenta pegar pela Tag Mês (Legado - para parcelas antigas de 2026)
+        // 2. Tenta pegar pela Tag Mês Antiga
         if (item.receipts && item.receipts[month]) {
             return item.receipts[month];
         }
 
-        // 3. Fallback: Se for uma Despesa Avulsa (que só tem 1 data), usa o receipt_url antigo
-        if (item.receipt_url && (!item.installments_count && !item.start_date)) {
+        // 3. Fallback LIVRE: Qualquer conta que tenha um comprovante salvo (Fixa, Avulsa ou Parcela)
+        if (item.receipt_url) {
             return item.receipt_url;
         }
 
@@ -1276,24 +1277,28 @@ export default function FinancialDashboard() {
         const dateStringBR = `${dayValue}/${monthValue}/${selectedYear}`;
 
         // 2. Lógica de Comprovantes (Preservando o que você já tem)
+        // 2. Lógica de Comprovantes (Corrigida para Exclusão)
         let originalItem: any = null;
         if (editingId) {
             originalItem = transactions.find(t => t.id === editingId) ||
-                installments.find(i => i.id === editingId) ||
-                recurring.find(r => r.id === editingId);
+                           installments.find(i => i.id === editingId) ||
+                           recurring.find(r => r.id === editingId);
         }
 
         let updatedReceipts = { ...(originalItem?.receipts || {}) };
         const tag = `${formData.targetMonth}/${selectedYear}`;
 
-        if (formData.receiptUrl) {
+        // 🟢 A MÁGICA DA EXCLUSÃO: Se formData.receiptUrl for vazio, manda "null" pro banco!
+        let finalReceiptUrl = originalItem?.receipt_url || null;
+
+        if (formData.receiptUrl === '') {
+            delete updatedReceipts[tag]; // Tira do histórico
+            finalReceiptUrl = null;      // Zera o comprovante principal
+        } else if (formData.receiptUrl) {
             updatedReceipts[tag] = formData.receiptUrl;
-        } else if (!editingId) {
-            // Se for novo e não tiver URL, limpa
-            updatedReceipts = {};
+            finalReceiptUrl = formData.receiptUrl;
         }
 
-        // 3. Montagem do Payload por Tipo de Lançamento
         // 3. Montagem do Payload por Tipo de Lançamento
         const getPayload = () => {
             const base = {
@@ -1303,11 +1308,9 @@ export default function FinancialDashboard() {
                 icon: formData.icon,
                 payment_method: formData.paymentMethod || 'outros',
                 receipts: updatedReceipts,
-                receipt_url: formData.receiptUrl || (originalItem?.receipt_url || null)
+                receipt_url: finalReceiptUrl // 🟢 Agora envia 'null' corretamente!
             };
 
-            // 🟢 A MÁQUINA DO TEMPO: Se estiver editando, NÃO reseta a data de criação original!
-            // Isso impede que as parcelas e contas fixas mudem de mês sozinhas ao adicionar um comprovante.
             const safeCreatedAt = (editingId && originalItem?.created_at) ? originalItem.created_at : isoDateForDatabase;
 
             // --- RECEITAS ---
@@ -1330,7 +1333,6 @@ export default function FinancialDashboard() {
                         target_month: formData.targetMonth, 
                         status: 'active', 
                         created_at: safeCreatedAt, 
-                        // 🟢 FIX 2: Mantém o status de pago original se estiver editando!
                         is_paid: editingId && originalItem !== undefined ? originalItem.is_paid : true 
                     } 
                 };
@@ -1348,12 +1350,11 @@ export default function FinancialDashboard() {
                         ...base,
                         total_value: totalValue,
                         installments_count: qtd,
-                        // Mantém a parcela original se for edição
                         current_installment: editingId && originalItem ? originalItem.current_installment : 0, 
                         value_per_month: valuePerMonth,
                         due_day: parseInt(dayValue) || 10,
                         status: 'active',
-                        created_at: safeCreatedAt // 🟢 AQUI ESTÁ A SALVAÇÃO! A data original de Início é preservada!
+                        created_at: safeCreatedAt
                     }
                 };
             }

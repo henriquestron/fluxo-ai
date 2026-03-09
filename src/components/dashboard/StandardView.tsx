@@ -5,7 +5,8 @@ import {
     ShoppingCart, Home, Car, Utensils, Zap, GraduationCap,
     HeartPulse, Plane, Gamepad2, Smartphone, Check, Clock,
     FileText, Trash2, Pencil, List, AlertTriangle,
-    ChevronDown, ChevronUp
+    ChevronDown, ChevronUp,
+    Paperclip
 } from 'lucide-react';
 import { Transaction, Installment, Recurring } from '@/types';
 // --- MAPA DE ÍCONES ---
@@ -113,7 +114,7 @@ export default function StandardView({
     const dateFilter = `${monthMap[activeTab]}/${selectedYear}`;
 
     // 🟢 NOVA TAG: Para verificar o mês atual no array de Stand-by
-    
+
 
     // Helper Unificado de Datas
     const getStartData = (item: any) => {
@@ -136,8 +137,8 @@ export default function StandardView({
     };
 
     // --- FILTRO TRANSAÇÕES ---
-    const monthTransactions = transactions.filter(t => 
-        t.date?.includes(dateFilter) && 
+    const monthTransactions = transactions.filter(t =>
+        t.date?.includes(dateFilter) &&
         ((t.status !== 'delayed' && t.status !== 'standby') || isPaidThisMonth(t, true))
     );
 
@@ -146,7 +147,7 @@ export default function StandardView({
         const paid = isPaidThisMonth(r);
         if ((r.status === 'delayed' || r.status === 'standby') && !paid) return false;
         if (r.standby_months?.includes(currentTag) && !paid) return false;
-        
+
         const { m: startM, y: startY } = getStartData(r);
 
         if (selectedYear > startY) return true;
@@ -159,7 +160,7 @@ export default function StandardView({
         const paid = isPaidThisMonth(curr);
         if ((curr.status === 'delayed' || curr.status === 'standby') && !paid) return acc;
         if (curr.standby_months?.includes(currentTag) && !paid) return acc;
-        
+
         const { m: startM, y: startY } = getStartData(curr);
         const monthsDiff = ((selectedYear - startY) * 12) + (monthIndex - startM);
         const actualInstallment = 1 + (curr.current_installment || 0) + monthsDiff;
@@ -168,14 +169,14 @@ export default function StandardView({
 
         const bank = curr.payment_method || 'outros';
         if (!acc[bank]) acc[bank] = { items: [], total: 0 };
-        
+
         const baseValue = Number(curr.value_per_month || 0);
         acc[bank].items.push({ ...curr, actualInstallment, value_per_month: baseValue });
         acc[bank].total += baseValue;
-        
+
         return acc;
     }, {});
-    
+
     const sortedBanks = Object.keys(groupedInstallments).sort((a, b) => groupedInstallments[b].total - groupedInstallments[a].total);
 
     // --- RENDER STANDBY (Garante que contas pagas não apareçam na caixa vermelha) ---
@@ -193,7 +194,7 @@ export default function StandardView({
         installments.forEach(i => {
             // 🟢 PREVENÇÃO DE ERRO
             const standbyArr = Array.isArray(i.standby_months) ? i.standby_months : [];
-            
+
             if ((i.status === 'delayed' || i.status === 'standby') && standbyArr.length === 0) {
                 delayedItems.push({ ...i, _source: 'inst', _amount: Number(i.value_per_month) });
             }
@@ -209,7 +210,7 @@ export default function StandardView({
             if (r.type === 'expense') {
                 // 🟢 PREVENÇÃO DE ERRO
                 const standbyArr = Array.isArray(r.standby_months) ? r.standby_months : [];
-                
+
                 if ((r.status === 'delayed' || r.status === 'standby') && standbyArr.length === 0) {
                     delayedItems.push({ ...r, _source: 'recur', _amount: Number(r.value) });
                 }
@@ -298,7 +299,15 @@ export default function StandardView({
                                                     </div>
                                                     <div>
                                                         <p className={`font-bold text-sm ${item.is_paid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
-                                                        <p className="text-xs text-gray-500 flex items-center gap-1">{item.category} • {item.date}</p>
+                                                        <p className="text-xs text-gray-500 flex items-center gap-1">
+                                                            {item.category} • {item.date}
+                                                            {/* 🟢 MÁGICA AQUI: Se a função inteligente achar a imagem, mostra o clipe! */}
+                                                            {getReceipt(item, activeTab) && (
+                                                                <a href={getReceipt(item, activeTab)} target="_blank" className="text-emerald-500 hover:text-emerald-300" title="Ver Recibo">
+                                                                    <FileText size={14} />
+                                                                </a>
+                                                            )}
+                                                        </p>
                                                     </div>
                                                 </div>
                                                 <div className="text-right">
@@ -442,15 +451,29 @@ export default function StandardView({
                                                     </div>
                                                     <div>
                                                         <p className={`font-bold text-sm ${isPaid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
-                                                        <p className="text-[10px] text-gray-500 flex items-center gap-1">Vence dia {item.due_day} {isSkipped && <span className="text-orange-500 font-bold ml-1">(Pular)</span>}</p>
+                                                        <p className="text-[10px] text-gray-500 flex items-center gap-1">
+                                                            Vence dia {item.due_day} {isSkipped && <span className="text-orange-500 font-bold ml-1">(Pular)</span>}
+
+                                                            {/* 🟢 MÁGICA AQUI: Clipe de papel das Contas Fixas */}
+                                                            {getReceipt(item, activeTab) && (
+                                                                <span title="Comprovante Anexado" className="flex items-center ml-1 text-cyan-500">
+                                                                    <Paperclip size={12} />
+                                                                </span>
+                                                            )}
+                                                        </p>
                                                     </div>
                                                 </div>
-                                                <div className="text-right">
-                                                    <p className={`font-mono font-bold text-sm ${isPaid ? 'text-gray-600' : 'text-gray-300'}`}>R$ {Number(item.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                                                    <div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">                                                        <button onClick={() => onToggleDelay('recurring', item)} title="Stand-by" className="text-gray-500 hover:text-orange-400"><Clock size={12} /></button>
-                                                        <button onClick={() => onEdit(item, 'fixed_expense')} className="text-gray-500 hover:text-cyan-400"><Pencil size={12} /></button>
-                                                        <button onClick={() => onDelete('recurring', item.id)} className="text-gray-500 hover:text-red-400"><Trash2 size={12} /></button>
-                                                    </div>
+                                                <div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                                                    <button onClick={() => onToggleDelay('recurring', item)} title="Stand-by" className="text-gray-500 hover:text-orange-400"><Clock size={12} /></button>
+                                                    <button onClick={() => onEdit(item, 'fixed_expense')} className="text-gray-500 hover:text-cyan-400"><Pencil size={12} /></button>
+                                                    <button onClick={() => onDelete('recurring', item.id)} className="text-gray-500 hover:text-red-400"><Trash2 size={12} /></button>
+
+                                                    {/* 🟢 Botão verde para abrir o comprovante */}
+                                                    {getReceipt(item, activeTab) && (
+                                                        <a href={getReceipt(item, activeTab)} target="_blank" className="text-emerald-500 hover:text-emerald-300" title="Ver Recibo">
+                                                            <FileText size={12} />
+                                                        </a>
+                                                    )}
                                                 </div>
                                             </div>
                                         );
