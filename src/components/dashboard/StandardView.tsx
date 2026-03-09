@@ -414,22 +414,40 @@ export default function StandardView({
                         <div className="overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent">
                             <div className="bg-emerald-900/10 border-b border-emerald-500/20 p-3">
                                 <p className="text-[10px] uppercase font-bold text-emerald-500 tracking-wider mb-2 ml-1">Renda Fixa</p>
-                                {activeRecurring.filter(r => r.type === 'income').length === 0 ? (
-                                    <p className="text-xs text-gray-600 italic ml-1">Nenhuma renda fixa.</p>
-                                ) : (
-                                    activeRecurring.filter(r => r.type === 'income').map(item => {
-                                        const isSkipped = item.skipped_months?.includes(activeTab);
-                                        return (
-                                            <div key={item.id} className={`flex items-center justify-between p-2 rounded-lg mb-1 ${isSkipped ? 'opacity-50' : ''}`}>
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center"><DollarSign size={14} /></div>
-                                                    <span className="text-sm font-bold text-gray-200">{item.title}</span>
+                                {activeRecurring.filter(r => r.type === 'income').map(item => {
+                                    const isSkipped = item.skipped_months?.includes(activeTab);
+                                    return (
+                                        <div key={item.id} className={`group flex items-center justify-between p-2 rounded-lg mb-1 transition hover:bg-white/5 ${isSkipped ? 'opacity-50 border border-dashed border-emerald-900 bg-transparent' : ''}`}>
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                                                    <DollarSign size={14} />
                                                 </div>
-                                                <span className="text-emerald-400 font-mono font-bold text-sm">R$ {Number(item.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                                <div>
+                                                    <p className="text-sm font-bold text-gray-200">{item.title}</p>
+                                                    {isSkipped && <p className="text-[10px] text-orange-500 font-bold">Pulado neste mês</p>}
+                                                </div>
                                             </div>
-                                        )
-                                    })
-                                )}
+                                            <div className="text-right">
+                                                <p className={`font-mono font-bold text-sm ${isSkipped ? 'text-gray-500' : 'text-emerald-400'}`}>
+                                                    R$ {Number(item.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                </p>
+
+                                                {/* 🟢 MÁGICA AQUI: Os botões de ação que estavam faltando! */}
+                                                <div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                                                    <button onClick={() => onToggleDelay('recurring', item)} title={isSkipped ? "Voltar salário" : "Pular este mês"} className="text-gray-500 hover:text-orange-400">
+                                                        <Clock size={12} />
+                                                    </button>
+                                                    <button onClick={() => onEdit(item, 'income')} title="Editar Salário" className="text-gray-500 hover:text-cyan-400">
+                                                        <Pencil size={12} />
+                                                    </button>
+                                                    <button onClick={() => onDelete('recurring', item.id)} title="Excluir Permanentemente" className="text-gray-500 hover:text-red-400">
+                                                        <Trash2 size={12} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
                             </div>
 
                             <div className="p-2">
