@@ -76,6 +76,13 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                             <Sparkles size={20} className="text-purple-500"/> Ver Demonstração
                         </button>
                     </div>
+
+                    {/* 🟢 GATILHOS MENTAIS DE SEGURANÇA (Novo) */}
+                    <div className="mt-8 flex flex-wrap items-center justify-center gap-4 md:gap-8 text-sm text-gray-500 font-medium animate-in fade-in slide-in-from-bottom-12 duration-1000">
+                        <span className="flex items-center gap-2"><ShieldCheck size={16} className="text-emerald-500"/> Criptografia Bancária</span>
+                        <span className="flex items-center gap-2"><Lock size={16} className="text-cyan-500"/> LGPD Compliant</span>
+                        <span className="flex items-center gap-2"><Users size={16} className="text-purple-500"/> +1000 Contas Gerenciadas</span>
+                    </div>
                 </div>
             </section>
 
@@ -104,7 +111,6 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
             {/* --- PILARES --- */}
             <section className="py-16 md:py-24 bg-[#0a0a0a] border-y border-white/5">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6">
-                    {/* Grid adaptável: 1 col (mobile) -> 2 cols (tablet) -> 3 cols (desktop) */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
                         <div className="p-6 md:p-8 rounded-3xl bg-[#111] border border-gray-800 relative group hover:border-cyan-500/30 transition hover:-translate-y-1 duration-300">
                             <div className="w-12 h-12 md:w-14 md:h-14 bg-cyan-900/20 text-cyan-400 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition">
@@ -126,14 +132,15 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                             </p>
                         </div>
 
-                        {/* No tablet (2 cols), esse último ocupa a largura total ou fica sozinho */}
-                        <div className="p-6 md:p-8 rounded-3xl bg-[#111] border border-gray-800 relative group hover:border-emerald-500/30 transition hover:-translate-y-1 duration-300 md:col-span-2 lg:col-span-1">
+                        {/* 🟢 PILAR WHATSAPP TURBINADO (Novo) */}
+                        <div className="p-6 md:p-8 rounded-3xl bg-[#111] border border-emerald-500/20 relative group hover:border-emerald-500/50 transition hover:-translate-y-1 duration-300 md:col-span-2 lg:col-span-1 shadow-[0_0_30px_rgba(16,185,129,0.05)] hover:shadow-[0_0_30px_rgba(16,185,129,0.15)]">
+                            <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[10px] md:text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-3xl">EXCLUSIVO</div>
                             <div className="w-12 h-12 md:w-14 md:h-14 bg-emerald-900/20 text-emerald-400 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition">
                                 <Smartphone size={24} className="md:w-7 md:h-7" />
                             </div>
-                            <h3 className="text-xl font-bold mb-3">Captura via WhatsApp</h3>
+                            <h3 className="text-xl font-bold mb-3">Seu Assistente no WhatsApp</h3>
                             <p className="text-sm md:text-base text-gray-400 leading-relaxed">
-                                Gastou na rua? Mande um áudio ou foto pro bot. A IA processa e lança no seu painel em segundos.
+                                Esqueça planilhas. Mande um áudio no trânsito ("Gastei 50 de gasolina") e nossa IA lança, categoriza e te avisa se as contas estão no azul.
                             </p>
                         </div>
                     </div>
@@ -171,6 +178,15 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                                     <li className="flex items-center gap-3 text-gray-300">
                                         <div className="min-w-[18px]"><CheckCircle2 size={18} className="text-cyan-500" /></div>
                                         <span>Múltiplos Perfis (Pessoal, Casa)</span>
+                                    </li>
+                                    {/* 🟢 NOVAS FUNCIONALIDADES MENCIONADAS (Novo) */}
+                                    <li className="flex items-center gap-3 text-gray-300">
+                                        <div className="min-w-[18px]"><CheckCircle2 size={18} className="text-cyan-500" /></div>
+                                        <span><strong className="text-white">Sandbox:</strong> Simule cenários antes de gastar</span>
+                                    </li>
+                                    <li className="flex items-center gap-3 text-gray-300">
+                                        <div className="min-w-[18px]"><CheckCircle2 size={18} className="text-cyan-500" /></div>
+                                        <span>Relatórios Nível Enterprise (Excel)</span>
                                     </li>
                                 </ul>
                                 <div className="flex justify-center lg:justify-start">
@@ -255,6 +271,21 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                             <button onClick={onLoginClick} className="w-full py-3 rounded-xl border border-purple-900/50 hover:bg-purple-900/20 text-white font-bold transition">Escolher Pro</button>
                         </div>
                     </div>
+
+                    {/* 🟢 BANNER PARA CONSULTORES (Ponte para o B2B) */}
+                    <div className="mt-12 bg-gradient-to-r from-amber-500/10 to-orange-500/5 border border-amber-500/20 rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-6 max-w-4xl mx-auto cursor-pointer hover:border-amber-500/40 transition" onClick={scrollToConsultant}>
+                        <div className="flex items-center gap-4 text-left">
+                            <div className="p-3 bg-amber-500/20 text-amber-500 rounded-xl shrink-0"><Briefcase size={24}/></div>
+                            <div>
+                                <h4 className="text-white font-bold text-lg">Procurando o plano para Consultores?</h4>
+                                <p className="text-gray-400 text-sm">Gerencie múltiplos clientes, audite contas e gere relatórios com nosso painel B2B.</p>
+                            </div>
+                        </div>
+                        <button className="px-6 py-2 bg-amber-600/20 text-amber-500 font-bold rounded-lg border border-amber-500/50 hover:bg-amber-500 hover:text-black transition whitespace-nowrap">
+                            Ver Solução B2B
+                        </button>
+                    </div>
+
                 </div>
             </section>
 
@@ -303,7 +334,6 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                         
                         {/* Card Visual B2B */}
                         <div className="flex-1 w-full flex justify-center">
-                            {/* Rotação removida no mobile para evitar overflow e ficar mais clean */}
                             <div className="bg-[#1a1a1a] p-6 md:p-8 rounded-2xl border border-gray-700 w-full max-w-sm transform lg:rotate-3 hover:rotate-0 transition duration-500 shadow-2xl">
                                 <div className="flex items-center gap-4 mb-6 border-b border-gray-700 pb-4">
                                     <div className="w-12 h-12 rounded-full bg-amber-500 flex items-center justify-center font-bold text-black text-xl shrink-0">VF</div>
