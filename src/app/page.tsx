@@ -322,18 +322,20 @@ export default function FinancialDashboard() {
     const getReceiptForMonth = (item: any, month: string) => {
         const tag = `${month}/${selectedYear}`;
         
-        // 1. Tenta pegar pela Tag Mês/Ano
+        // 1. Tenta pegar pela Tag Mês/Ano exata (Ex: Mar/2026)
         if (item.receipts && item.receipts[tag]) {
             return item.receipts[tag];
         }
 
-        // 2. Tenta pegar pela Tag Mês Antiga
+        // 2. Tenta pegar pela Tag Mês Antiga (Legado)
         if (item.receipts && item.receipts[month]) {
             return item.receipts[month];
         }
 
-        // 3. Fallback LIVRE: Qualquer conta que tenha um comprovante salvo (Fixa, Avulsa ou Parcela)
-        if (item.receipt_url) {
+        // 3. 🟢 TRAVA CONTRA VAZAMENTO DE COMPROVANTES:
+        // O Fallback 'livre' só pode ser usado para Despesas Avulsas (que têm o campo 'date').
+        // Contas Fixas e Parcelas (que usam 'due_day') são bloqueadas aqui para não vazar a imagem pro próximo mês.
+        if (item.date && item.receipt_url) {
             return item.receipt_url;
         }
 
@@ -499,17 +501,39 @@ export default function FinancialDashboard() {
         const dayNum = today.getDate();
         const dayStr = dayNum.toString().padStart(2, '0');
         const currentYear = today.getFullYear();
+        const currentMonthIdx = today.getMonth(); // 0 a 11
 
         const monthMap: Record<number, string> = {
             0: 'Jan', 1: 'Fev', 2: 'Mar', 3: 'Abr', 4: 'Mai', 5: 'Jun',
             6: 'Jul', 7: 'Ago', 8: 'Set', 9: 'Out', 10: 'Nov', 11: 'Dez'
         };
-        const currentMonthName = monthMap[today.getMonth()];
+        const currentMonthName = monthMap[currentMonthIdx];
 
         // 🔥 NOVA TAG: Agora buscamos por "Jan/2026"
         const currentPaymentTag = `${currentMonthName}/${currentYear}`;
 
-        // 2. Identificar contas vencendo HOJE (Lógica Corrigida)
+        // 🟢 HELPER: Descobre quando a conta realmente começa
+        const getStartData = (item: any) => {
+            if (item.start_date && item.start_date.includes('/')) {
+                const p = item.start_date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+            }
+            if (item.date && item.date.includes('/')) {
+                const p = item.date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+            }
+            if (item.created_at) {
+                const d = new Date(item.created_at); return { m: d.getMonth(), y: d.getFullYear() };
+            }
+            return { m: 0, y: currentYear };
+        };
+
+        // 🟢 TRAVA DE FUTURO: Impede que o sistema cobre contas de meses que não chegaram
+        const isFuture = (item: any) => {
+            const { m: startM, y: startY } = getStartData(item);
+            // É futuro se o ano atual for menor, OU se for o mesmo ano mas o mês atual for menor
+            return (currentYear < startY) || (currentYear === startY && currentMonthIdx < startM);
+        };
+
+        // 2. Identificar contas vencendo HOJE (Lógica Corrigida com a Trava)
         const billsDueToday = [
             // Transações: Filtra pelo dia/mês E pelo ano atual
             ...transactions.filter(t =>
@@ -518,7 +542,8 @@ export default function FinancialDashboard() {
                 t.status !== 'delayed' &&
                 t.status !== 'standby' &&
                 t.date?.startsWith(`${dayStr}/`) &&
-                t.date?.endsWith(`/${currentYear}`)
+                t.date?.endsWith(`/${currentYear}`) &&
+                !isFuture(t) // <-- Trava de futuro!
             ),
 
             // Recorrentes: Checa a nova tag de pagamento (Ex: Jan/2026)
@@ -527,8 +552,9 @@ export default function FinancialDashboard() {
                 r.due_day === dayNum &&
                 r.status !== 'delayed' &&
                 r.status !== 'standby' &&
-                !r.paid_months?.includes(currentPaymentTag) && // <-- Check corrigido
-                !r.paid_months?.includes(currentMonthName)     // <-- Check legado (opcional)
+                !r.paid_months?.includes(currentPaymentTag) && 
+                !r.paid_months?.includes(currentMonthName) &&
+                !isFuture(r) // <-- Trava de futuro!
             ),
 
             // Parcelas: Checa a nova tag de pagamento
@@ -536,7 +562,8 @@ export default function FinancialDashboard() {
                 i.due_day === dayNum &&
                 i.status !== 'delayed' &&
                 i.status !== 'standby' &&
-                !i.paid_months?.includes(currentPaymentTag) // <-- Check corrigido
+                !i.paid_months?.includes(currentPaymentTag) &&
+                !isFuture(i) // <-- Trava de futuro!
             )
         ];
 
@@ -586,7 +613,7 @@ export default function FinancialDashboard() {
                 body: JSON.stringify({
                     userId,
                     bills: billsDueToday,
-                    forceSend: false // <-- Adicione isso para ignorar a trava da API
+                    forceSend: false
                 })
             })
                 .then(res => res.json())
