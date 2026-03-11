@@ -74,23 +74,19 @@ async function downloadMedia(url: string) {
 }
 
 // 🧠 CÁLCULO FINANCEIRO
+// 🧠 CÁLCULO FINANCEIRO (Com o Efeito Cascata Oficial)
 async function getFinancialContext(supabase: any, userId: string, workspaceId: string) {
     const today = new Date();
-    const currentMonth = today.getMonth();
     const currentYear = today.getFullYear();
-    const monthStr = String(currentMonth + 1).padStart(2, '0');
-    const yearStr = currentYear.toString();
-    
-    const monthMap = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-    const currentMonthName = monthMap[currentMonth];
-    const currentTag = `${currentMonthName}/${currentYear}`;
+    const activeMonthIdx = today.getMonth(); // 0 a 11
 
-    const { data: transactions } = await supabase.from('transactions').select('*').eq('user_id', userId).eq('context', workspaceId).like('date', `%/${monthStr}/${yearStr}`);
+    const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const activeTab = MONTHS[activeMonthIdx];
+
+    // 🟢 Puxa TUDO do banco para conseguir arrastar o saldo dos meses anteriores
+    const { data: transactions } = await supabase.from('transactions').select('*').eq('user_id', userId).eq('context', workspaceId);
     const { data: recurring } = await supabase.from('recurring').select('*').eq('user_id', userId).eq('context', workspaceId);
     const { data: installments } = await supabase.from('installments').select('*').eq('user_id', userId).eq('context', workspaceId);
-
-    let totalEntradas = 0;
-    let totalSaidas = 0;
 
     const getStartData = (item: any) => {
         if (item.start_date && item.start_date.includes('/')) {
@@ -105,45 +101,65 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
         return { m: 0, y: currentYear };
     };
 
-    transactions?.forEach((t: any) => {
-        if (t.status !== 'delayed' && t.status !== 'standby') {
-            if (t.type === 'income') totalEntradas += Number(t.amount);
-            else totalSaidas += Number(t.amount);
-        }
-    });
+    let previousSurplus = 0;
+    let computedInc = 0;
+    let computedExp = 0;
+    let computedBalance = 0;
 
-    recurring?.forEach((r: any) => {
-        if (r.status === 'delayed' || r.status === 'standby' || r.standby_months?.includes(currentTag)) return;
-        const { m: startM, y: startY } = getStartData(r);
-        if (currentYear > startY || (currentYear === startY && currentMonth >= startM)) {
-            if (!r.skipped_months?.includes(currentMonthName)) {
-                if (r.type === 'income') totalEntradas += Number(r.value);
-                else totalSaidas += Number(r.value);
-            }
-        }
-    });
+    // 🟢 O MESMO LAÇO DE REPETIÇÃO DO SITE (Calcula de Jan até o Mês Atual)
+    for (let idx = 0; idx <= activeMonthIdx; idx++) {
+        const month = MONTHS[idx];
+        const mCode = (idx + 1).toString().padStart(2, '0');
+        const dateFilter = `/${mCode}/${currentYear}`;
+        const paymentTag = `${month}/${currentYear}`;
 
-    installments?.forEach((i: any) => {
-        if (i.status === 'delayed' || i.status === 'standby' || i.standby_months?.includes(currentTag)) return;
-        const { m: startM, y: startY } = getStartData(i);
-        const monthsDiff = ((currentYear - startY) * 12) + (currentMonth - startM);
-        const actualInstallment = 1 + (i.current_installment || 0) + monthsDiff;
-        if (actualInstallment >= 1 && actualInstallment <= i.installments_count) {
-            totalSaidas += Number(i.value_per_month);
-        }
-    });
+        const inc = (transactions?.filter((t: any) => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc: number, i: any) => acc + Number(i.amount), 0) || 0) +
+                    (recurring?.filter((r: any) => {
+                        const { m: sM, y: sY } = getStartData(r);
+                        const paid = r.paid_months?.includes(paymentTag) || r.paid_months?.includes(month);
+                        if ((r.status === 'delayed' || r.status === 'standby' || r.standby_months?.includes(paymentTag)) && !paid) return false;
+                        return r.type === 'income' && (currentYear > sY || (currentYear === sY && idx >= sM)) && !r.skipped_months?.includes(month);
+                    }).reduce((acc: number, i: any) => acc + Number(i.value), 0) || 0);
 
-    const saldo = totalEntradas - totalSaidas;
+        const exp = (transactions?.filter((t: any) => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc: number, i: any) => acc + Number(i.amount), 0) || 0) +
+                    (recurring?.filter((r: any) => {
+                        const { m: sM, y: sY } = getStartData(r);
+                        const paid = r.paid_months?.includes(paymentTag) || r.paid_months?.includes(month);
+                        if ((r.status === 'delayed' || r.status === 'standby' || r.standby_months?.includes(paymentTag)) && !paid) return false;
+                        return r.type === 'expense' && (currentYear > sY || (currentYear === sY && idx >= sM)) && !r.skipped_months?.includes(month);
+                    }).reduce((acc: number, i: any) => acc + Number(i.value), 0) || 0) +
+                    (installments?.reduce((acc: number, i: any) => {
+                        const paid = i.paid_months?.includes(paymentTag) || i.paid_months?.includes(month);
+                        if ((i.status === 'delayed' || i.status === 'standby' || i.standby_months?.includes(paymentTag)) && !paid) return acc;
+                        
+                        const { m: sM, y: sY } = getStartData(i);
+                        const diff = ((currentYear - sY) * 12) + (idx - sM);
+                        const act = 1 + (i.current_installment || 0) + diff;
+                        return (act >= 1 && act <= i.installments_count) ? acc + Number(i.value_per_month) : acc;
+                    }, 0) || 0);
+
+        const saldoMensal = inc - exp;
+        const saldoAcumulado = saldoMensal + previousSurplus;
+
+        if (idx === activeMonthIdx) {
+            computedInc = inc;
+            computedExp = exp;
+            computedBalance = saldoAcumulado;
+        }
+
+        previousSurplus = saldoAcumulado;
+    }
+
     let estado = "ESTÁVEL 🟢";
-    if (saldo < 0) estado = "CRÍTICO (VERMELHO) 🔴";
-    else if (saldo < (totalEntradas * 0.1)) estado = "ALERTA (POUCA MARGEM) 🟡";
+    if (computedBalance < 0) estado = "CRÍTICO (VERMELHO) 🔴";
+    else if (computedBalance < (computedInc * 0.1)) estado = "ALERTA (POUCA MARGEM) 🟡";
 
     return {
-        saldo: saldo.toFixed(2),
-        entradas: totalEntradas.toFixed(2),
-        saidas: totalSaidas.toFixed(2),
+        saldo: computedBalance.toFixed(2),
+        entradas: computedInc.toFixed(2),
+        saidas: computedExp.toFixed(2),
         estado_conta: estado,
-        resumo_texto: `Receitas: R$ ${totalEntradas.toFixed(2)} | Despesas: R$ ${totalSaidas.toFixed(2)} | Saldo: R$ ${saldo.toFixed(2)}`
+        resumo_texto: `Receitas: R$ ${computedInc.toFixed(2)} | Despesas: R$ ${computedExp.toFixed(2)} | Saldo: R$ ${computedBalance.toFixed(2)}`
     };
 }
 
