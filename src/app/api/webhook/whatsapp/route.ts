@@ -9,19 +9,58 @@ const INSTANCE_NAME = "MEO_ALIADO_INSTANCE";
 // 🛡️ ESCUDO ANTI-DUPLICIDADE
 const processedMessages = new Set<string>();
 
+// 🟢 GERADOR DE MÚLTIPLAS VERSÕES DO NÚMERO BRASILEIRO (Nono Dígito)
+const getPhoneVariations = (phone: string): string[] => {
+    const clean = phone.replace(/\D/g, ''); // Tira tudo que não for número
+    if (!clean.startsWith('55')) return [clean];
+    
+    const ddd = clean.substring(2, 4);
+    const number = clean.substring(4);
+    
+    if (number.length === 9) {
+        // [Versão original com 9, Versão sem o 9]
+        return [clean, `55${ddd}${number.substring(1)}`];
+    } else if (number.length === 8) {
+        // [Versão original sem 9, Versão com o 9]
+        return [clean, `55${ddd}9${number}`];
+    }
+    return [clean];
+};
+
 // --- FUNÇÕES AUXILIARES ---
+// 🟢 ENVIO BLINDADO: Tenta todas as variações de número até o WhatsApp aceitar
 async function sendWhatsAppMessage(jid: string, text: string, delay: number = 1200) {
-    const finalJid = jid.includes('@') ? jid : `${jid}@s.whatsapp.net`;
-    try {
-        console.log(`📤 Enviando para ${finalJid} (Delay: ${delay}ms)...`);
-        const res = await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE_NAME}`, {
-            method: 'POST',
-            headers: { 'apikey': EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ number: finalJid, text, delay: delay })
-        });
-        const json = await res.json();
-        console.log("✅ Status Envio:", json);
-    } catch (e) { console.error("❌ Erro Envio ZAP:", e); }
+    const variations = getPhoneVariations(jid.split('@')[0]);
+    let success = false;
+
+    for (const phoneAttempt of variations) {
+        if (success) break;
+
+        const finalJid = `${phoneAttempt}@s.whatsapp.net`;
+        try {
+            console.log(`📤 Tentando enviar para ${finalJid} (Delay: ${delay}ms)...`);
+            const res = await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE_NAME}`, {
+                method: 'POST',
+                headers: { 'apikey': EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ number: finalJid, text, delay: delay })
+            });
+            const json = await res.json();
+            
+            // Verifica se a Evolution aceitou (Status 200/201 ou contém ID de sucesso)
+            if (res.ok || json?.status === 'SUCCESS' || json?.key?.id) {
+                console.log(`✅ Status Envio Sucesso no número ${phoneAttempt}!`);
+                success = true;
+            } else {
+                console.log(`⚠️ Falha (Provável Nono Dígito) em ${phoneAttempt}. Erro:`, json?.error || 'Bad Request');
+            }
+        } catch (e) { 
+            console.error(`❌ Erro Envio ZAP para ${finalJid}:`, e); 
+        }
+    }
+
+    if (!success) {
+        console.log("🚨 Nenhuma das variações funcionou. Evolution recusou o envio.");
+    }
 }
 
 async function downloadMedia(url: string) {
@@ -169,7 +208,8 @@ export async function POST(req: Request) {
         let { data: userSettings } = await supabase.from('user_settings').select('*').or(`whatsapp_phone.eq.${senderId},whatsapp_id.eq.${senderId}`).maybeSingle();
 
         if (!userSettings) {
-            const variations = [senderId, senderId.replace(/^55/, ''), `55${senderId}`];
+            // 🟢 Usa a nova função de variações para procurar no banco de dados!
+            const variations = getPhoneVariations(senderId);
             const { data: found } = await supabase.from('user_settings').select('*').in('whatsapp_phone', variations).maybeSingle();
             if (found) {
                 userSettings = found;
@@ -180,7 +220,8 @@ export async function POST(req: Request) {
         if (!userSettings) {
             const numbersInText = messageContent.replace(/\D/g, '');
             if (numbersInText.length >= 10) {
-                const possiblePhones = [numbersInText, `55${numbersInText}`, numbersInText.replace(/^55/, '')];
+                // 🟢 Usa a nova função de variações para o vínculo!
+                const possiblePhones = getPhoneVariations(numbersInText);
                 const { data: userToLink } = await supabase.from('user_settings').select('*').in('whatsapp_phone', possiblePhones).maybeSingle();
                 if (userToLink) {
                     await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userToLink.user_id);
