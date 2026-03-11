@@ -4,7 +4,7 @@ import {
     AlertTriangle, PieChart, ArrowUpRight, ArrowDownLeft 
 } from 'lucide-react';
 
-import { Transaction, Installment, Recurring } from '@/types'; // <--- Importe aqui
+import { Transaction, Installment, Recurring } from '@/types'; 
 
 interface BentoViewProps {
     currentMonthData: any;
@@ -19,7 +19,10 @@ interface BentoViewProps {
     
     onOpenCalendar: () => void;
     onOpenRollover: () => void;
+    pastDueCount?: number;
 }
+
+const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
 export default function BentoView({ 
   currentMonthData, 
@@ -29,7 +32,8 @@ export default function BentoView({
   activeTab,
   selectedYear,
   months,
-  onOpenCalendar, 
+  onOpenCalendar,
+  pastDueCount = 0, 
   onOpenRollover
 }: BentoViewProps) {
   
@@ -47,57 +51,105 @@ export default function BentoView({
     return { m: 0, y: selectedYear };
   };
 
-  // Dados Básicos
-  const renda = Number(currentMonthData.income) || 0;
-  const expenseTotal = Number(currentMonthData.expenseTotal) || 0;
-  const balance = Number(currentMonthData.balance) || 0;
+  // 🟢 1. O MOTOR MATEMÁTICO BLINDADO (Igual ao do Excel)
+  let previousSurplus = 0;
+  let computedInc = 0;
+  let computedExp = 0;
+  let computedBalance = 0;
+
+  const activeMonthIdx = MONTHS.indexOf(activeTab);
+
+  // Calcula desde Janeiro até o mês atual para arrastar o saldo corretamente
+  for (let idx = 0; idx <= activeMonthIdx; idx++) {
+      const month = MONTHS[idx];
+      const mCode = (idx + 1).toString().padStart(2, '0');
+      const dateFilter = `/${mCode}/${selectedYear}`;
+      const paymentTag = `${month}/${selectedYear}`;
+
+      const inc = (transactions.filter(t => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc, i) => acc + Number(i.amount), 0)) +
+                  (recurring.filter(r => {
+                      const { m: sM, y: sY } = getStartData(r);
+                      const paid = r.paid_months?.includes(paymentTag) || r.paid_months?.includes(month);
+                      if ((r.status === 'delayed' || r.status === 'standby' || r.standby_months?.includes(paymentTag)) && !paid) return false;
+                      return r.type === 'income' && (selectedYear > sY || (selectedYear === sY && idx >= sM)) && !r.skipped_months?.includes(month);
+                  }).reduce((acc, i) => acc + Number(i.value), 0));
+
+      const exp = (transactions.filter(t => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc, i) => acc + Number(i.amount), 0)) +
+                  (recurring.filter(r => {
+                      const { m: sM, y: sY } = getStartData(r);
+                      const paid = r.paid_months?.includes(paymentTag) || r.paid_months?.includes(month);
+                      if ((r.status === 'delayed' || r.status === 'standby' || r.standby_months?.includes(paymentTag)) && !paid) return false;
+                      return r.type === 'expense' && (selectedYear > sY || (selectedYear === sY && idx >= sM)) && !r.skipped_months?.includes(month);
+                  }).reduce((acc, i) => acc + Number(i.value), 0)) +
+                  (installments.reduce((acc, i) => {
+                      const paid = i.paid_months?.includes(paymentTag) || i.paid_months?.includes(month);
+                      if ((i.status === 'delayed' || i.status === 'standby' || i.standby_months?.includes(paymentTag)) && !paid) return acc;
+                      
+                      const { m: sM, y: sY } = getStartData(i);
+                      const diff = ((selectedYear - sY) * 12) + (idx - sM);
+                      const act = 1 + (i.current_installment || 0) + diff;
+                      return (act >= 1 && act <= i.installments_count) ? acc + Number(i.value_per_month) : acc;
+                  }, 0));
+
+      const saldoMensal = inc - exp;
+      const saldoAcumulado = saldoMensal + previousSurplus;
+
+      if (idx === activeMonthIdx) {
+          computedInc = inc;
+          computedExp = exp;
+          computedBalance = saldoAcumulado;
+      }
+
+      // 🟢 A MÁGICA: Agora ele SEMPRE arrasta o saldo (seja lucro ou dívida!)
+      previousSurplus = saldoAcumulado;
+  }
+
+  // Valores Finais do Mês Atual
+  const renda = computedInc;
+  const expenseTotal = computedExp;
+  const balance = computedBalance;
   const savingsRate = renda > 0 ? ((balance / renda) * 100).toFixed(0) : 0;
   
-  const monthIndex = months.indexOf(activeTab);
-  const paymentTag = `${activeTab}/${selectedYear}`;
+  const paymentTagCurrent = `${activeTab}/${selectedYear}`;
 
-  // 1. FILTRA PRÓXIMAS CONTAS (Ajustado para lógica de Anos)
+  // 2. FILTRA PRÓXIMAS CONTAS (Ajustado para lógica de Anos)
   const upcomingBills: any[] = [];
 
-  // Transações do Mês
   transactions.forEach(t => {
-      const dateCode = `/${(monthIndex + 1).toString().padStart(2, '0')}/${selectedYear}`;
+      const dateCode = `/${(activeMonthIdx + 1).toString().padStart(2, '0')}/${selectedYear}`;
       if (t.type === 'expense' && !t.is_paid && t.status !== 'delayed' && t.status !== 'standby' && t.date?.includes(dateCode)) {
           upcomingBills.push({ title: t.title, day: parseInt(t.date.split('/')[0]), amount: Number(t.amount), category: t.category });
       }
   });
 
-  // Recorrentes Ativas
   recurring.forEach(r => {
       const { m: sM, y: sY } = getStartData(r);
-      const isVisible = selectedYear > sY || (selectedYear === sY && monthIndex >= sM);
-      const isPaid = r.paid_months?.includes(paymentTag);
+      const isVisible = selectedYear > sY || (selectedYear === sY && activeMonthIdx >= sM);
+      const isPaid = r.paid_months?.includes(paymentTagCurrent) || r.paid_months?.includes(activeTab);
 
       if (r.type === 'expense' && isVisible && !isPaid && r.status !== 'delayed' && r.status !== 'standby' && !r.skipped_months?.includes(activeTab)) {
           upcomingBills.push({ title: r.title, day: r.due_day, amount: Number(r.value), category: 'Fixa' });
       }
   });
 
-  // Parcelas Ativas
   installments.forEach(i => {
       const { m: sM, y: sY } = getStartData(i);
-      const monthsDiff = ((selectedYear - sY) * 12) + (monthIndex - sM);
+      const monthsDiff = ((selectedYear - sY) * 12) + (activeMonthIdx - sM);
       const actualInst = 1 + (i.current_installment || 0) + monthsDiff;
-      const isPaid = i.paid_months?.includes(paymentTag);
+      const isPaid = i.paid_months?.includes(paymentTagCurrent) || i.paid_months?.includes(activeTab);
 
       if (actualInst >= 1 && actualInst <= i.installments_count && !isPaid && i.status !== 'delayed' && i.status !== 'standby') {
           upcomingBills.push({ title: i.title, day: i.due_day, amount: Number(i.value_per_month), category: `${actualInst}/${i.installments_count}` });
       }
   });
 
-  // Ordena por dia e pega 4
   const sortedUpcoming = upcomingBills.sort((a, b) => a.day - b.day).slice(0, 4);
 
-  // 2. CÁLCULO DÍVIDA FUTURA (Considerando o progresso real)
+  // 3. CÁLCULO DÍVIDA FUTURA
   const totalInstallmentsValue = installments.reduce((acc, curr) => {
       if (curr.status === 'delayed' || curr.status === 'standby') return acc;
       const { m: sM, y: sY } = getStartData(curr);
-      const monthsDiff = ((selectedYear - sY) * 12) + (monthIndex - sM);
+      const monthsDiff = ((selectedYear - sY) * 12) + (activeMonthIdx - sM);
       const actualInst = 1 + (curr.current_installment || 0) + monthsDiff;
       
       const remaining = curr.installments_count - actualInst + 1;
@@ -111,62 +163,75 @@ export default function BentoView({
   }, {});
   const topCategory = Object.keys(categories).sort((a,b) => categories[b] - categories[a])[0];
 
-  // Verifica se tem atrasados
-  const hasDelayed = currentMonthData.accumulatedDebt > 0 || currentMonthData.delayedTotal > 0;
-
+  // 🟢 4. A VERDADEIRA VERIFICAÇÃO DE ATRASOS
+  // Agora ele só acende o alerta vermelho se a conta REALMENTE estiver com status de atrasada no banco!
+  // 🟢 Só acende o botão vermelho se os dados principais informarem que há pendência real
+  // 🟢 4. A VERDADEIRA VERIFICAÇÃO DE ATRASOS
+  // Agora ele só acende se a lista do page.tsx realmente tiver contas!
+  const hasDelayed = pastDueCount > 0;
   return (
     <div className="max-w-7xl mx-auto py-6 animate-in zoom-in-95 duration-500 px-4">
       
-      <div className="grid grid-cols-1 md:grid-cols-4 md:grid-rows-3 gap-4 h-full md:h-[650px]">
+      <div className="grid grid-cols-1 md:grid-cols-4 md:grid-rows-3 gap-5 min-h-[600px] h-auto">
         
         {/* 1. CARD PRINCIPAL (SALDO) */}
-        <div className="col-span-1 md:col-span-2 md:row-span-2 bg-[#080808] border border-gray-800 p-8 rounded-[32px] flex flex-col justify-between relative overflow-hidden group hover:border-gray-700 transition">
+        <div className="col-span-1 md:col-span-2 md:row-span-2 bg-gradient-to-b from-[#111] to-[#0a0a0a] border border-gray-800 p-8 rounded-[32px] flex flex-col justify-between relative overflow-hidden group hover:border-gray-700 transition duration-500 shadow-2xl">
           <div className="flex justify-between items-start z-10">
             <div>
-                <h3 className="text-gray-400 font-medium flex items-center gap-2 mb-1"><Wallet size={18} className="text-cyan-500"/> Fluxo Líquido • {activeTab}</h3>
-                <h1 className={`text-5xl md:text-6xl font-black tracking-tighter ${balance >= 0 ? 'text-white' : 'text-red-500'}`}>
-                R$ {balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                <h3 className="text-gray-400 font-bold flex items-center gap-2 mb-2 uppercase tracking-widest text-xs">
+                    <Wallet size={16} className="text-cyan-500"/> Fluxo Líquido • {activeTab}
+                </h3>
+                <h1 className={`text-5xl sm:text-6xl lg:text-7xl font-black tracking-tighter ${balance >= 0 ? 'text-white' : 'text-red-500'}`}>
+                    R$ {balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </h1>
             </div>
-            <div className={`px-3 py-1 rounded-full text-xs font-bold border ${balance >= 0 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}>
+            <div className={`px-4 py-1.5 rounded-full text-[10px] font-black tracking-widest uppercase border shadow-lg ${balance >= 0 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-emerald-900/20' : 'bg-red-500/10 text-red-400 border-red-500/20 shadow-red-900/20'}`}>
                 {balance >= 0 ? 'POSITIVO' : 'NEGATIVO'}
             </div>
           </div>
           
           <div className="grid grid-cols-2 gap-4 mt-8 z-10">
-            <div className="bg-[#111] p-4 rounded-2xl border border-gray-800">
-                <div className="text-gray-500 text-xs font-bold uppercase mb-1 flex items-center gap-1"><ArrowUpRight size={12} className="text-emerald-500"/> Entrou</div>
-                <div className="text-xl font-bold text-emerald-400">R$ {renda.toLocaleString('pt-BR')}</div>
+            <div className="bg-white/5 backdrop-blur-md p-5 rounded-2xl border border-white/5 hover:bg-white/10 transition">
+                <div className="text-gray-500 text-[10px] font-bold uppercase mb-2 flex items-center gap-1.5"><ArrowUpRight size={14} className="text-emerald-500"/> Entrou</div>
+                <div className="text-2xl font-black text-emerald-400 truncate">R$ {renda.toLocaleString('pt-BR')}</div>
             </div>
-            <div className="bg-[#111] p-4 rounded-2xl border border-gray-800">
-                <div className="text-gray-500 text-xs font-bold uppercase mb-1 flex items-center gap-1"><ArrowDownLeft size={12} className="text-red-500"/> Saiu</div>
-                <div className="text-xl font-bold text-red-400">R$ {expenseTotal.toLocaleString('pt-BR')}</div>
+            <div className="bg-white/5 backdrop-blur-md p-5 rounded-2xl border border-white/5 hover:bg-white/10 transition">
+                <div className="text-gray-500 text-[10px] font-bold uppercase mb-2 flex items-center gap-1.5"><ArrowDownLeft size={14} className="text-red-500"/> Saiu</div>
+                <div className="text-2xl font-black text-red-400 truncate">R$ {expenseTotal.toLocaleString('pt-BR')}</div>
             </div>
           </div>
           
-          <div className="mt-6 z-10">
-             <div className="flex justify-between text-xs text-gray-400 mb-1"><span>Taxa de Economia</span><span>{savingsRate}%</span></div>
-             <div className="w-full bg-gray-900 h-2 rounded-full overflow-hidden border border-gray-800">
-                <div className={`h-full ${balance >= 0 ? 'bg-gradient-to-r from-cyan-600 to-blue-600' : 'bg-red-600'}`} style={{ width: `${Math.min(Math.abs(Number(savingsRate)), 100)}%` }}></div>
+          <div className="mt-8 z-10 bg-black/40 p-4 rounded-2xl border border-white/5">
+             <div className="flex justify-between text-xs text-gray-400 font-bold mb-2 uppercase tracking-wide">
+                 <span>Taxa de Economia</span>
+                 <span className={Number(savingsRate) >= 0 ? 'text-cyan-400' : 'text-red-400'}>{savingsRate}%</span>
+             </div>
+             <div className="w-full bg-gray-900 h-2.5 rounded-full overflow-hidden border border-gray-800">
+                <div className={`h-full transition-all duration-1000 ${balance >= 0 ? 'bg-gradient-to-r from-cyan-600 to-blue-500 shadow-[0_0_10px_rgba(8,145,178,0.5)]' : 'bg-red-600 shadow-[0_0_10px_rgba(220,38,38,0.5)]'}`} style={{ width: `${Math.min(Math.abs(Number(savingsRate)), 100)}%` }}></div>
              </div>
           </div>
-          <div className="absolute -right-10 -bottom-10 w-64 h-64 bg-cyan-600/5 rounded-full blur-3xl pointer-events-none group-hover:bg-cyan-600/10 transition duration-1000"></div>
+          <div className="absolute -right-20 -bottom-20 w-80 h-80 bg-cyan-600/10 rounded-full blur-3xl pointer-events-none group-hover:bg-cyan-600/20 transition duration-1000"></div>
         </div>
 
         {/* 2. CARD PRÓXIMAS CONTAS */}
-        <div className="col-span-1 md:col-span-1 md:row-span-2 bg-[#0f0f10] border border-gray-800 p-6 rounded-[32px] overflow-hidden flex flex-col justify-between">
+        <div className="col-span-1 md:col-span-1 md:row-span-2 bg-[#0a0a0a] border border-gray-800 p-6 rounded-[32px] overflow-hidden flex flex-col justify-between shadow-2xl">
             <div>
-                <h3 className="text-gray-400 text-sm font-bold uppercase mb-4 flex items-center gap-2"><CalendarDays size={16}/> Próximos Vencimentos</h3>
+                <h3 className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-6 flex items-center gap-2"><CalendarDays size={16} className="text-orange-500"/> Próximos Vencimentos</h3>
                 <div className="space-y-3">
-                    {sortedUpcoming.length === 0 && <div className="text-center text-gray-600 mt-10 text-sm">Nada pendente! 🎉</div>}
+                    {sortedUpcoming.length === 0 && (
+                        <div className="text-center flex flex-col items-center justify-center mt-12 opacity-50">
+                            <Target size={32} className="text-emerald-500 mb-3" />
+                            <p className="text-sm text-gray-400 font-bold">Nada pendente! 🎉</p>
+                        </div>
+                    )}
                     
                     {sortedUpcoming.map((t, idx) => (
-                        <div key={idx} className="bg-black border border-gray-800 p-3 rounded-xl flex justify-between items-center group hover:border-gray-600 transition">
-                            <div>
-                                <div className="text-white font-bold text-sm truncate w-24 md:w-28">{t.title}</div>
-                                <div className="text-[10px] text-gray-500 font-mono">Dia {t.day} • {t.category}</div>
+                        <div key={idx} className="bg-[#111] border border-gray-800/80 p-3.5 rounded-xl flex justify-between items-center group hover:border-gray-600 hover:bg-white/5 transition duration-300">
+                            <div className="flex-1 min-w-0 pr-3">
+                                <div className="text-white font-bold text-sm truncate">{t.title}</div>
+                                <div className="text-[10px] text-gray-500 font-mono mt-0.5">Dia {t.day} • {t.category}</div>
                             </div>
-                            <div className="text-right">
+                            <div className="text-right shrink-0">
                                 <div className="text-red-400 font-mono text-sm font-bold">R$ {t.amount.toLocaleString('pt-BR')}</div>
                             </div>
                         </div>
@@ -176,46 +241,61 @@ export default function BentoView({
             
             <button 
                 onClick={onOpenCalendar}
-                className="w-full mt-4 bg-gray-800 hover:bg-gray-700 hover:text-white text-gray-400 text-xs py-3 rounded-xl transition font-bold border border-gray-700 hover:border-gray-500"
+                className="w-full mt-6 bg-transparent hover:bg-gray-800 text-gray-400 hover:text-white text-xs py-3.5 rounded-xl transition duration-300 font-bold border border-gray-700/50 hover:border-gray-500"
             >
-                Ver Agenda Completa
+                Abrir Agenda Completa
             </button>
         </div>
 
         {/* 3. CARD INSIGHT (VILÃO) */}
-        <div className="col-span-1 md:col-span-1 md:row-span-1 bg-gradient-to-br from-purple-900/10 to-black border border-purple-500/20 p-6 rounded-[32px] flex flex-col justify-center relative overflow-hidden group hover:border-purple-500/40 transition">
-            <div className="absolute top-0 right-0 p-3 bg-purple-500/10 rounded-bl-2xl text-purple-400"><PieChart size={18}/></div>
-            <p className="text-gray-500 text-[10px] font-bold uppercase mb-1 tracking-widest">Maior Vilão</p>
-            <h2 className="text-xl font-bold text-white truncate">{topCategory || "Sem gastos"}</h2>
-            <p className="text-xs text-purple-400 mt-1">Categoria que mais consumiu</p>
-            <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-purple-500/10 rounded-full blur-2xl group-hover:bg-purple-500/20 transition"></div>
+        <div className="col-span-1 md:col-span-1 md:row-span-1 bg-gradient-to-br from-[#1a0b1f] to-black border border-purple-500/20 p-6 rounded-[32px] flex flex-col justify-center relative overflow-hidden group hover:border-purple-500/40 transition duration-500 shadow-2xl">
+            <div className="absolute top-0 right-0 p-4 bg-purple-500/10 rounded-bl-[32px] text-purple-400 group-hover:bg-purple-500/20 transition"><PieChart size={20}/></div>
+            <p className="text-gray-500 text-[10px] font-bold uppercase mb-2 tracking-widest flex items-center gap-2">Maior Vilão</p>
+            <h2 className="text-2xl font-black text-white truncate pr-6">{topCategory || "Sem gastos"}</h2>
+            <p className="text-xs text-purple-400/80 mt-1 font-medium">Categoria com maior custo</p>
+            <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-purple-500/10 rounded-full blur-3xl group-hover:bg-purple-500/20 transition duration-1000"></div>
         </div>
 
         {/* 4. CARD DÍVIDA TOTAL */}
-        <div className="col-span-1 md:col-span-1 md:row-span-1 bg-[#0f0f10] border border-gray-800 p-6 rounded-[32px] flex flex-col justify-between group hover:border-gray-700 transition">
-             <div><h3 className="text-gray-400 text-[10px] font-bold uppercase mb-1 flex items-center gap-2 tracking-widest"><CreditCard size={14}/> Dívida Futura Total</h3><p className="text-gray-600 text-[10px]">Soma de todas parcelas a vencer</p></div>
-             <div><h2 className="text-2xl font-bold text-white group-hover:text-purple-400 transition">R$ {totalInstallmentsValue.toLocaleString('pt-BR')}</h2></div>
+        <div className="col-span-1 md:col-span-1 md:row-span-1 bg-gradient-to-br from-[#111] to-black border border-gray-800 p-6 rounded-[32px] flex flex-col justify-between group hover:border-gray-700 transition duration-500 shadow-2xl">
+             <div>
+                 <h3 className="text-gray-400 text-[10px] font-bold uppercase mb-1 tracking-widest flex items-center gap-2"><CreditCard size={14} className="text-gray-500"/> Dívida Futura Total</h3>
+                 <p className="text-gray-600 text-[10px] font-medium">Soma de parcelas a vencer</p>
+             </div>
+             <div>
+                 <h2 className="text-3xl font-black text-white group-hover:text-cyan-400 transition duration-300 truncate">R$ {totalInstallmentsValue.toLocaleString('pt-BR')}</h2>
+             </div>
         </div>
 
         {/* 5. CARD ATENÇÃO (ROLLOVER) */}
         {hasDelayed ? (
-            <div className="col-span-1 md:col-span-2 md:row-span-1 bg-[#1a0505] border border-red-900/30 p-6 rounded-[32px] flex items-center justify-between animate-pulse">
-                <div className="flex items-center gap-4">
-                    <div className="bg-red-500/10 p-3 rounded-full text-red-500"><AlertTriangle size={24}/></div>
-                    <div><h3 className="text-red-400 font-bold">Ações Pendentes</h3><p className="text-red-500/60 text-xs">Existem itens em atraso ou stand-by.</p></div>
+            <div className="col-span-1 md:col-span-4 md:row-span-1 bg-gradient-to-r from-[#2a0808] to-[#110000] border border-red-900/50 p-6 md:px-10 rounded-[32px] flex flex-col md:flex-row items-center justify-between gap-6 shadow-2xl shadow-red-900/10">
+                <div className="flex items-center gap-5 w-full md:w-auto">
+                    <div className="bg-red-500/20 p-4 rounded-2xl text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.2)] animate-pulse shrink-0">
+                        <AlertTriangle size={28}/>
+                    </div>
+                    <div>
+                        <h3 className="text-red-400 font-black text-xl mb-1">Atenção Necessária</h3>
+                        <p className="text-red-500/80 text-sm font-medium">Existem itens em atraso precisando da sua ação.</p>
+                    </div>
                 </div>
                 <button 
                     onClick={onOpenRollover}
-                    className="bg-red-600 hover:bg-red-500 text-white px-6 py-2 rounded-xl text-sm font-bold shadow-lg shadow-red-900/20 transition hover:scale-105"
+                    className="w-full md:w-auto bg-red-600 hover:bg-red-500 text-white px-10 py-4 rounded-2xl text-sm font-black uppercase tracking-widest shadow-lg shadow-red-900/40 transition duration-300 hover:scale-[1.02] active:scale-95 shrink-0"
                 >
-                    Resolver
+                    Resolver Agora
                 </button>
             </div>
         ) : (
-            <div className="col-span-1 md:col-span-2 md:row-span-1 bg-[#051a05] border border-emerald-900/30 p-6 rounded-[32px] flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <div className="bg-emerald-500/10 p-3 rounded-full text-emerald-500"><Target size={24}/></div>
-                    <div><h3 className="text-emerald-400 font-bold">Tudo em Dia</h3><p className="text-emerald-500/60 text-xs">Nenhuma conta atrasada detectada.</p></div>
+            <div className="col-span-1 md:col-span-4 md:row-span-1 bg-gradient-to-r from-[#051a0d] to-[#020a05] border border-emerald-900/40 p-6 md:px-10 rounded-[32px] flex items-center justify-between shadow-2xl">
+                <div className="flex items-center gap-5">
+                    <div className="bg-emerald-500/20 p-4 rounded-2xl text-emerald-500 shrink-0">
+                        <Target size={28}/>
+                    </div>
+                    <div>
+                        <h3 className="text-emerald-400 font-black text-xl mb-1">Painel Limpo</h3>
+                        <p className="text-emerald-500/80 text-sm font-medium">Nenhuma conta atrasada detectada. Tudo sob controle!</p>
+                    </div>
                 </div>
             </div>
         )}

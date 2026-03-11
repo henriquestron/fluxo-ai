@@ -321,7 +321,7 @@ export default function FinancialDashboard() {
 
     const getReceiptForMonth = (item: any, month: string) => {
         const tag = `${month}/${selectedYear}`;
-        
+
         // 1. Tenta pegar pela Tag Mês/Ano exata (Ex: Mar/2026)
         if (item.receipts && item.receipts[tag]) {
             return item.receipts[tag];
@@ -552,7 +552,7 @@ export default function FinancialDashboard() {
                 r.due_day === dayNum &&
                 r.status !== 'delayed' &&
                 r.status !== 'standby' &&
-                !r.paid_months?.includes(currentPaymentTag) && 
+                !r.paid_months?.includes(currentPaymentTag) &&
                 !r.paid_months?.includes(currentMonthName) &&
                 !isFuture(r) // <-- Trava de futuro!
             ),
@@ -854,24 +854,32 @@ export default function FinancialDashboard() {
         installments.forEach(inst => {
             if (inst.status !== 'standby' && inst.status !== 'delayed') {
                 const { m: startMonth, y: startYear } = getStartData(inst);
+
+                // Pega a diferença de meses até o mês ATUAL (que o usuário está visualizando na aba)
                 const totalMonthsDiffUntilNow = ((selectedYear - startYear) * 12) + (currentMonthIdx - startMonth);
 
-                for (let i = 0; i < totalMonthsDiffUntilNow; i++) {
+                // 🟢 TRAVA DE FUTURO: Se a conta começa no futuro, pula fora!
+                if (totalMonthsDiffUntilNow < 0) return;
+
+                for (let i = 0; i <= totalMonthsDiffUntilNow; i++) {
                     const instNum = 1 + (inst.current_installment || 0) + i;
+
+                    // Só cobra se a parcela atual for válida (entre 1 e o total de parcelas)
                     if (instNum >= 1 && instNum <= inst.installments_count) {
                         const absMonthIndex = (startMonth + i);
                         const pYear = startYear + Math.floor(absMonthIndex / 12);
                         const pMonthName = MONTHS[absMonthIndex % 12];
                         const paymentTag = `${pMonthName}/${pYear}`;
 
+                        // Verifica se NÃO está paga E se NÃO está em stand-by
                         if (!isPaid(inst, paymentTag) && !inst.standby_months?.includes(paymentTag)) {
                             pastDueList.push({
                                 ...inst,
-                                title: `${inst.title} (${instNum}/${inst.installments_count})`, // Já coloca o número da parcela pro usuário saber!
+                                title: `${inst.title} (${instNum}/${inst.installments_count})`,
                                 _source: 'installments',
                                 _pastMonth: pMonthName,
                                 _amount: Number(inst.value_per_month),
-                                _paymentTag: paymentTag // Guarda a etiqueta para a hora de pagar!
+                                _paymentTag: paymentTag
                             });
                         }
                     }
@@ -885,12 +893,16 @@ export default function FinancialDashboard() {
                 const { m: startMonth, y: startYear } = getStartData(rec);
                 const totalMonthsSinceStart = ((selectedYear - startYear) * 12) + (currentMonthIdx - startMonth);
 
-                for (let i = 0; i < totalMonthsSinceStart; i++) {
+                // 🟢 TRAVA DE FUTURO: Se a conta começa no futuro, pula fora!
+                if (totalMonthsSinceStart < 0) return;
+
+                for (let i = 0; i <= totalMonthsSinceStart; i++) {
                     const absMonthIndex = startMonth + i;
                     const checkYear = startYear + Math.floor(absMonthIndex / 12);
                     const checkMonthName = MONTHS[absMonthIndex % 12];
                     const checkTag = `${checkMonthName}/${checkYear}`;
 
+                    // Verifica se NÃO está paga, NÃO foi pulada E NÃO está em stand-by
                     if (!isPaid(rec, checkTag) && !rec.skipped_months?.includes(checkMonthName) && !rec.standby_months?.includes(checkTag)) {
                         pastDueList.push({
                             ...rec,
@@ -1308,8 +1320,8 @@ export default function FinancialDashboard() {
         let originalItem: any = null;
         if (editingId) {
             originalItem = transactions.find(t => t.id === editingId) ||
-                           installments.find(i => i.id === editingId) ||
-                           recurring.find(r => r.id === editingId);
+                installments.find(i => i.id === editingId) ||
+                recurring.find(r => r.id === editingId);
         }
 
         let updatedReceipts = { ...(originalItem?.receipts || {}) };
@@ -1349,19 +1361,19 @@ export default function FinancialDashboard() {
 
             // --- DESPESAS AVULSAS ---
             if (formMode === 'expense') {
-                return { 
-                    table: 'transactions', 
-                    data: { 
-                        ...base, 
-                        amount: amountVal, 
-                        type: 'expense', 
-                        date: dateStringBR, 
-                        category: formData.category, 
-                        target_month: formData.targetMonth, 
-                        status: 'active', 
-                        created_at: safeCreatedAt, 
-                        is_paid: editingId && originalItem !== undefined ? originalItem.is_paid : true 
-                    } 
+                return {
+                    table: 'transactions',
+                    data: {
+                        ...base,
+                        amount: amountVal,
+                        type: 'expense',
+                        date: dateStringBR,
+                        category: formData.category,
+                        target_month: formData.targetMonth,
+                        status: 'active',
+                        created_at: safeCreatedAt,
+                        is_paid: editingId && originalItem !== undefined ? originalItem.is_paid : true
+                    }
                 };
             }
 
@@ -1377,7 +1389,7 @@ export default function FinancialDashboard() {
                         ...base,
                         total_value: totalValue,
                         installments_count: qtd,
-                        current_installment: editingId && originalItem ? originalItem.current_installment : 0, 
+                        current_installment: editingId && originalItem ? originalItem.current_installment : 0,
                         value_per_month: valuePerMonth,
                         due_day: parseInt(dayValue) || 10,
                         status: 'active',
@@ -1387,18 +1399,18 @@ export default function FinancialDashboard() {
             }
 
             // --- DESPESAS FIXAS ---
-            return { 
-                table: 'recurring', 
-                data: { 
-                    ...base, 
-                    value: amountVal, 
-                    due_day: parseInt(dayValue) || 10, 
-                    category: formData.category || 'Fixa', 
-                    type: 'expense', 
-                    status: 'active', 
-                    start_date: editingId && originalItem?.start_date ? originalItem.start_date : isoDateForDatabase, 
-                    created_at: safeCreatedAt 
-                } 
+            return {
+                table: 'recurring',
+                data: {
+                    ...base,
+                    value: amountVal,
+                    due_day: parseInt(dayValue) || 10,
+                    category: formData.category || 'Fixa',
+                    type: 'expense',
+                    status: 'active',
+                    start_date: editingId && originalItem?.start_date ? originalItem.start_date : isoDateForDatabase,
+                    created_at: safeCreatedAt
+                }
             };
         };
 
@@ -1699,13 +1711,13 @@ export default function FinancialDashboard() {
     // 🟢 MÁQUINA DO TEMPO (EFEITO CASCATA REAL): Simula o extrato exato de cada mês
     for (let i = 0; i < currentIndex; i++) {
         const pastData = getMonthData(MONTHS[i]);
-        
+
         // O fechamento do mês é o saldo gerado no mês + o saldo (positivo ou negativo) que veio do passado
         const fechamentoDoMes = pastData.balance + previousSurplus;
-        
+
         // 🚀 A MÁGICA: Agora ele carrega TUDO para o mês seguinte!
         // Se sobrou, vai positivo. Se faltou (cheque especial), vai negativo.
-        previousSurplus = fechamentoDoMes; 
+        previousSurplus = fechamentoDoMes;
     }
 
     const displayBalance = currentMonthData.balance + previousSurplus;
@@ -2238,6 +2250,7 @@ export default function FinancialDashboard() {
                             onOpenCalendar={() => setCurrentLayout('calendar')}
                             // ✅ Ajustado para o nome correto da sua função:
                             onOpenRollover={() => setIsRolloverModalOpen(true)}
+                            pastDueCount={pastDueItems.length}
                         />
                     )}
 
