@@ -7,7 +7,7 @@ import {
     Mail, Loader2, Lock, BarChart3, Search, Target, Upload, FileText, ExternalLink,
     Users, ChevronDown, UserPlus, Briefcase, HelpCircle, Star, Zap, Shield, Palette,
     Layout, MousePointerClick, FolderPlus, Layers, FileSpreadsheet, Wallet, Landmark, Rocket, Paperclip, ChevronRight, ChevronLeft,
-    ShoppingCart, Home, Car, Utensils, GraduationCap, HeartPulse, Plane, Gamepad2, Smartphone, Calculator
+    ShoppingCart, Home, Car, Utensils, GraduationCap, HeartPulse, Plane, Gamepad2, Smartphone, Calculator, FileUp
 }
     from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -33,6 +33,11 @@ import GoalsView from '@/components/dashboard/GoalsView';
 import TabNavigation from '@/components/dashboard/TabNavigation';
 import YearSelector from '@/components/dashboard/YearSelector';
 import CalculatorModal from '@/components/dashboard/CalculatorModal';
+import OnboardingTutorial from '@/components/dashboard/OnboardingTutorial';
+import ImportModal from '@/components/dashboard/ImportModal'; // Ajuste o caminho se precisar
+
+
+
 
 // COMPONENTES
 import StandardView from '@/components/dashboard/StandardView';
@@ -43,6 +48,7 @@ import CalendarView from '@/components/dashboard/CalendarView';
 import GoalModal from '@/components/dashboard/GoalModal'; // <--- ADICIONE ISSO
 
 import { Transaction, Installment, Recurring, Goal, ClientUser } from '@/types';
+
 
 
 export default function FinancialDashboard() {
@@ -71,7 +77,8 @@ export default function FinancialDashboard() {
     const [newProfileName, setNewProfileName] = useState('');
     // Adicione junto com os outros states (ex: perto de const [isAiLoading, setIsAiLoading] = useState(false);)
     const [isSimulationMode, setIsSimulationMode] = useState(false);
-
+    const [isImportOpen, setIsImportOpen] = useState(false);
+    const [isTutorialOpen, setIsTutorialOpen] = useState(false);
     // --- MODAIS ---
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [isCreditCardModalOpen, setIsCreditCardModalOpen] = useState(false); // <--- ESTADO NOVO AQUI
@@ -154,6 +161,8 @@ export default function FinancialDashboard() {
             default: return 'bg-[#050505] text-gray-100 selection:bg-cyan-500 selection:text-black';
         }
     };
+
+    
     const runTour = () => {
         // Verifica se a biblioteca driver.js foi carregada
         const driverLib = (window as any).driver?.js?.driver;
@@ -270,6 +279,7 @@ export default function FinancialDashboard() {
                 }
             }
         ];
+  
 
 
         // --- 2. LÓGICA DE MONTAGEM ---
@@ -2108,6 +2118,8 @@ export default function FinancialDashboard() {
                 setIsCalculatorOpen={setIsCalculatorOpen}
                 handleRemoveClient={handleRemoveClient}
                 client={viewingAs}
+                setIsImportOpen={setIsImportOpen}
+                setIsTutorialOpen={setIsTutorialOpen}
             />
             <TabNavigation
                 activeSection={activeSection}
@@ -2115,8 +2127,18 @@ export default function FinancialDashboard() {
                 goalsCount={goals.length}
                 onOpenAI={() => setIsAIOpen(true)}
             />
-
-
+            <ImportModal
+                isOpen={isImportOpen}
+                onClose={() => setIsImportOpen(false)}
+                userId={getActiveUserId() || user?.id} // Ajuste se seus nomes de variável forem diferentes
+                workspaceId={currentWorkspace?.id}     // Ajuste se seus nomes de variável forem diferentes
+                onSuccess={() => loadData(getActiveUserId(), currentWorkspace?.id)}
+                supabase={supabase}
+            />
+            <OnboardingTutorial
+                isOpen={isTutorialOpen}
+                onClose={() => setIsTutorialOpen(false)}
+            />
 
 
             {/* --- NOVO CARD DE PENDÊNCIAS (SÓ APARECE SE TIVER DÍVIDA) --- */}
@@ -2344,6 +2366,7 @@ export default function FinancialDashboard() {
                     handleDeleteGoal={handleDeleteGoal}
                 />
             )}
+
 
             {/* 🥶 MODAL DE ESCOLHA DO STAND-BY */}
             {standbyModal && standbyModal.isOpen && (

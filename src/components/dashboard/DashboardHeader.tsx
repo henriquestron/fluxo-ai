@@ -2,10 +2,9 @@ import React, { useState } from 'react';
 import {
     ShieldCheck, Briefcase, User, UserPlus, BarChart3, FileSpreadsheet,
     Lock, HelpCircle, ChevronDown, CreditCard, Smartphone, Palette,
-    LogOut, Sparkles, Plus, Search,Calculator,
-    Trash2
+    LogOut, Sparkles, Plus, Search, Calculator, Trash2, FileUp // 🟢 Adicionei o FileUp aqui
 } from 'lucide-react';
-import NotificationBell from '@/components/dashboard/NotificationBell'; // Ajuste o caminho se necessário!
+import NotificationBell from '@/components/dashboard/NotificationBell';
 
 interface DashboardHeaderProps {
     user: any;
@@ -23,13 +22,17 @@ interface DashboardHeaderProps {
     whatsappEnabled: boolean;
     toggleWhatsappNotification: () => void;
     setIsCustomizationOpen: (v: boolean) => void;
-    handleCheckout: (plan: 'START' | 'PREMIUM' | 'PRO' | 'AGENT') => void; handleLogout: () => void;
+    handleCheckout: (plan: 'START' | 'PREMIUM' | 'PRO' | 'AGENT') => void; 
+    handleLogout: () => void;
     setIsAIOpen: (v: boolean) => void;
     setIsCreditCardModalOpen: (v: boolean) => void;
     openNewTransactionModal: () => void;
     setIsCalculatorOpen: (isOpen: boolean) => void;
     handleRemoveClient: (client: any) => void;
+    setIsTutorialOpen: (v: boolean) => void;
+    
     client: any;
+    setIsImportOpen: (v: boolean) => void; // 🟢 Propriedade nova para o Modal de Importação
 }
 
 export default function DashboardHeader({
@@ -37,7 +40,8 @@ export default function DashboardHeader({
     setIsHistoryOpen, setIsExportModalOpen, openPricingModal, runTour,
     setIsProfileModalOpen, handleManageSubscription, whatsappEnabled, toggleWhatsappNotification,
     setIsCustomizationOpen, handleCheckout, handleLogout,
-    setIsAIOpen, setIsCreditCardModalOpen, openNewTransactionModal, setIsCalculatorOpen,handleRemoveClient, client
+    setIsAIOpen, setIsCreditCardModalOpen, openNewTransactionModal, setIsCalculatorOpen,handleRemoveClient, client,
+    setIsImportOpen, setIsTutorialOpen // 🟢 Recebendo a propriedade
 }: DashboardHeaderProps) {
 
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -96,9 +100,25 @@ export default function DashboardHeader({
                             <FileSpreadsheet size={20} />
                             {userPlan === 'free' && <Lock size={10} className="absolute top-2 right-2 text-amber-500" />}
                         </button>
-                        <button onClick={runTour} className="h-10 w-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition">
-                            <HelpCircle size={20} />
+                        {/* 🟢 O NOVO BOTÃO DE IMPORTAR (ESTILO CALCULADORA COM SELO BETA) */}
+                        <button 
+                            id="btn-import" 
+                            onClick={() => setIsImportOpen(true)}
+                            className="relative h-10 w-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-emerald-400 hover:bg-gray-800 transition"
+                            title="Importar Contas Mágica"
+                        >
+                            <FileUp size={20} />
+                            <span className="absolute -top-1.5 -right-1 bg-gradient-to-r from-emerald-500 to-cyan-500 text-black text-[7px] font-black px-1 py-px rounded uppercase tracking-tighter shadow-lg border border-emerald-400">
+                                BETA
+                            </span>
                         </button>
+                        {/*<button 
+                            onClick={() => setIsTutorialOpen(true)} // 🟢 ABRINDO O NOVO TUTORIAL AQUI
+                            className="h-10 w-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition" 
+                            title="Ver Tutorial em Vídeo"
+                        >
+                            <HelpCircle size={20} />
+                        </button> */}
                         <button
                                 onClick={() => setIsCalculatorOpen(true)}
                                 className="h-10 w-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition"
@@ -111,9 +131,8 @@ export default function DashboardHeader({
                     <div className="hidden xl:block w-px h-8 bg-gray-800 mx-1"></div>
 
                     <div className="flex items-center gap-2 pl-0 xl:pl-2 xl:border-none">
-                        {/* Importante: NotificationBell precisa existir no projeto */}
                         <NotificationBell userId={user.id} />
-
+                        
                         {/* MENU DO USUÁRIO (DROPDOWN) */}
                         <div id="btn-menu" className="relative z-50">
                             <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className={`h-11 px-3 xl:px-4 bg-gray-900 border border-gray-800 rounded-xl hover:bg-gray-800 flex items-center justify-center gap-2 transition ${isUserMenuOpen ? 'ring-2 ring-cyan-500/50 border-cyan-500/50' : ''}`}>
@@ -166,8 +185,11 @@ export default function DashboardHeader({
                     </div>
                 </div>
 
-                {/* GRUPO 2: Ações Principais (IA, Fatura, Novo) */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 xl:flex gap-2 xl:gap-3 w-full xl:w-auto order-2 xl:order-none">
+                {/* GRUPO 2: Ações Principais (Importar, IA, Fatura, Novo) */}
+                {/* 🟢 Ajustei o grid responsivo para caber 4 botões! */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 xl:flex gap-2 xl:gap-3 w-full xl:w-auto order-2 xl:order-none">
+                    
+
                     <button id="btn-ai" onClick={() => setIsAIOpen(true)} className={`h-11 px-3 xl:px-5 rounded-xl font-bold transition flex items-center justify-center gap-2 text-sm shadow-lg border border-white/5 whitespace-nowrap ${['premium', 'pro', 'agent', 'admin'].includes(userPlan) ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white hover:brightness-110' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
                         <Sparkles size={16} className={['premium', 'pro', 'agent', 'admin'].includes(userPlan) ? "text-cyan-200 fill-cyan-200" : ""} />
                         {['premium', 'pro', 'agent', 'admin'].includes(userPlan) ? 'Aliado IA' : 'IA Lite'}

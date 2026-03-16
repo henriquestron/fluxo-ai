@@ -412,6 +412,8 @@ export default function StandardView({
 
                     <div className="bg-[#0f0f10] border border-gray-800/50 rounded-3xl overflow-hidden max-h-[600px] flex flex-col">
                         <div className="overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent">
+                            
+                            {/* RENDA FIXA */}
                             <div className="bg-emerald-900/10 border-b border-emerald-500/20 p-3">
                                 <p className="text-[10px] uppercase font-bold text-emerald-500 tracking-wider mb-2 ml-1">Renda Fixa</p>
                                 {activeRecurring.filter(r => r.type === 'income').map(item => {
@@ -431,8 +433,6 @@ export default function StandardView({
                                                 <p className={`font-mono font-bold text-sm ${isSkipped ? 'text-gray-500' : 'text-emerald-400'}`}>
                                                     R$ {Number(item.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                                 </p>
-
-                                                {/* 🟢 MÁGICA AQUI: Os botões de ação que estavam faltando! */}
                                                 <div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                                                     <button onClick={() => onToggleDelay('recurring', item)} title={isSkipped ? "Voltar salário" : "Pular este mês"} className="text-gray-500 hover:text-orange-400">
                                                         <Clock size={12} />
@@ -450,6 +450,7 @@ export default function StandardView({
                                 })}
                             </div>
 
+                            {/* CONTAS A PAGAR */}
                             <div className="p-2">
                                 <p className="text-[10px] uppercase font-bold text-gray-500 tracking-wider mb-2 mt-2 ml-2">Contas a Pagar</p>
                                 {activeRecurring.filter(r => r.type === 'expense').length === 0 ? (
@@ -463,6 +464,7 @@ export default function StandardView({
 
                                         return (
                                             <div key={item.id} className={`group p-3 rounded-xl border mb-2 transition flex items-center justify-between ${isSkipped ? 'border-dashed border-gray-800 opacity-50 bg-transparent' : isPaid ? 'bg-gray-900/50 border-gray-800' : 'bg-gray-800/30 border-gray-700 hover:border-gray-600'}`}>
+                                                
                                                 <div className="flex items-center gap-3">
                                                     <div onClick={() => onTogglePaidMonth('recurring', item)} className={`cursor-pointer w-10 h-10 rounded-xl flex items-center justify-center transition-all ${isPaid ? 'bg-emerald-500/20 text-emerald-500' : 'bg-black text-gray-400 group-hover:text-white'}`}>
                                                         {isPaid ? <CheckCircle2 size={18} /> : <Icon size={18} />}
@@ -471,8 +473,6 @@ export default function StandardView({
                                                         <p className={`font-bold text-sm ${isPaid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
                                                         <p className="text-[10px] text-gray-500 flex items-center gap-1">
                                                             Vence dia {item.due_day} {isSkipped && <span className="text-orange-500 font-bold ml-1">(Pular)</span>}
-
-                                                            {/* 🟢 MÁGICA AQUI: Clipe de papel das Contas Fixas */}
                                                             {getReceipt(item, activeTab) && (
                                                                 <span title="Comprovante Anexado" className="flex items-center ml-1 text-cyan-500">
                                                                     <Paperclip size={12} />
@@ -481,18 +481,25 @@ export default function StandardView({
                                                         </p>
                                                     </div>
                                                 </div>
-                                                <div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                                                    <button onClick={() => onToggleDelay('recurring', item)} title="Stand-by" className="text-gray-500 hover:text-orange-400"><Clock size={12} /></button>
-                                                    <button onClick={() => onEdit(item, 'fixed_expense')} className="text-gray-500 hover:text-cyan-400"><Pencil size={12} /></button>
-                                                    <button onClick={() => onDelete('recurring', item.id)} className="text-gray-500 hover:text-red-400"><Trash2 size={12} /></button>
+                                                
+                                                {/* 🟢 O VALOR CORRIGIDO APARECE AQUI AGORA */}
+                                                <div className="text-right">
+                                                    <p className={`font-mono font-bold text-sm ${isPaid ? 'text-gray-500 line-through' : isSkipped ? 'text-gray-500' : 'text-white'}`}>
+                                                        R$ {Number(item.value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                                    </p>
+                                                    <div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                                                        <button onClick={() => onToggleDelay('recurring', item)} title="Stand-by" className="text-gray-500 hover:text-orange-400"><Clock size={12} /></button>
+                                                        <button onClick={() => onEdit(item, 'fixed_expense')} className="text-gray-500 hover:text-cyan-400"><Pencil size={12} /></button>
+                                                        <button onClick={() => onDelete('recurring', item.id)} className="text-gray-500 hover:text-red-400"><Trash2 size={12} /></button>
 
-                                                    {/* 🟢 Botão verde para abrir o comprovante */}
-                                                    {getReceipt(item, activeTab) && (
-                                                        <a href={getReceipt(item, activeTab)} target="_blank" className="text-emerald-500 hover:text-emerald-300" title="Ver Recibo">
-                                                            <FileText size={12} />
-                                                        </a>
-                                                    )}
+                                                        {getReceipt(item, activeTab) && (
+                                                            <a href={getReceipt(item, activeTab)} target="_blank" className="text-emerald-500 hover:text-emerald-300" title="Ver Recibo">
+                                                                <FileText size={12} />
+                                                            </a>
+                                                        )}
+                                                    </div>
                                                 </div>
+
                                             </div>
                                         );
                                     })
@@ -501,7 +508,7 @@ export default function StandardView({
                         </div>
                     </div>
                 </div>
+                </div>
             </div>
-        </div>
     );
 }
