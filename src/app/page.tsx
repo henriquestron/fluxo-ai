@@ -162,7 +162,7 @@ export default function FinancialDashboard() {
         }
     };
 
-    
+
     const runTour = () => {
         // Verifica se a biblioteca driver.js foi carregada
         const driverLib = (window as any).driver?.js?.driver;
@@ -279,7 +279,7 @@ export default function FinancialDashboard() {
                 }
             }
         ];
-  
+
 
 
         // --- 2. LÓGICA DE MONTAGEM ---
@@ -1748,8 +1748,8 @@ export default function FinancialDashboard() {
                 receita_mensal: currentMonthData.income,
                 despesa_mensal: currentMonthData.expenseTotal,
                 transacoes_do_mes: transactions.slice(0, 15).map(t => ({ ...t, date: t.date })),
-                contas_fixas: recurring.filter(r => r.status === 'active'),
-                parcelamentos_ativos: installments.filter(i => i.status === 'active'),
+                contas_fixas: recurring.filter(r => r.status === 'active' || r.status === 'standby'),
+                parcelamentos_ativos: installments.filter(i => i.status === 'active' || i.status === 'standby'),
                 mes_visualizado: activeTab,
                 ano_visualizado: selectedYear,
                 user_plan: userPlan,
@@ -1794,45 +1794,38 @@ export default function FinancialDashboard() {
                     // Limpa crases de markdown do bloco de código
                     let cleanJson = jsonMatch[0].replace(/```json/g, '').replace(/```/g, '').trim();
                     const commands = JSON.parse(cleanJson);
-
+                    console.log("🕵️‍♂️ COMANDO DA IA:", commands);
                     if (Array.isArray(commands)) {
                         let actionsPerformed = 0;
                         let lastSavedItemName = "";
                         const activeId = getActiveUserId();
+                        let analysisTextGenerated = ""; // 🟢 A GAVETA PARA GUARDAR O TEXTO DA ANÁLISE
 
                         for (const cmd of commands) {
                             if (cmd.action === 'add') {
-                                // 1. TRATAMENTO DE DATA E MÊS
                                 // 1. TRATAMENTO DE DATA E MÊS (Com Tradutor de Letras)
                                 let finalDate = cmd.data.date;
                                 const mapMes: any = { 'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04', 'Mai': '05', 'Jun': '06', 'Jul': '07', 'Ago': '08', 'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12' };
 
                                 if (finalDate) {
-                                    // Separa o dia, mês e ano
                                     const parts = finalDate.split('/');
                                     if (parts.length >= 2) {
-                                        let d = parts[0].padStart(2, '0'); // Garante que o dia tenha 2 casas (ex: 03)
+                                        let d = parts[0].padStart(2, '0');
                                         let m = parts[1];
                                         let y = parts.length === 3 ? parts[2] : selectedYear;
 
-                                        // Se a IA mandou o mês com letras (Ex: 'Mar' ou 'MAR')
                                         if (isNaN(Number(m))) {
-                                            // Converte para o padrão 'Mar' e pega o número correspondente
                                             const mFormatado = m.charAt(0).toUpperCase() + m.slice(1).toLowerCase();
                                             m = mapMes[mFormatado] || '01';
                                         } else {
-                                            // Se já for número, só garante as 2 casas (ex: '3' vira '03')
                                             m = String(m).padStart(2, '0');
                                         }
-
                                         finalDate = `${d}/${m}/${y}`;
                                     }
                                 } else if (cmd.data.target_month) {
-                                    // Se não veio data, monta usando o dia 01 do mês alvo
                                     finalDate = `01/${mapMes[cmd.data.target_month] || '01'}/${selectedYear}`;
                                 }
 
-                                // 2. WHITELIST BÁSICA (Apenas os campos universais)
                                 const safeData: any = {
                                     user_id: activeId,
                                     context: currentWorkspace?.id,
@@ -1841,13 +1834,11 @@ export default function FinancialDashboard() {
                                     category: cmd.data.category || 'Outros',
                                     icon: cmd.data.icon || 'dollar-sign',
                                     status: cmd.data.status || 'active',
-                                    is_paid: cmd.data.is_paid === true // Apenas marca como pago se a IA disser explicitamente que é true. Qualquer outro valor (ex: "true", "yes", "1") será considerado como não pago para evitar erros.
+                                    is_paid: cmd.data.is_paid === true 
                                 };
 
-                                // Pega o valor independente do nome que a IA mandar
                                 const extractedValue = parseFloat(cmd.data.amount) || parseFloat(cmd.data.value) || 0;
 
-                                // 3. CAMPOS ESPECÍFICOS POR TABELA
                                 if (cmd.table === 'transactions') {
                                     safeData.amount = extractedValue;
                                     safeData.date = finalDate;
@@ -1862,19 +1853,13 @@ export default function FinancialDashboard() {
 
                                     safeData.total_value = cmd.data.total_value || (perMonth * qtd);
                                     safeData.installments_count = qtd;
-                                    safeData.current_installment = 0; // Sempre 0!
+                                    safeData.current_installment = 0;
                                     safeData.value_per_month = perMonth;
                                     safeData.due_day = parseInt(cmd.data.due_day) || 10;
                                     safeData.payment_method = cmd.data.payment_method || 'outros';
                                     safeData.paid_months = [];
 
-                                    // 🚫 IMPORTANTE: Remove campos que a tabela Installments não tem
-                                    delete safeData.start_date;
-                                    delete safeData.amount;
-                                    delete safeData.date;
-                                    delete safeData.target_month;
-                                    delete safeData.category; // <--- ADICIONAMOS ISSO AQUI!
-                                    delete safeData.type;     // <--- E ISSO AQUI TAMBÉM!
+                                    delete safeData.start_date; delete safeData.amount; delete safeData.date; delete safeData.target_month; delete safeData.category; delete safeData.type;
                                 }
 
                                 if (cmd.table === 'recurring') {
@@ -1882,12 +1867,9 @@ export default function FinancialDashboard() {
                                     safeData.due_day = parseInt(cmd.data.due_day) || 10;
                                     safeData.start_date = finalDate;
 
-                                    // 🚫 Remove campos inúteis
-                                    delete safeData.amount;
-                                    delete safeData.date;
+                                    delete safeData.amount; delete safeData.date;
                                 }
 
-                                // 4. INSERÇÃO NO SUPABASE
                                 const { error } = await supabase.from(cmd.table).insert([safeData]);
 
                                 if (!error) {
@@ -1897,19 +1879,26 @@ export default function FinancialDashboard() {
                                     console.error("Erro detalhado Supabase:", JSON.stringify(error, null, 2));
                                 }
                             }
+                            
+                            // 🟢 A MÁGICA ESTÁ AQUI: SE A AÇÃO FOR 'ANALYZE', GUARDA O TEXTO!
+                            else if (cmd.action === 'analyze') {
+                                analysisTextGenerated = cmd.data.analysis_text;
+                            }
                         }
 
-                        // Substitui COMPLETAMENTE a resposta da IA se uma ação deu certo
+                        // 🟢 O CÓDIGO FINAL QUE DECIDE O QUE MOSTRAR NA TELA
                         if (actionsPerformed > 0) {
                             aiResponseText = `✅ Pronto! Lançado: **${lastSavedItemName}**. O que mais precisa?`;
                             if (user && activeId) loadData(activeId, currentWorkspace?.id);
+                        } else if (analysisTextGenerated !== "") {
+                            // SE TEM ANÁLISE, MOSTRA A ANÁLISE!
+                            aiResponseText = analysisTextGenerated;
                         } else {
-                            aiResponseText = `Ops, entendi o que você queria, mas deu um erro ao tentar salvar no banco de dados.`;
+                            aiResponseText = `Ops, entendi o que você queria, mas deu um erro ao tentar executar a ação.`;
                         }
                     }
                 } catch (e) {
                     console.error("Erro ao analisar JSON da IA", e);
-                    // Se a IA mandou um JSON quebrado ou não obedeceu, não joga o JSON na tela
                     aiResponseText = "Entendi o seu pedido, mas tive uma falha técnica ao tentar formatar a ação. Pode tentar falar de outro jeito?";
                 }
             }

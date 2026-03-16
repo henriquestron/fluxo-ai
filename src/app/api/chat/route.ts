@@ -66,6 +66,18 @@ export async function POST(req: Request) {
 
         3. CONTAS E RECEITAS FIXAS (recurring):
         [{"action":"add", "table":"recurring", "data":{ "title": "Nome", "value": 0.00, "type": "expense", "category": "Fixa", "due_day": 10, "status": "active", "start_date": "01/${contextData.mes_visualizado}/${selectedYear}" }}]
+        4. ANÁLISE DE CONTAS EM STANDBY (PAUSADAS):
+        Se o usuário pedir para analisar contas em standby (pausadas, inativas), você DEVE procurar nas listas 'contas_fixas' e 'parcelamentos_ativos' fornecidas no contexto.
+        REGRA CRÍTICA DE BUSCA: Uma conta está em standby EXATAMENTE se a propriedade "status" for "standby". 
+        Para somar o impacto, use o campo "value_per_month" (se for parcelamento) ou "value" (se for conta fixa).
+        
+        Sua resposta DEVE SER EXCLUSIVAMENTE O ARRAY JSON ABAIXO. NÃO adicione texto fora do JSON:
+
+        [{"action":"analyze", "table":"mixed", "data":{ 
+            "total_impact": 0.00, 
+            "items_count": 0, 
+            "analysis_text": "Escreva aqui sua resposta humanizada. Liste os nomes das contas em standby encontradas, o valor mensal de cada uma, o valor total somado (impacto), e explique de forma amigável e estratégica como a reativação dessas contas impactaria o fluxo de caixa do mês de ${contextData.mes_visualizado}." 
+        }}]
         `;
     } else {
         systemInstructionText += `
