@@ -112,13 +112,13 @@ export default function DashboardHeader({
                                 BETA
                             </span>
                         </button>
-                        {/*<button 
+                        {<button 
                             onClick={() => setIsTutorialOpen(true)} // 🟢 ABRINDO O NOVO TUTORIAL AQUI
                             className="h-10 w-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition" 
                             title="Ver Tutorial em Vídeo"
                         >
                             <HelpCircle size={20} />
-                        </button> */}
+                        </button> }
                         <button
                                 onClick={() => setIsCalculatorOpen(true)}
                                 className="h-10 w-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition"
