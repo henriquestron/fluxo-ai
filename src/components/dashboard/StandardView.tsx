@@ -5,7 +5,7 @@ import {
     ShoppingCart, Home, Car, Utensils, Zap, GraduationCap,
     HeartPulse, Plane, Gamepad2, Smartphone, Check, Clock,
     FileText, Trash2, Pencil, List, AlertTriangle,
-    ChevronDown, ChevronUp,
+    ChevronDown, ChevronUp, X,RotateCcw, 
     Paperclip
 } from 'lucide-react';
 import { Transaction, Installment, Recurring } from '@/types';
@@ -29,6 +29,9 @@ const BANK_STYLES: any = {
     'money': { label: 'Dinheiro', color: 'bg-emerald-600', bg: 'bg-emerald-900/10', border: 'border-emerald-500/30', text: 'text-emerald-400', icon: null },
     'outros': { label: 'Outros', color: 'bg-gray-700', bg: 'bg-gray-800/50', border: 'border-gray-700', text: 'text-gray-400', icon: null },
 };
+
+// 🟢 ESTADOS PARA A EXCLUSÃO EM MASSA
+
 
 // --- COMPONENTE CARD ---
 const Card = ({ title, value, icon: Icon, type, extraLabel, subValueLabel, elementId }: any) => {
@@ -114,7 +117,27 @@ export default function StandardView({
     const dateFilter = `${monthMap[activeTab]}/${selectedYear}`;
 
     // 🟢 NOVA TAG: Para verificar o mês atual no array de Stand-by
+    const [selectedItems, setSelectedItems] = useState<{ id: any, table: string }[]>([]);
 
+    const toggleSelection = (id: any, table: string) => {
+        setSelectedItems(prev => {
+            const exists = prev.find(item => item.id === id && item.table === table);
+            if (exists) {
+                return prev.filter(item => !(item.id === id && item.table === table)); // Remove se já tava marcado
+            }
+            return [...prev, { id, table }]; // Adiciona se não tava marcado
+        });
+    };
+
+    const handleBulkDelete = async () => {
+        if (confirm(`Tem certeza que deseja excluir as ${selectedItems.length} contas selecionadas?`)) {
+            // Chama a sua função onDelete para cada item selecionado
+            for (const item of selectedItems) {
+                await onDelete(item.table, item.id);
+            }
+            setSelectedItems([]); // Limpa a seleção depois de apagar
+        }
+    };
 
     // Helper Unificado de Datas
     const getStartData = (item: any) => {
@@ -271,8 +294,23 @@ export default function StandardView({
                 {hasDelayed && (<Card title="Em Stand-by" value={currentMonthData.delayedTotal} icon={Clock} type="warning" subValueLabel="Valores Adiados" />)}
             </div>
 
+            {/* 🟢 BARRA FLUTUANTE DE AÇÃO EM MASSA */}
+            {selectedItems.length > 0 && (
+                <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-full shadow-[0_10px_40px_rgba(220,38,38,0.4)] z-50 flex items-center gap-4 animate-in slide-in-from-bottom-10 zoom-in-95 duration-300 border border-red-500">
+                    <span className="font-bold text-sm">{selectedItems.length} contas selecionadas</span>
+                    <div className="w-px h-5 bg-red-400"></div>
+                    <button onClick={handleBulkDelete} className="font-bold text-sm flex items-center gap-2 hover:text-red-200 transition">
+                        <Trash2 size={16} /> Excluir Tudo
+                    </button>
+                    <button onClick={() => setSelectedItems([])} className="p-1.5 hover:bg-red-700 rounded-full transition ml-2" title="Cancelar seleção">
+                        <X size={16} />
+                    </button>
+                </div>
+            )}
+
             {/* --- LAYOUT COMPACTO 3 COLUNAS --- */}
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start relative">
+                
                 {/* COLUNA 1: EXTRATO */}
                 <div className="space-y-6">
                     <div className="flex items-center justify-between">
@@ -291,9 +329,13 @@ export default function StandardView({
                                 <div className="divide-y divide-gray-800/50">
                                     {monthTransactions.map(item => {
                                         const Icon = item.icon && ICON_MAP[item.icon] ? ICON_MAP[item.icon] : (item.type === 'income' ? TrendingUp : TrendingDown);
+                                        const isSelected = selectedItems.some(s => s.id === item.id && s.table === 'transactions');
+
                                         return (
-                                            <div key={item.id} className="group p-4 hover:bg-white/[0.02] transition flex items-center justify-between">
-                                                <div className="flex items-center gap-4">
+                                            <div key={item.id} className={`group p-4 transition flex items-center justify-between ${isSelected ? 'bg-red-500/10' : 'hover:bg-white/[0.02]'}`}>
+                                                <div className="flex items-center gap-3">
+                                                    <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(item.id, 'transactions')} className="w-4 h-4 rounded border-gray-700 bg-black text-red-500 focus:ring-red-500 focus:ring-offset-gray-900 cursor-pointer" />
+
                                                     <div onClick={() => onTogglePaid('transactions', item.id, item.is_paid || false)} className={`cursor-pointer w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${item.is_paid ? 'bg-emerald-500/20 text-emerald-500' : 'bg-gray-800 text-gray-500 group-hover:bg-gray-700'}`}>
                                                         {item.is_paid ? <CheckCircle2 size={18} /> : <Icon size={18} />}
                                                     </div>
@@ -301,7 +343,6 @@ export default function StandardView({
                                                         <p className={`font-bold text-sm ${item.is_paid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
                                                         <p className="text-xs text-gray-500 flex items-center gap-1">
                                                             {item.category} • {item.date}
-                                                            {/* 🟢 MÁGICA AQUI: Se a função inteligente achar a imagem, mostra o clipe! */}
                                                             {getReceipt(item, activeTab) && (
                                                                 <a href={getReceipt(item, activeTab)} target="_blank" className="text-emerald-500 hover:text-emerald-300" title="Ver Recibo">
                                                                     <FileText size={14} />
@@ -314,7 +355,11 @@ export default function StandardView({
                                                     <p className={`font-mono font-bold text-sm ${item.type === 'income' ? 'text-emerald-400' : 'text-gray-300'}`}>
                                                         {item.type === 'income' ? '+' : '-'} R$ {Number(item.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                                     </p>
-                                                    <div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">                                                        <button onClick={() => onToggleDelay('transactions', item)} title="Congelar" className="text-gray-500 hover:text-orange-400"><Clock size={14} /></button>
+                                                    <div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                                                        {/* 🟢 ÍCONE DE PAGAR DISCRETO AQUI */}
+                                                        <button onClick={() => onTogglePaid('transactions', item.id, item.is_paid || false)} className={`hover:text-emerald-400 ${item.is_paid ? 'text-emerald-500/50' : 'text-gray-500'}`} title={item.is_paid ? "Desfazer" : "Dar Baixa"}><Check size={14} /></button>
+                                                        
+                                                        <button onClick={() => onToggleDelay('transactions', item)} title="Congelar" className="text-gray-500 hover:text-orange-400"><Clock size={14} /></button>
                                                         <button onClick={() => onEdit(item, item.type)} className="text-gray-500 hover:text-cyan-400"><Pencil size={14} /></button>
                                                         <button onClick={() => onDelete('transactions', item.id)} className="text-gray-500 hover:text-red-400"><Trash2 size={14} /></button>
                                                     </div>
@@ -371,10 +416,13 @@ export default function StandardView({
                                                     const tag = `${activeTab}/${selectedYear}`;
                                                     const isPaid = item.paid_months?.includes(tag);
                                                     const Icon = item.icon && ICON_MAP[item.icon] ? ICON_MAP[item.icon] : ShoppingCart;
+                                                    const isSelected = selectedItems.some(s => s.id === item.id && s.table === 'installments');
 
                                                     return (
-                                                        <div key={item.id} className="group p-3 flex items-center justify-between hover:bg-white/5 transition">
-                                                            <div className="flex items-center gap-3">
+                                                        <div key={item.id} className={`group p-3 flex items-center justify-between transition ${isSelected ? 'bg-red-500/10' : 'hover:bg-white/5'}`}>
+                                                            <div className="flex items-center gap-2">
+                                                                <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(item.id, 'installments')} className="w-3.5 h-3.5 rounded border-gray-700 bg-black text-red-500 focus:ring-red-500 focus:ring-offset-gray-900 cursor-pointer shrink-0" />
+
                                                                 <div onClick={() => onTogglePaidMonth('installments', item)} className={`cursor-pointer w-8 h-8 rounded-lg flex items-center justify-center transition-all ${isPaid ? 'bg-emerald-500/20 text-emerald-500' : 'bg-gray-800/50 text-gray-500 hover:text-white'}`}>
                                                                     {isPaid ? <Check size={14} /> : <span className="text-[10px] font-bold">{item.actualInstallment}x</span>}
                                                                 </div>
@@ -386,7 +434,12 @@ export default function StandardView({
                                                             <div className="text-right">
                                                                 <p className={`font-mono text-sm font-medium ${isPaid ? 'text-gray-600' : (item.has_arrears ? 'text-orange-400' : 'text-gray-300')}`}>
                                                                     R$ {Number(item.value_per_month).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                                                </p>                                                                <div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">                                                                    <button onClick={() => onToggleDelay('installments', item)} className="text-gray-500 hover:text-orange-400" title="Stand-by"><Clock size={12} /></button>
+                                                                </p>
+                                                                <div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                                                                    {/* 🟢 ÍCONE DE PAGAR DISCRETO AQUI */}
+                                                                    <button onClick={() => onTogglePaidMonth('installments', item)} className={`hover:text-emerald-400 ${isPaid ? 'text-emerald-500/50' : 'text-gray-500'}`} title={isPaid ? "Desfazer" : "Dar Baixa"}><Check size={12} /></button>
+
+                                                                    <button onClick={() => onToggleDelay('installments', item)} className="text-gray-500 hover:text-orange-400" title="Stand-by"><Clock size={12} /></button>
                                                                     <button onClick={() => onEdit(item, 'installment')} className="text-gray-500 hover:text-cyan-400" title="Editar"><Pencil size={12} /></button>
                                                                     <button onClick={() => onDelete('installments', item.id)} className="text-gray-500 hover:text-red-400" title="Excluir"><Trash2 size={12} /></button>
                                                                     {getReceipt(item, activeTab) && (<a href={getReceipt(item, activeTab)} target="_blank" className="text-emerald-500 hover:text-emerald-300" title="Ver Recibo"><FileText size={12} /></a>)}
@@ -417,23 +470,32 @@ export default function StandardView({
                             <div className="bg-emerald-900/10 border-b border-emerald-500/20 p-3">
                                 <p className="text-[10px] uppercase font-bold text-emerald-500 tracking-wider mb-2 ml-1">Renda Fixa</p>
                                 {activeRecurring.filter(r => r.type === 'income').map(item => {
+                                    const tag = `${activeTab}/${selectedYear}`;
+                                    const isPaid = item.paid_months?.includes(tag);
                                     const isSkipped = item.skipped_months?.includes(activeTab);
+                                    const isSelected = selectedItems.some(s => s.id === item.id && s.table === 'recurring');
+
                                     return (
-                                        <div key={item.id} className={`group flex items-center justify-between p-2 rounded-lg mb-1 transition hover:bg-white/5 ${isSkipped ? 'opacity-50 border border-dashed border-emerald-900 bg-transparent' : ''}`}>
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                                                    <DollarSign size={14} />
+                                        <div key={item.id} className={`group flex items-center justify-between p-2 rounded-lg mb-1 transition hover:bg-white/5 ${isSelected ? 'bg-red-500/10' : ''} ${isSkipped ? 'opacity-50 border border-dashed border-emerald-900 bg-transparent' : ''}`}>
+                                            <div className="flex items-center gap-2">
+                                                <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(item.id, 'recurring')} className="w-3.5 h-3.5 rounded border-gray-700 bg-black text-red-500 focus:ring-red-500 focus:ring-offset-gray-900 cursor-pointer shrink-0" />
+
+                                                <div onClick={() => onTogglePaidMonth('recurring', item)} className={`cursor-pointer w-8 h-8 rounded-full flex items-center justify-center transition-all ${isPaid ? 'bg-emerald-500/20 text-emerald-500' : 'bg-black text-gray-400 group-hover:text-white'}`}>
+                                                    {isPaid ? <CheckCircle2 size={14} /> : <DollarSign size={14} />}
                                                 </div>
                                                 <div>
-                                                    <p className="text-sm font-bold text-gray-200">{item.title}</p>
+                                                    <p className={`text-sm font-bold ${isPaid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
                                                     {isSkipped && <p className="text-[10px] text-orange-500 font-bold">Pulado neste mês</p>}
                                                 </div>
                                             </div>
                                             <div className="text-right">
-                                                <p className={`font-mono font-bold text-sm ${isSkipped ? 'text-gray-500' : 'text-emerald-400'}`}>
+                                                <p className={`font-mono font-bold text-sm ${isSkipped || isPaid ? 'text-gray-500' : 'text-emerald-400'}`}>
                                                     R$ {Number(item.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                                 </p>
                                                 <div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                                                    {/* 🟢 ÍCONE DE PAGAR DISCRETO AQUI */}
+                                                    <button onClick={() => onTogglePaidMonth('recurring', item)} className={`hover:text-emerald-400 ${isPaid ? 'text-emerald-500/50' : 'text-gray-500'}`} title={isPaid ? "Desfazer" : "Receber"}><Check size={12} /></button>
+
                                                     <button onClick={() => onToggleDelay('recurring', item)} title={isSkipped ? "Voltar salário" : "Pular este mês"} className="text-gray-500 hover:text-orange-400">
                                                         <Clock size={12} />
                                                     </button>
@@ -461,11 +523,14 @@ export default function StandardView({
                                         const isPaid = item.paid_months?.includes(tag);
                                         const isSkipped = item.skipped_months?.includes(activeTab);
                                         const Icon = item.icon && ICON_MAP[item.icon] ? ICON_MAP[item.icon] : Home;
+                                        const isSelected = selectedItems.some(s => s.id === item.id && s.table === 'recurring');
 
                                         return (
-                                            <div key={item.id} className={`group p-3 rounded-xl border mb-2 transition flex items-center justify-between ${isSkipped ? 'border-dashed border-gray-800 opacity-50 bg-transparent' : isPaid ? 'bg-gray-900/50 border-gray-800' : 'bg-gray-800/30 border-gray-700 hover:border-gray-600'}`}>
+                                            <div key={item.id} className={`group p-3 rounded-xl border mb-2 transition flex items-center justify-between ${isSelected ? 'border-red-500 bg-red-500/10' : isSkipped ? 'border-dashed border-gray-800 opacity-50 bg-transparent' : isPaid ? 'bg-gray-900/50 border-gray-800' : 'bg-gray-800/30 border-gray-700 hover:border-gray-600'}`}>
                                                 
-                                                <div className="flex items-center gap-3">
+                                                <div className="flex items-center gap-2">
+                                                    <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(item.id, 'recurring')} className="w-4 h-4 rounded border-gray-700 bg-black text-red-500 focus:ring-red-500 focus:ring-offset-gray-900 cursor-pointer shrink-0" />
+
                                                     <div onClick={() => onTogglePaidMonth('recurring', item)} className={`cursor-pointer w-10 h-10 rounded-xl flex items-center justify-center transition-all ${isPaid ? 'bg-emerald-500/20 text-emerald-500' : 'bg-black text-gray-400 group-hover:text-white'}`}>
                                                         {isPaid ? <CheckCircle2 size={18} /> : <Icon size={18} />}
                                                     </div>
@@ -482,12 +547,14 @@ export default function StandardView({
                                                     </div>
                                                 </div>
                                                 
-                                                {/* 🟢 O VALOR CORRIGIDO APARECE AQUI AGORA */}
                                                 <div className="text-right">
                                                     <p className={`font-mono font-bold text-sm ${isPaid ? 'text-gray-500 line-through' : isSkipped ? 'text-gray-500' : 'text-white'}`}>
                                                         R$ {Number(item.value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                                     </p>
                                                     <div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                                                        {/* 🟢 ÍCONE DE PAGAR DISCRETO AQUI */}
+                                                        <button onClick={() => onTogglePaidMonth('recurring', item)} className={`hover:text-emerald-400 ${isPaid ? 'text-emerald-500/50' : 'text-gray-500'}`} title={isPaid ? "Desfazer" : "Dar Baixa"}><Check size={12} /></button>
+
                                                         <button onClick={() => onToggleDelay('recurring', item)} title="Stand-by" className="text-gray-500 hover:text-orange-400"><Clock size={12} /></button>
                                                         <button onClick={() => onEdit(item, 'fixed_expense')} className="text-gray-500 hover:text-cyan-400"><Pencil size={12} /></button>
                                                         <button onClick={() => onDelete('recurring', item.id)} className="text-gray-500 hover:text-red-400"><Trash2 size={12} /></button>
@@ -508,7 +575,7 @@ export default function StandardView({
                         </div>
                     </div>
                 </div>
-                </div>
             </div>
+        </div>
     );
 }
