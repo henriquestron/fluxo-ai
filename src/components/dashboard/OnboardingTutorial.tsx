@@ -1,26 +1,100 @@
 import React, { useState, useEffect } from 'react';
-import { X, ChevronRight, ChevronLeft, CheckCircle2, PlaySquare, Sparkles } from 'lucide-react';
-
-// O seu "banco de dados" de vídeos curtos
+import { X,FolderPlus, Crown, MessageCircle, Check,Trash2,Pencil,Clock, Target, ChevronRight,FileUp,Calculator, BarChart3, ChevronLeft, CheckCircle2, PlaySquare, Sparkles, Plus, CreditCard, FileSpreadsheet, Bot, ImageIcon, Smartphone, Palette, User } from 'lucide-react';
+// O seu "banco de dados" de vídeos curtos AGORA COM BOTÕES REAIS NO TEXTO!
+// O seu "banco de dados" de vídeos curtos COM CLONES REAIS DO SEU LAYOUT!
 const TUTORIAL_STEPS = [
     {
         id: 1,
         title: "Botão Novo Lançamento",
-        description: "Clique no Botão Novo, para criar um lançamento ao seu perfil. Podem ser lançados entrada, gastos (rotativos), parcelados e fixos. Escolha qual será o icone do lançamento, escreva uma descrição, coloque o valor e pronto! O lançamento já aparece no seu dashboard e no seu fluxo de caixa :)",
+        description: (
+            <>
+                Clique no botão <span className="inline-flex items-center gap-1 bg-white text-black px-2 py-0.5 rounded-md text-[11px] font-bold mx-1 whitespace-nowrap shadow-[0_0_10px_rgba(255,255,255,0.15)]"><Plus size={12}/> Novo</span> para criar um registro no seu perfil. Podem ser lançados entradas, gastos (rotativos), parcelados e fixos. Escolha qual será o ícone, escreva a descrição, coloque o valor e pronto! Ele já aparece no seu dashboard e no seu fluxo de caixa :)
+            </>
+        ),
         media: "https://res.cloudinary.com/ddkbqzobz/video/upload/v1773597640/Lan%C3%A7amento_u5reze.mp4" 
     },
     {
         id: 2,
-        title: "Botão Fatura Rápida",
-        description: "Adicione as faturas do seu cartão sem precisar de adicionar uma conta de cada vez, clicando no botão de faturas, você pode adicionar suas contas parceladas e rotativas no seu banco correspondente, e o sistema se encarrega de criar os lançamentos mensais automaticamente, sem você precisar se preocupar em criar um por um :)",
-        media: "https://res.cloudinary.com/ddkbqzobz/video/upload/v1773623405/fatura_q4bmzh.mp4"
+        title: "Importar Contas",
+        description: (
+            <>
+                Tem anotações de gastos no WhatsApp ou no caderno? Clique na área <span className="inline-flex items-center gap-1 border border-dashed border-gray-600 bg-[#111] text-gray-400 px-2 py-0.5 rounded-md text-[11px] font-bold mx-1 whitespace-nowrap"><FileUp size={12} /> Importar</span>. Você pode puxar planilhas (.xlsx), fotos ou colar os textos. Com a ajuda da nossa IA Mágica, o sistema vai ler tudo e criar as contas de uma só vez!
+            </>
+        ),
+        media: "https://res.cloudinary.com/ddkbqzobz/video/upload/v1773705218/Importar_Contas_phnzoy.mp4"
     },
     {
         id: 3,
+        title: "Ações Rápidas",
+        description: (
+            <>
+                Aprenda a realizar o pagamento clicando em <span className="inline-flex items-center justify-center bg-gray-800/50 p-1 rounded-md mx-0.5 shadow-sm"><Check size={12} className="text-emerald-500" /></span>. Precisa adiar? Coloque a conta em modo standby no ícone <span className="inline-flex items-center justify-center bg-gray-800/50 p-1 rounded-md mx-0.5 shadow-sm"><Clock size={12} className="text-orange-400" /></span>. Realize a edição <span className="inline-flex items-center justify-center bg-gray-800/50 p-1 rounded-md mx-0.5 shadow-sm"><Pencil size={12} className="text-cyan-400" /></span> para alterar valores ou datas, e saiba como excluir <span className="inline-flex items-center justify-center bg-gray-800/50 p-1 rounded-md mx-0.5 shadow-sm"><Trash2 size={12} className="text-red-400" /></span> o que não é mais necessário. Controle total na ponta do mouse!
+            </>
+        ),
+        media: "https://res.cloudinary.com/ddkbqzobz/video/upload/v1773709847/Fun%C3%A7%C3%A3o_pagar_cso13u.mp4"
+    },
+    {
+        id: 4,
+        title: "Fatura Rápida",
+        description: (
+            <>
+                Adicione as faturas do seu cartão de uma vez só! Clicando no botão <span className="inline-flex items-center gap-1 bg-purple-600 text-white px-2 py-0.5 rounded-md text-[11px] font-bold mx-1 uppercase tracking-wider shadow-sm"><CreditCard size={12}/> Faturas</span>, você pode adicionar suas contas parceladas e rotativas no banco correspondente. O sistema se encarrega de criar os lançamentos mensais automaticamente para você :)
+            </>
+        ),
+        media: "https://res.cloudinary.com/ddkbqzobz/video/upload/v1773623405/fatura_q4bmzh.mp4"
+    },
+    
+    {
+        id: 5,
         title: "Aliado IA",
-        description: "Utilize a nossa IA para lançar suas contas, simular suas despesas futuras, perguntar a sua situação financeira para os proximos meses, para ter uma visão clara do seu fluxo de caixa, e se preparar para os meses mais apertados.",
+        description: (
+            <>
+                Utilize o <span className="inline-flex items-center gap-1.5 bg-[#111] border border-gray-800 text-white px-2 py-0.5 rounded-md text-[11px] font-bold mx-1 whitespace-nowrap"><span className="p-0.5 bg-purple-900/30 rounded flex items-center justify-center"><Sparkles size={10} className="text-purple-400" /></span> Aliado IA</span> para lançar suas contas conversando, simular despesas futuras e perguntar sobre sua situação financeira para os próximos meses. Tenha uma visão clara do seu fluxo de caixa e se prepare como um profissional.
+            </>
+        ),
         media: "https://res.cloudinary.com/ddkbqzobz/video/upload/v1773624400/IA_Aliado_r2gqkq.mp4"
+    },
+    {
+        id: 6,
+        title: "Gráficos, Planilhas e Calculadora",
+        description: (
+            <>
+                Utilize as ferramentas de <span className="inline-flex items-center gap-1.5 bg-[#111] border border-gray-800 text-white px-2 py-0.5 rounded-md text-[11px] font-bold mx-1 whitespace-nowrap"><span className="p-0.5 bg-purple-900/30 rounded flex items-center justify-center gap-1"><BarChart3 size={10} className="text-purple-400" /><FileSpreadsheet size={10} className="text-purple-400" /><Calculator size={10} className="text-purple-400" /></span> Gráficos, Planilhas e Calculadora</span> para analisar seus dados, gerar planilhas personalizadas e fazer cálculos rápidos sem sair do aplicativo. Tenha o poder da análise financeira na ponta dos dedos, integrado diretamente ao seu fluxo de caixa.
+            </>
+        ),
+        media: "https://res.cloudinary.com/ddkbqzobz/video/upload/v1773706925/Fun%C3%A7%C3%B5es_Plani._calc._grafi._rb5edv.mp4"
+    },
+    {
+        id: 7,
+        title: "Perfis e Metas",
+        description: (
+            <>
+                Precisa separar as finanças de casa de outras responsabilidades? Crie um <span className="inline-flex items-center gap-1 bg-[#111] border border-gray-800 text-white px-2 py-0.5 rounded-md text-[11px] font-bold mx-1 whitespace-nowrap"><FolderPlus size={12} className="text-cyan-500" /> Novo Perfil</span> para manter tudo organizado em espaços diferentes. Além disso, você pode definir seus objetivos clicando em <span className="inline-flex items-center gap-1 bg-[#111] border border-gray-800 text-white px-2 py-0.5 rounded-md text-[11px] font-bold mx-1 whitespace-nowrap"><Target size={12} className="text-orange-500" /> Nova Meta</span> e acompanhar de perto suas maiores conquistas financeiras!
+            </>
+        ),
+        media: "https://res.cloudinary.com/ddkbqzobz/video/upload/v1773709796/Workspace_e_Metas_sq7knz.mp4" // 🟢 Lembre de trocar essa linha pelo link do Cloudinary do seu vídeo!
+    },
+    {
+        id: 8,
+        title: "Perfil, Personalização e Zap",
+        description: (
+            <>
+                Acesse o seu menu para deixar o sistema com a sua cara! Em <span className="inline-flex items-center gap-1 bg-[#111] border border-gray-800 text-gray-300 px-2 py-0.5 rounded-md text-[11px] font-bold mx-1 whitespace-nowrap"><User size={12} className="text-cyan-500" /> Meu Perfil</span>, você altera seu nome, senha e cadastra seu número. Acesse <span className="inline-flex items-center gap-1 bg-[#111] border border-gray-800 text-gray-300 px-2 py-0.5 rounded-md text-[11px] font-bold mx-1 whitespace-nowrap"><Palette size={12} className="text-purple-500" /> Tema e Cores</span> para mudar o layout e as cores do site. E não esqueça de ativar as <span className="inline-flex items-center gap-1 bg-[#111] border border-gray-800 text-gray-300 px-2 py-0.5 rounded-md text-[11px] font-bold mx-1 whitespace-nowrap"><Smartphone size={12} className="text-emerald-500" /> Notificações Zap <span className="w-5 h-3 bg-emerald-500/80 rounded-full flex items-center justify-end px-[1px] ml-1"><span className="w-2 h-2 bg-white rounded-full shadow-sm"></span></span></span> para receber alertas de contas direto no seu celular!
+            </>
+        ),
+        media: "https://res.cloudinary.com/ddkbqzobz/video/upload/v1773711874/Personaliza%C3%A7%C3%B5es_e_Perfil_lgc2v6.mp4"
+    },
+    {
+        id: 9,
+        title: "Integração WhatsApp IA",
+        description: (
+            <>
+                Leve o Meu Aliado para o seu WhatsApp! Envie a mensagem <span className="inline-flex items-center bg-green-900/40 border border-green-500/30 text-green-400 px-2 py-0.5 rounded-md text-[11px] font-mono mx-1">ativar seu-numero</span> para o nosso bot. <strong>Importante:</strong> após enviar, aguarde alguns segundos enquanto o sistema vincula sua conta e verifica seu <span className="inline-flex items-center gap-1 bg-gradient-to-r from-yellow-500 to-amber-600 text-white px-2 py-0.5 rounded-md text-[11px] font-bold mx-1 uppercase tracking-wider shadow-sm"><Crown size={12}/> Plano Pro</span>. A IA não responderá de imediato nesta etapa. Depois de ativado, é só conversar! Mande um áudio pedindo para adicionar um gasto ou pergunte como está sua situação financeira. <span className="inline-flex items-center gap-1 bg-[#111] border border-gray-800 text-gray-300 px-2 py-0.5 rounded-md text-[11px] font-bold mx-1 whitespace-nowrap"><MessageCircle size={12} className="text-green-500" /> WhatsApp IA</span>
+            </>
+        ),
+        media: "https://res.cloudinary.com/ddkbqzobz/video/upload/v1773713078/Whatsapp_jkdp2n.mp4"
     }
+    
 ];
 
 interface TutorialProps {
@@ -122,7 +196,6 @@ export default function OnboardingTutorial({ isOpen, onClose }: TutorialProps) {
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-500">
-            {/* 🟢 MODAL MAIS LARGO (max-w-4xl) e EMPILHADO */}
             <div className="bg-[#0a0a0a] border border-gray-800 rounded-3xl w-full max-w-4xl p-6 md:p-8 relative shadow-2xl animate-in zoom-in-95 duration-500 flex flex-col">
                 
                 <button 
@@ -138,12 +211,13 @@ export default function OnboardingTutorial({ isOpen, onClose }: TutorialProps) {
                         Passo {currentStep + 1} de {TUTORIAL_STEPS.length}
                     </div>
                     <h2 className="text-2xl font-black text-white mb-2">{step.title}</h2>
+                    
+                    {/* 🟢 O TEXTO COM OS BOTÕES EMBUTIDOS ENTRA AQUI */}
                     <p className="text-gray-400 text-sm max-w-2xl mx-auto leading-relaxed">
                         {step.description}
                     </p>
                 </div>
 
-                {/* 🟢 ÁREA DO VÍDEO: aspect-video garante 16:9, object-contain não corta nada */}
                 <div className="w-full aspect-video bg-black rounded-2xl overflow-hidden mb-8 border border-gray-800/80 shadow-inner relative">
                     <video 
                         key={step.media} 
@@ -159,7 +233,6 @@ export default function OnboardingTutorial({ isOpen, onClose }: TutorialProps) {
 
                 {/* Controles na Base */}
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
-                    {/* Pontinhos de Progresso */}
                     <div className="flex items-center gap-2 order-2 sm:order-1">
                         {TUTORIAL_STEPS.map((_, idx) => (
                             <div 
@@ -169,7 +242,6 @@ export default function OnboardingTutorial({ isOpen, onClose }: TutorialProps) {
                         ))}
                     </div>
 
-                    {/* Botões de Navegação */}
                     <div className="flex items-center gap-3 w-full sm:w-auto order-1 sm:order-2">
                         <button 
                             onClick={handlePrev}
