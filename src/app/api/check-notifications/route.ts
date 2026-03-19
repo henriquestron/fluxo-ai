@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const EVOLUTION_URL = process.env.EVOLUTION_URL || "http://167.234.242.205:8080";
+const EVOLUTION_URL = process.env.EVOLUTION_URL || "http://163.176.217.228:8080";
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "sua-senha-secreta";
 const INSTANCE_NAME = "MEO_ALIADO_INSTANCE";
 
