@@ -10,7 +10,7 @@ export async function POST(req: Request) {
 
     try {
         const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-        const { userId, bills, forceSend } = await req.json(); // Adicionado forceSend para testes
+        const { userId, bills, forceSend } = await req.json();
 
         if (!userId || !bills || bills.length === 0) {
             return NextResponse.json({ error: "Dados inválidos ou lista vazia" });
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
         if (!settings.notify_whatsapp) return NextResponse.json({ status: "skipped", reason: "User disabled notifications" });
         if (!settings.whatsapp_phone) return NextResponse.json({ status: "skipped", reason: "No phone number" });
 
-        // 2. Trava de Data (Só pula se NÃO for um envio forçado)
+        // 2. Trava de Data
         if (settings.last_whatsapp_notification && !forceSend) {
             const lastDate = new Date(settings.last_whatsapp_notification).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
             const todayDate = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
             }
         }
 
-        // 3. Monta a mensagem - Garantindo que trate Strings do banco como Números
+        // 3. Monta a mensagem
         const totalValue = bills.reduce((acc: number, item: any) => {
             const val = item.amount || item.value || item.value_per_month || 0;
             return acc + Number(val);
@@ -48,14 +48,26 @@ export async function POST(req: Request) {
 
         const message = `🔔 *Lembrete: Contas de Hoje* 🔔\n\nOlá! Você tem *${bills.length} contas* para pagar hoje, totalizando *${totalFmt}*.\n\n${billsList}\n\nAcesse o sistema para marcar como pago! 🚀`;
 
-        // 4. Envio Evolution
+        // 4. Envio Evolution (FORMATO CORRIGIDO PARA V1.8.2)
         const cleanPhone = settings.whatsapp_phone.replace(/\D/g, '');
         const finalJid = `${cleanPhone}@s.whatsapp.net`;
 
         const evoResponse = await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE_NAME}`, {
             method: 'POST',
-            headers: { 'apikey': EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ number: finalJid, text: message })
+            headers: { 
+                'apikey': EVOLUTION_API_KEY, 
+                'Content-Type': 'application/json' 
+            },
+            body: JSON.stringify({ 
+                number: finalJid,
+                options: {
+                    delay: 1200,
+                    presence: "composing"
+                },
+                textMessage: {
+                    text: message
+                }
+            })
         });
 
         if (evoResponse.ok) {
@@ -64,11 +76,13 @@ export async function POST(req: Request) {
             return NextResponse.json({ success: true });
         } else {
             const errData = await evoResponse.json();
-            throw new Error(errData.message || "Erro na Evolution API");
+            // Tenta pegar a mensagem de erro detalhada da Evolution
+            const detailedError = errData.message || errData.error || "Erro desconhecido na Evolution";
+            throw new Error(detailedError);
         }
 
     } catch (error: any) {
-        console.error("❌ Erro:", error.message);
+        console.error("❌ Erro no envio da notificação:", error.message);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
