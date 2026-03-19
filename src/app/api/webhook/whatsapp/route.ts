@@ -29,6 +29,7 @@ const getPhoneVariations = (phone: string): string[] => {
 
 // --- FUNÇÕES AUXILIARES ---
 // 🟢 ENVIO BLINDADO: Tenta todas as variações de número até o WhatsApp aceitar
+// 🟢 ENVIO BLINDADO: Tenta todas as variações de número até o WhatsApp aceitar
 async function sendWhatsAppMessage(jid: string, text: string, delay: number = 1200) {
     const variations = getPhoneVariations(jid.split('@')[0]);
     let success = false;
@@ -42,7 +43,12 @@ async function sendWhatsAppMessage(jid: string, text: string, delay: number = 12
             const res = await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE_NAME}`, {
                 method: 'POST',
                 headers: { 'apikey': EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ number: finalJid, text, delay: delay })
+                // 🔥 A CORREÇÃO FOI FEITA EXATAMENTE AQUI NESTE BODY 🔥
+                body: JSON.stringify({ 
+                    number: finalJid, 
+                    options: { delay: delay },
+                    textMessage: { text: text } 
+                })
             });
             const json = await res.json();
             
