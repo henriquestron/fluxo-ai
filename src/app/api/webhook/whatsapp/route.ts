@@ -13,10 +13,10 @@ const processedMessages = new Set<string>();
 const getPhoneVariations = (phone: string): string[] => {
     const clean = phone.replace(/\D/g, ''); // Tira tudo que não for número
     if (!clean.startsWith('55')) return [clean];
-    
+
     const ddd = clean.substring(2, 4);
     const number = clean.substring(4);
-    
+
     if (number.length === 9) {
         // [Versão original com 9, Versão sem o 9]
         return [clean, `55${ddd}${number.substring(1)}`];
@@ -44,14 +44,14 @@ async function sendWhatsAppMessage(jid: string, text: string, delay: number = 12
                 method: 'POST',
                 headers: { 'apikey': EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
                 // 🔥 A CORREÇÃO FOI FEITA EXATAMENTE AQUI NESTE BODY 🔥
-                body: JSON.stringify({ 
-                    number: finalJid, 
+                body: JSON.stringify({
+                    number: finalJid,
                     options: { delay: delay },
-                    textMessage: { text: text } 
+                    textMessage: { text: text }
                 })
             });
             const json = await res.json();
-            
+
             // Verifica se a Evolution aceitou (Status 200/201 ou contém ID de sucesso)
             if (res.ok || json?.status === 'SUCCESS' || json?.key?.id) {
                 console.log(`✅ Status Envio Sucesso no número ${phoneAttempt}!`);
@@ -59,8 +59,8 @@ async function sendWhatsAppMessage(jid: string, text: string, delay: number = 12
             } else {
                 console.log(`⚠️ Falha (Provável Nono Dígito) em ${phoneAttempt}. Erro:`, json?.error || 'Bad Request');
             }
-        } catch (e) { 
-            console.error(`❌ Erro Envio ZAP para ${finalJid}:`, e); 
+        } catch (e) {
+            console.error(`❌ Erro Envio ZAP para ${finalJid}:`, e);
         }
     }
 
@@ -120,29 +120,29 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
         const paymentTag = `${month}/${currentYear}`;
 
         const inc = (transactions?.filter((t: any) => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc: number, i: any) => acc + Number(i.amount), 0) || 0) +
-                    (recurring?.filter((r: any) => {
-                        const { m: sM, y: sY } = getStartData(r);
-                        const paid = r.paid_months?.includes(paymentTag) || r.paid_months?.includes(month);
-                        if ((r.status === 'delayed' || r.status === 'standby' || r.standby_months?.includes(paymentTag)) && !paid) return false;
-                        return r.type === 'income' && (currentYear > sY || (currentYear === sY && idx >= sM)) && !r.skipped_months?.includes(month);
-                    }).reduce((acc: number, i: any) => acc + Number(i.value), 0) || 0);
+            (recurring?.filter((r: any) => {
+                const { m: sM, y: sY } = getStartData(r);
+                const paid = r.paid_months?.includes(paymentTag) || r.paid_months?.includes(month);
+                if ((r.status === 'delayed' || r.status === 'standby' || r.standby_months?.includes(paymentTag)) && !paid) return false;
+                return r.type === 'income' && (currentYear > sY || (currentYear === sY && idx >= sM)) && !r.skipped_months?.includes(month);
+            }).reduce((acc: number, i: any) => acc + Number(i.value), 0) || 0);
 
         const exp = (transactions?.filter((t: any) => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc: number, i: any) => acc + Number(i.amount), 0) || 0) +
-                    (recurring?.filter((r: any) => {
-                        const { m: sM, y: sY } = getStartData(r);
-                        const paid = r.paid_months?.includes(paymentTag) || r.paid_months?.includes(month);
-                        if ((r.status === 'delayed' || r.status === 'standby' || r.standby_months?.includes(paymentTag)) && !paid) return false;
-                        return r.type === 'expense' && (currentYear > sY || (currentYear === sY && idx >= sM)) && !r.skipped_months?.includes(month);
-                    }).reduce((acc: number, i: any) => acc + Number(i.value), 0) || 0) +
-                    (installments?.reduce((acc: number, i: any) => {
-                        const paid = i.paid_months?.includes(paymentTag) || i.paid_months?.includes(month);
-                        if ((i.status === 'delayed' || i.status === 'standby' || i.standby_months?.includes(paymentTag)) && !paid) return acc;
-                        
-                        const { m: sM, y: sY } = getStartData(i);
-                        const diff = ((currentYear - sY) * 12) + (idx - sM);
-                        const act = 1 + (i.current_installment || 0) + diff;
-                        return (act >= 1 && act <= i.installments_count) ? acc + Number(i.value_per_month) : acc;
-                    }, 0) || 0);
+            (recurring?.filter((r: any) => {
+                const { m: sM, y: sY } = getStartData(r);
+                const paid = r.paid_months?.includes(paymentTag) || r.paid_months?.includes(month);
+                if ((r.status === 'delayed' || r.status === 'standby' || r.standby_months?.includes(paymentTag)) && !paid) return false;
+                return r.type === 'expense' && (currentYear > sY || (currentYear === sY && idx >= sM)) && !r.skipped_months?.includes(month);
+            }).reduce((acc: number, i: any) => acc + Number(i.value), 0) || 0) +
+            (installments?.reduce((acc: number, i: any) => {
+                const paid = i.paid_months?.includes(paymentTag) || i.paid_months?.includes(month);
+                if ((i.status === 'delayed' || i.status === 'standby' || i.standby_months?.includes(paymentTag)) && !paid) return acc;
+
+                const { m: sM, y: sY } = getStartData(i);
+                const diff = ((currentYear - sY) * 12) + (idx - sM);
+                const act = 1 + (i.current_installment || 0) + diff;
+                return (act >= 1 && act <= i.installments_count) ? acc + Number(i.value_per_month) : acc;
+            }, 0) || 0);
 
         const saldoMensal = inc - exp;
         const saldoAcumulado = saldoMensal + previousSurplus;
@@ -178,7 +178,7 @@ export async function POST(req: Request) {
 
         const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" }); 
+        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
         const body = await req.json();
 
@@ -188,15 +188,15 @@ export async function POST(req: Request) {
         if (!key?.remoteJid || key.fromMe) return NextResponse.json({ status: 'Ignored' });
 
         const messageId = key.id;
-        
+
         // 🛡️ VERIFICAÇÃO DO ESCUDO ANTI-DUPLICIDADE
         if (processedMessages.has(messageId)) {
             console.log("♻️ Ignorando mensagem duplicada (Retentativa da Evolution):", messageId);
             return NextResponse.json({ status: 'Ignored Duplicate' });
         }
-        
+
         processedMessages.add(messageId);
-        if (processedMessages.size > 1000) processedMessages.clear(); 
+        if (processedMessages.size > 1000) processedMessages.clear();
 
         const remoteJid = key.remoteJid;
         const senderId = remoteJid.split('@')[0];
@@ -281,52 +281,90 @@ export async function POST(req: Request) {
 
         // 4. PROMPT DA IA MELHORADO E BLINDADO
         const systemPrompt = `
-        ATUE COMO: "Meu Aliado", um assistente financeiro pessoal de WhatsApp. Você é educado, inteligente, prestativo e direto ao ponto.
-        HOJE É: ${new Date().toLocaleDateString('pt-BR')}.
+            IDENTIDADE: Você é "Meu Aliado", assistente financeiro pessoal via WhatsApp.
+            Tom: amigável, direto, humano. Nunca robótico.
+            DATA DE HOJE: ${new Date().toLocaleDateString('pt-BR')}.
 
-        --- SEU CONTEXTO FINANCEIRO NESTE MÊS ---
-        Receitas: R$ ${contextInfo.entradas}
-        Despesas: R$ ${contextInfo.saidas}
-        Saldo Atual: R$ ${contextInfo.saldo}
-        Situação: ${contextInfo.estado_conta}
-        -----------------------------------------
+            ━━━ SITUAÇÃO FINANCEIRA DO MÊS ━━━
+            💰 Receitas:  R$ ${contextInfo.entradas}
+            💸 Despesas:  R$ ${contextInfo.saidas}
+            📊 Saldo:     R$ ${contextInfo.saldo}
+            ⚠️  Status:   ${contextInfo.estado_conta}
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-        SUAS REGRAS DE COMPORTAMENTO:
-        1. BATER PAPO/CONSULTA: Se o usuário perguntar como estão as contas ou pedir o saldo, responda de forma natural e amigável usando os dados acima.
-        2. ADICIONAR CONTA: Entenda o valor e o título relatados pelo usuário e monte a ação no JSON.
-        3. DICAS GENTIS: Se a situação estiver CRÍTICO, avise com carinho para segurar os gastos.
-        4. SEJA CURTO: Ninguém lê textos gigantes no WhatsApp. Seja extremamente objetivo e claro.
+            COMO AGIR EM CADA SITUAÇÃO:
 
-        REGRA DE OURO DA PROGRAMAÇÃO:
-        Sua saída DEVE ser ÚNICA E EXCLUSIVAMENTE um array JSON válido. NUNCA escreva textos normais fora da estrutura JSON.
-        
-        FORMATO OBRIGATÓRIO (ARRAY DE JSON):
-        [
-            {"action": "add", "table": "transactions", "data":{ "title": "...", "amount": 0.00, "type": "expense", "date": "DD/MM/YYYY", "category": "Outros", "target_month": "Mês" }},
-            {"reply": "Sua resposta humanizada e natural para o WhatsApp aqui..."}
-        ]
+            [BATE-PAPO / SALDO]
+            → Responda naturalmente com os dados acima. Seja breve e humano.
 
-        Outros exemplos de JSON de Ação:
-        - Parcela: {"action": "add", "table": "installments", "data":{ "title": "...", "total_value": 0.00, "installments_count": 1, "value_per_month": 0.00, "due_day": 10, "status": "active" }}
-        - Fixo: {"action": "add", "table": "recurring", "data":{ "title": "...", "value": 0.00, "type": "expense", "due_day": 10, "status": "active" }}
+            [REGISTRO DE TRANSAÇÃO]
+            → Extraia título, valor, data e tipo (receita/despesa). Monte o JSON.
+            → Se faltar informação essencial (ex: valor), pergunte antes de registrar.
 
-        ${hasAudio ? "⚠️ IMPORTANTE: O usuário enviou um ÁUDIO. Entenda a voz dele e responda apropriadamente." : ""}
-        `;
+            [PARCELA / FIXO]
+            → Identifique se é gasto parcelado (installments) ou recorrente mensal (recurring).
+            → Calcule value_per_month automaticamente se o usuário fornecer total + número de parcelas.
+
+            [ALERTA DE SAÚDE FINANCEIRA]
+            → Status CRÍTICO: avise com carinho, sugira 1 ação concreta e simples.
+            → Status OK/BOM: positivo e motivador, sem exageros.
+
+            REGRAS ABSOLUTAS:
+            ✅ Saída SEMPRE como array JSON válido — zero texto fora do JSON.
+            ✅ Respostas curtas (WhatsApp, não romance).
+            ✅ Use linguagem coloquial brasileira, nunca formal.
+            ✅ Datas sempre no formato DD/MM/YYYY.
+            ✅ Valores sempre como número float (ex: 49.90), nunca string.
+            ✅ Se a intenção for ambígua, peça confirmação via reply antes de registrar.
+
+            CATEGORIAS DISPONÍVEIS:
+            Alimentação | Transporte | Saúde | Lazer | Moradia | Educação | Salário | Freelance | Outros
+
+            ━━━ FORMATOS JSON PERMITIDOS ━━━
+
+            Transação:
+            {"action": "add", "table": "transactions", "data": {
+            "title": "...", "amount": 0.00, "type": "expense|income",
+            "date": "DD/MM/YYYY", "category": "...", "target_month": "Mês YYYY"
+            }}
+
+            Parcela:
+            {"action": "add", "table": "installments", "data": {
+            "title": "...", "total_value": 0.00, "installments_count": 1,
+            "value_per_month": 0.00, "due_day": 10, "status": "active"
+            }}
+
+            Fixo mensal:
+            {"action": "add", "table": "recurring", "data": {
+            "title": "...", "value": 0.00, "type": "expense|income",
+            "due_day": 10, "status": "active"
+            }}
+
+            Resposta ao usuário (OBRIGATÓRIA em todo array):
+            {"reply": "mensagem curta e humana aqui"}
+
+            EXEMPLO DE SAÍDA COMPLETA:
+            [
+            {"action": "add", "table": "transactions", "data": {"title": "Almoço", "amount": 32.50, "type": "expense", "date": "21/03/2025", "category": "Alimentação", "target_month": "Março 2025"}},
+            {"reply": "Anotei! 🍽️ R$ 32,50 no almoço. Saldo continua firme!"}
+            ]
+            ${hasAudio ? "\n⚠️ ÁUDIO RECEBIDO: Transcreva mentalmente a fala e responda com base no que foi dito." : ""}
+            `;
 
         const finalPrompt = [systemPrompt, ...promptParts];
-        
+
         // 🟢 BLINDAGEM DA IA: Tratamento de erros exclusivo para o Gemini
         let commands: any[] = [];
         try {
             const result = await model.generateContent(finalPrompt);
             let cleanJson = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-            
+
             const arrayMatch = cleanJson.match(/\[[\s\S]*\]/);
             if (arrayMatch) cleanJson = arrayMatch[0];
 
             commands = JSON.parse(cleanJson);
             if (!Array.isArray(commands)) commands = [commands];
-            
+
         } catch (error: any) {
             console.error("❌ ERRO NA IA OU NO JSON:", error);
             if (error?.status === 503 || error?.message?.includes('503')) {
