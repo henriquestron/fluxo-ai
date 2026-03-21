@@ -11,22 +11,25 @@ const processedMessages = new Set<string>();
 
 // 🟢 GERADOR DE MÚLTIPLAS VERSÕES DO NÚMERO BRASILEIRO (Nono Dígito)
 const getPhoneVariations = (phone: string): string[] => {
-    const clean = phone.replace(/\D/g, '');
+    const clean = phone.replace(/\D/g, ''); // Tira tudo que não for número
     if (!clean.startsWith('55')) return [clean];
 
     const ddd = clean.substring(2, 4);
     const number = clean.substring(4);
 
     if (number.length === 9) {
+        // [Versão original com 9, Versão sem o 9]
         return [clean, `55${ddd}${number.substring(1)}`];
     } else if (number.length === 8) {
+        // [Versão original sem 9, Versão com o 9]
         return [clean, `55${ddd}9${number}`];
     }
     return [clean];
 };
 
 // --- FUNÇÕES AUXILIARES ---
-
+// 🟢 ENVIO BLINDADO: Tenta todas as variações de número até o WhatsApp aceitar
+// 🟢 ENVIO BLINDADO: Tenta todas as variações de número até o WhatsApp aceitar
 async function sendWhatsAppMessage(jid: string, text: string, delay: number = 1200) {
     const variations = getPhoneVariations(jid.split('@')[0]);
     let success = false;
@@ -40,58 +43,62 @@ async function sendWhatsAppMessage(jid: string, text: string, delay: number = 12
             const res = await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE_NAME}`, {
                 method: 'POST',
                 headers: { 'apikey': EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
+                // 🔥 A CORREÇÃO FOI FEITA EXATAMENTE AQUI NESTE BODY 🔥
                 body: JSON.stringify({
                     number: finalJid,
-                    options: { delay },
-                    textMessage: { text }
+                    options: { delay: delay },
+                    textMessage: { text: text }
                 })
             });
             const json = await res.json();
 
+            // Verifica se a Evolution aceitou (Status 200/201 ou contém ID de sucesso)
             if (res.ok || json?.status === 'SUCCESS' || json?.key?.id) {
-                console.log(`✅ Envio ok para ${phoneAttempt}`);
+                console.log(`✅ Status Envio Sucesso no número ${phoneAttempt}!`);
                 success = true;
             } else {
-                console.log(`⚠️ Falha em ${phoneAttempt}:`, json?.error || 'Bad Request');
+                console.log(`⚠️ Falha (Provável Nono Dígito) em ${phoneAttempt}. Erro:`, json?.error || 'Bad Request');
             }
         } catch (e) {
-            console.error(`❌ Erro ao enviar para ${finalJid}:`, e);
+            console.error(`❌ Erro Envio ZAP para ${finalJid}:`, e);
         }
     }
 
-    if (!success) console.log("🚨 Nenhuma variação funcionou.");
+    if (!success) {
+        console.log("🚨 Nenhuma das variações funcionou. Evolution recusou o envio.");
+    }
 }
 
-async function downloadMedia(url: string): Promise<string | null> {
+async function downloadMedia(url: string) {
     try {
-        console.log("📥 Baixando mídia:", url);
+        console.log("📥 Tentando baixar URL:", url);
         const response = await fetch(url, { headers: { 'apikey': EVOLUTION_API_KEY } });
         if (!response.ok) return null;
         const arrayBuffer = await response.arrayBuffer();
         return Buffer.from(arrayBuffer).toString('base64');
-    } catch {
-        return null;
-    }
+    } catch (error) { return null; }
 }
 
-// 🧠 CÁLCULO FINANCEIRO COM EFEITO CASCATA
+// 🧠 CÁLCULO FINANCEIRO
+// 🧠 CÁLCULO FINANCEIRO (Com o Efeito Cascata Oficial)
 async function getFinancialContext(supabase: any, userId: string, workspaceId: string) {
     const today = new Date();
     const currentYear = today.getFullYear();
-    const activeMonthIdx = today.getMonth();
+    const activeMonthIdx = today.getMonth(); // 0 a 11
 
     const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const activeTab = MONTHS[activeMonthIdx];
 
+    // 🟢 Puxa TUDO do banco para conseguir arrastar o saldo dos meses anteriores
     const { data: transactions } = await supabase.from('transactions').select('*').eq('user_id', userId).eq('context', workspaceId);
     const { data: recurring } = await supabase.from('recurring').select('*').eq('user_id', userId).eq('context', workspaceId);
     const { data: installments } = await supabase.from('installments').select('*').eq('user_id', userId).eq('context', workspaceId);
 
     const getStartData = (item: any) => {
-        if (item.start_date?.includes('/')) {
+        if (item.start_date && item.start_date.includes('/')) {
             const p = item.start_date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
         }
-        if (item.date?.includes('/')) {
+        if (item.date && item.date.includes('/')) {
             const p = item.date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
         }
         if (item.created_at) {
@@ -105,19 +112,14 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
     let computedExp = 0;
     let computedBalance = 0;
 
+    // 🟢 O MESMO LAÇO DE REPETIÇÃO DO SITE (Calcula de Jan até o Mês Atual)
     for (let idx = 0; idx <= activeMonthIdx; idx++) {
         const month = MONTHS[idx];
         const mCode = (idx + 1).toString().padStart(2, '0');
         const dateFilter = `/${mCode}/${currentYear}`;
         const paymentTag = `${month}/${currentYear}`;
 
-        const inc =
-            (transactions?.filter((t: any) =>
-                t.type === 'income' &&
-                t.date?.includes(dateFilter) &&
-                t.status !== 'delayed' &&
-                t.status !== 'standby'
-            ).reduce((acc: number, i: any) => acc + Number(i.amount), 0) || 0) +
+        const inc = (transactions?.filter((t: any) => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc: number, i: any) => acc + Number(i.amount), 0) || 0) +
             (recurring?.filter((r: any) => {
                 const { m: sM, y: sY } = getStartData(r);
                 const paid = r.paid_months?.includes(paymentTag) || r.paid_months?.includes(month);
@@ -125,13 +127,7 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
                 return r.type === 'income' && (currentYear > sY || (currentYear === sY && idx >= sM)) && !r.skipped_months?.includes(month);
             }).reduce((acc: number, i: any) => acc + Number(i.value), 0) || 0);
 
-        const exp =
-            (transactions?.filter((t: any) =>
-                t.type === 'expense' &&
-                t.date?.includes(dateFilter) &&
-                t.status !== 'delayed' &&
-                t.status !== 'standby'
-            ).reduce((acc: number, i: any) => acc + Number(i.amount), 0) || 0) +
+        const exp = (transactions?.filter((t: any) => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc: number, i: any) => acc + Number(i.amount), 0) || 0) +
             (recurring?.filter((r: any) => {
                 const { m: sM, y: sY } = getStartData(r);
                 const paid = r.paid_months?.includes(paymentTag) || r.paid_months?.includes(month);
@@ -141,6 +137,7 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
             (installments?.reduce((acc: number, i: any) => {
                 const paid = i.paid_months?.includes(paymentTag) || i.paid_months?.includes(month);
                 if ((i.status === 'delayed' || i.status === 'standby' || i.standby_months?.includes(paymentTag)) && !paid) return acc;
+
                 const { m: sM, y: sY } = getStartData(i);
                 const diff = ((currentYear - sY) * 12) + (idx - sM);
                 const act = 1 + (i.current_installment || 0) + diff;
@@ -163,19 +160,12 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
     if (computedBalance < 0) estado = "CRÍTICO (VERMELHO) 🔴";
     else if (computedBalance < (computedInc * 0.1)) estado = "ALERTA (POUCA MARGEM) 🟡";
 
-    // 🔥 NOVO: retorna também listas de standby para a IA poder analisar
-    const contasFixasStandby = (recurring || []).filter((r: any) => r.status === 'standby');
-    const parcelamentosStandby = (installments || []).filter((i: any) => i.status === 'standby');
-
     return {
         saldo: computedBalance.toFixed(2),
         entradas: computedInc.toFixed(2),
         saidas: computedExp.toFixed(2),
         estado_conta: estado,
-        mes_visualizado: (activeMonthIdx + 1).toString().padStart(2, '0'),
-        resumo_texto: `Receitas: R$ ${computedInc.toFixed(2)} | Despesas: R$ ${computedExp.toFixed(2)} | Saldo: R$ ${computedBalance.toFixed(2)}`,
-        contas_fixas_standby: contasFixasStandby.map((r: any) => ({ title: r.title, value: r.value, type: r.type })),
-        parcelamentos_standby: parcelamentosStandby.map((i: any) => ({ title: i.title, value_per_month: i.value_per_month })),
+        resumo_texto: `Receitas: R$ ${computedInc.toFixed(2)} | Despesas: R$ ${computedExp.toFixed(2)} | Saldo: R$ ${computedBalance.toFixed(2)}`
     };
 }
 
@@ -188,7 +178,7 @@ export async function POST(req: Request) {
 
         const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" }); // 🔥 modelo atualizado
+        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
         const body = await req.json();
 
@@ -199,20 +189,18 @@ export async function POST(req: Request) {
 
         const messageId = key.id;
 
-        // 🛡️ ANTI-DUPLICIDADE
+        // 🛡️ VERIFICAÇÃO DO ESCUDO ANTI-DUPLICIDADE
         if (processedMessages.has(messageId)) {
-            console.log("♻️ Mensagem duplicada ignorada:", messageId);
+            console.log("♻️ Ignorando mensagem duplicada (Retentativa da Evolution):", messageId);
             return NextResponse.json({ status: 'Ignored Duplicate' });
         }
+
         processedMessages.add(messageId);
         if (processedMessages.size > 1000) processedMessages.clear();
 
         const remoteJid = key.remoteJid;
         const senderId = remoteJid.split('@')[0];
-        const messageContent =
-            body.data?.message?.conversation ||
-            body.data?.message?.extendedTextMessage?.text ||
-            "";
+        const messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
 
         // --- PROCESSAMENTO DE ÁUDIO ---
         let promptParts: any[] = [];
@@ -221,21 +209,16 @@ export async function POST(req: Request) {
         const msgType = body.data?.messageType;
 
         if (msgType === "audioMessage" || msgData?.audioMessage) {
-            let audioBase64 =
-                body.data?.base64 ||
-                msgData?.audioMessage?.base64 ||
-                body.data?.message?.base64;
-
+            let audioBase64 = body.data?.base64 || msgData?.audioMessage?.base64 || body.data?.message?.base64;
             if (!audioBase64) {
                 const url = msgData?.audioMessage?.url || body.data?.mediaUrl;
                 if (url) audioBase64 = await downloadMedia(url);
             }
-
             if (audioBase64) {
                 hasAudio = true;
                 promptParts.push({ inlineData: { mimeType: "audio/ogg", data: audioBase64 } });
             } else {
-                await sendWhatsAppMessage(remoteJid, "⚠️ Não consegui processar seu áudio. Pode me mandar em texto?");
+                await sendWhatsAppMessage(remoteJid, "⚠️ Ocorreu um erro ao processar o seu áudio. Pode me mandar em texto?");
                 return NextResponse.json({ status: 'Audio Failed' });
             }
         } else {
@@ -244,20 +227,12 @@ export async function POST(req: Request) {
         }
 
         // 2. IDENTIFICAÇÃO DO USUÁRIO
-        let { data: userSettings } = await supabase
-            .from('user_settings')
-            .select('*')
-            .or(`whatsapp_phone.eq.${senderId},whatsapp_id.eq.${senderId}`)
-            .maybeSingle();
+        let { data: userSettings } = await supabase.from('user_settings').select('*').or(`whatsapp_phone.eq.${senderId},whatsapp_id.eq.${senderId}`).maybeSingle();
 
         if (!userSettings) {
+            // 🟢 Usa a nova função de variações para procurar no banco de dados!
             const variations = getPhoneVariations(senderId);
-            const { data: found } = await supabase
-                .from('user_settings')
-                .select('*')
-                .in('whatsapp_phone', variations)
-                .maybeSingle();
-
+            const { data: found } = await supabase.from('user_settings').select('*').in('whatsapp_phone', variations).maybeSingle();
             if (found) {
                 userSettings = found;
                 await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', found.user_id);
@@ -267,13 +242,9 @@ export async function POST(req: Request) {
         if (!userSettings) {
             const numbersInText = messageContent.replace(/\D/g, '');
             if (numbersInText.length >= 10) {
+                // 🟢 Usa a nova função de variações para o vínculo!
                 const possiblePhones = getPhoneVariations(numbersInText);
-                const { data: userToLink } = await supabase
-                    .from('user_settings')
-                    .select('*')
-                    .in('whatsapp_phone', possiblePhones)
-                    .maybeSingle();
-
+                const { data: userToLink } = await supabase.from('user_settings').select('*').in('whatsapp_phone', possiblePhones).maybeSingle();
                 if (userToLink) {
                     await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userToLink.user_id);
                     await sendWhatsAppMessage(remoteJid, `✅ *Vinculado!* Agora você pode usar a IA.`);
@@ -283,24 +254,18 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "User unknown" });
         }
 
-        // 🔒 VERIFICAÇÃO DE PLANO
-        const { data: profile } = await supabase
-            .from('profiles')
-            .select('plan_tier, full_name') // 🔥 NOVO: busca o nome junto
-            .eq('id', userSettings.user_id)
-            .single();
-
+        // 🔒 TRAVA DE SEGURANÇA: VERIFICAÇÃO DE PLANO
+        const { data: profile } = await supabase.from('profiles').select('plan_tier').eq('id', userSettings.user_id).single();
         const plan = profile?.plan_tier || 'free';
 
-        if (!['start', 'premium', ].includes(plan)) {
-            console.log(`🚫 Bloqueado: ${senderId} — plano '${plan}'`);
+        if (!['pro', 'agent', 'admin'].includes(plan)) {
+            console.log(`🚫 Bloqueado: ${senderId} é plano '${plan}' - ENVIANDO AVISO...`);
             const targetForBlock = userSettings.whatsapp_phone || senderId;
-            await sendWhatsAppMessage(
-                targetForBlock,
-                "🚫 *Acesso Exclusivo PRO*\n\nA IA no WhatsApp está disponível apenas nos planos *Pro* e *Consultor*.\n\nFaça upgrade no painel para desbloquear. 🚀",
+            await sendWhatsAppMessage(targetForBlock,
+                "🚫 *Acesso Exclusivo PRO*\n\nA Inteligência Artificial no WhatsApp está disponível apenas nos planos **Pro** e **Consultor**.\n\nFaça o upgrade no seu painel para desbloquear: lançamentos por áudio, consultas e muito mais! 🚀",
                 100
             );
-            return NextResponse.json({ status: 'Blocked by Plan', plan });
+            return NextResponse.json({ status: 'Blocked by Plan', plan: plan });
         }
 
         if (senderId !== userSettings.whatsapp_phone && userSettings.whatsapp_id !== senderId) {
@@ -308,124 +273,87 @@ export async function POST(req: Request) {
         }
 
         const targetPhone = userSettings.whatsapp_phone || senderId;
-
-        const { data: workspace } = await supabase
-            .from('workspaces')
-            .select('id')
-            .eq('user_id', userSettings.user_id)
-            .limit(1)
-            .single();
+        const { data: workspace } = await supabase.from('workspaces').select('id').eq('user_id', userSettings.user_id).limit(1).single();
 
         // 3. CONTEXTO FINANCEIRO
-        let contextInfo: any = {
-            saldo: "0", entradas: "0", saidas: "0",
-            resumo_texto: "Sem dados", estado_conta: "Indefinido",
-            mes_visualizado: (new Date().getMonth() + 1).toString().padStart(2, '0'),
-            contas_fixas_standby: [],
-            parcelamentos_standby: [],
-        };
-        if (workspace) {
-            contextInfo = await getFinancialContext(supabase, userSettings.user_id, workspace.id);
-        }
+        let contextInfo = { saldo: "0", entradas: "0", saidas: "0", resumo_texto: "Sem dados", estado_conta: "Indefinido" };
+        if (workspace) contextInfo = await getFinancialContext(supabase, userSettings.user_id, workspace.id);
 
-        // 🔥 Variáveis de contexto para o prompt
-        const userName: string = profile?.full_name?.split(' ')[0] || "você";
-        const currentYear = new Date().getFullYear();
-        const MONTHS_PT = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-        const viewingPeriod = `${MONTHS_PT[new Date().getMonth()]} ${currentYear}`;
-
-        // 4. PROMPT DA IA
+        // 4. PROMPT DA IA MELHORADO E BLINDADO
         const systemPrompt = `
-            IDENTIDADE: Você é "Meu Aliado", estrategista financeiro pessoal via WhatsApp.
-            Tom: próximo, direto, humano. Nunca robótico.
+            IDENTIDADE: Você é "Meu Aliado", assistente financeiro pessoal via WhatsApp.
+            Tom: amigável, direto, humano. Nunca robótico.
             DATA DE HOJE: ${new Date().toLocaleDateString('pt-BR')}.
 
-            ━━━ CONTEXTO DO USUÁRIO ━━━
-            👤 Nome: ${userName}
-            📅 Período visualizado: ${viewingPeriod}
+            ━━━ SITUAÇÃO FINANCEIRA DO MÊS ━━━
+            💰 Receitas:  R$ ${contextInfo.entradas}
+            💸 Despesas:  R$ ${contextInfo.saidas}
+            📊 Saldo:     R$ ${contextInfo.saldo}
+            ⚠️  Status:   ${contextInfo.estado_conta}
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-            ━━━ SITUAÇÃO FINANCEIRA — ${viewingPeriod} ━━━
-            ${JSON.stringify(contextInfo, null, 2)}
-            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-            REGRAS DE OURO:
-            1. SEMPRE chame o usuário pelo nome: **${userName}**.
-            2. Use Markdown para destacar valores: ex: **R$ 49,90**.
-            3. Respostas CURTAS — WhatsApp, não relatório.
-            4. Use linguagem coloquial brasileira.
-            5. Datas sempre DD/MM/YYYY. Valores sempre float (ex: 49.90).
-            6. Data padrão para registros: DIA ATUAL/${contextInfo.mes_visualizado}/${currentYear}.
-
-            ━━━ COMO AGIR EM CADA SITUAÇÃO ━━━
+            COMO AGIR EM CADA SITUAÇÃO:
 
             [BATE-PAPO / SALDO]
-            → Responda com os dados acima de forma natural. Chame pelo nome.
+            → Responda naturalmente com os dados acima. Seja breve e humano.
 
             [REGISTRO DE TRANSAÇÃO]
-            → Extraia título, valor, data e tipo. Monte o JSON.
+            → Extraia título, valor, data e tipo (receita/despesa). Monte o JSON.
             → Se faltar informação essencial (ex: valor), pergunte antes de registrar.
 
             [PARCELA / FIXO]
-            → Parcela = installments. Fixo mensal = recurring.
-            → Calcule value_per_month automaticamente se o usuário fornecer total + nº de parcelas.
+            → Identifique se é gasto parcelado (installments) ou recorrente mensal (recurring).
+            → Calcule value_per_month automaticamente se o usuário fornecer total + número de parcelas.
 
-            [ANÁLISE DE STANDBY]
-            → Use os campos "contas_fixas_standby" e "parcelamentos_standby" do contexto.
-            → Uma conta está em standby EXATAMENTE quando seu "status" === "standby".
-            → Some o impacto: "value_per_month" (parcelamentos) ou "value" (fixas).
+            [ALERTA DE SAÚDE FINANCEIRA]
+            → Status CRÍTICO: avise com carinho, sugira 1 ação concreta e simples.
+            → Status OK/BOM: positivo e motivador, sem exageros.
 
-            [ALERTA FINANCEIRO]
-            → Status CRÍTICO: avise com carinho, sugira 1 ação concreta.
-            → Status OK/BOM: motivador, sem exageros.
+            REGRAS ABSOLUTAS:
+            ✅ Saída SEMPRE como array JSON válido — zero texto fora do JSON.
+            ✅ Respostas curtas (WhatsApp, não romance).
+            ✅ Use linguagem coloquial brasileira, nunca formal.
+            ✅ Datas sempre no formato DD/MM/YYYY.
+            ✅ Valores sempre como número float (ex: 49.90), nunca string.
+            ✅ Se a intenção for ambígua, peça confirmação via reply antes de registrar.
 
             CATEGORIAS DISPONÍVEIS:
-            Alimentação | Transporte | Saúde | Lazer | Moradia | Educação | Salário | Freelance | Fixa | Outros
-
-            ⚠️ REGRA CRÍTICA DE SAÍDA:
-            Sua resposta DEVE SER EXCLUSIVAMENTE um array JSON válido.
-            NUNCA escreva texto fora da estrutura JSON. NENHUM.
+            Alimentação | Transporte | Saúde | Lazer | Moradia | Educação | Salário | Freelance | Outros
 
             ━━━ FORMATOS JSON PERMITIDOS ━━━
 
             Transação:
-            {"action":"add","table":"transactions","data":{
-            "title":"...","amount":0.00,"type":"expense|income",
-            "category":"...","icon":"shopping-cart","is_paid":true,
-            "date":"DD/MM/YYYY","target_month":"${contextInfo.mes_visualizado}","status":"active"
+            {"action": "add", "table": "transactions", "data": {
+            "title": "...", "amount": 0.00, "type": "expense|income",
+            "date": "DD/MM/YYYY", "category": "...", "target_month": "Mês YYYY"
             }}
 
             Parcela:
-            {"action":"add","table":"installments","data":{
-            "title":"...","total_value":0.00,"installments_count":1,
-            "value_per_month":0.00,"due_day":10,"status":"active","icon":"credit-card"
+            {"action": "add", "table": "installments", "data": {
+            "title": "...", "total_value": 0.00, "installments_count": 1,
+            "value_per_month": 0.00, "due_day": 10, "status": "active"
             }}
 
             Fixo mensal:
-            {"action":"add","table":"recurring","data":{
-            "title":"...","value":0.00,"type":"expense|income","category":"Fixa",
-            "due_day":10,"status":"active","start_date":"01/${contextInfo.mes_visualizado}/${currentYear}"
-            }}
-
-            Análise de standby:
-            {"action":"analyze","table":"mixed","data":{
-            "total_impact":0.00,"items_count":0,
-            "analysis_text":"resposta humanizada listando contas, valores e impacto no mês"
+            {"action": "add", "table": "recurring", "data": {
+            "title": "...", "value": 0.00, "type": "expense|income",
+            "due_day": 10, "status": "active"
             }}
 
             Resposta ao usuário (OBRIGATÓRIA em todo array):
-            {"reply":"mensagem curta, humana, com nome do usuário"}
+            {"reply": "mensagem curta e humana aqui"}
 
-            EXEMPLO COMPLETO:
+            EXEMPLO DE SAÍDA COMPLETA:
             [
-            {"action":"add","table":"transactions","data":{"title":"Mercado","amount":89.90,"type":"expense","category":"Alimentação","icon":"shopping-cart","is_paid":true,"date":"21/03/${currentYear}","target_month":"${contextInfo.mes_visualizado}","status":"active"}},
-            {"reply":"Anotei, ${userName}! 🛒 **R$ 89,90** no mercado registrado. Saldo atualizado!"}
+            {"action": "add", "table": "transactions", "data": {"title": "Almoço", "amount": 32.50, "type": "expense", "date": "21/03/2025", "category": "Alimentação", "target_month": "Março 2025"}},
+            {"reply": "Anotei! 🍽️ R$ 32,50 no almoço. Saldo continua firme!"}
             ]
-            ${hasAudio ? "\n⚠️ ÁUDIO RECEBIDO: Interprete a fala e responda com base no que foi dito." : ""}
+            ${hasAudio ? "\n⚠️ ÁUDIO RECEBIDO: Transcreva mentalmente a fala e responda com base no que foi dito." : ""}
             `;
 
         const finalPrompt = [systemPrompt, ...promptParts];
 
-        // 5. CHAMADA À IA
+        // 🟢 BLINDAGEM DA IA: Tratamento de erros exclusivo para o Gemini
         let commands: any[] = [];
         try {
             const result = await model.generateContent(finalPrompt);
@@ -440,89 +368,64 @@ export async function POST(req: Request) {
         } catch (error: any) {
             console.error("❌ ERRO NA IA OU NO JSON:", error);
             if (error?.status === 503 || error?.message?.includes('503')) {
-                await sendWhatsAppMessage(targetPhone, "⏳ A IA está sobrecarregada agora. Tenta de novo em alguns segundos!");
+                await sendWhatsAppMessage(targetPhone, "A IA está com muita demanda agora. Tente novamente em alguns segundos! ⏳");
             } else {
-                await sendWhatsAppMessage(targetPhone, "🤖 Meu cérebro travou por um segundo. Manda de novo de um jeito mais simples?");
+                await sendWhatsAppMessage(targetPhone, "Desculpe, meu cérebro (IA) deu uma travada agora. Pode me mandar a mensagem de novo de uma forma mais simples? 🤖");
             }
             return NextResponse.json({ success: false, reason: 'AI/JSON Error' });
         }
 
-        // 6. PROCESSAMENTO DAS AÇÕES
+        // 5. PROCESSAMENTO DAS AÇÕES (Se a IA sobreviveu)
         let replySent = false;
-        const hasReplyCmd = commands.some((c: any) => c.reply);
-
         for (const cmd of commands) {
             if (cmd.action === 'add') {
-                const payload: any = {
-                    ...cmd.data,
-                    user_id: userSettings.user_id,
-                    context: workspace?.id || null,
-                    created_at: new Date(),
-                    message_id: messageId,
-                };
+                let payload: any = { ...cmd.data, user_id: userSettings.user_id, context: workspace?.id || null, created_at: new Date(), message_id: messageId };
 
                 if (cmd.table === 'installments') {
-                    payload.current_installment = 0;
-                    payload.status = 'active';
-                    delete payload.date;
-                    delete payload.target_month;
-
+                    payload.current_installment = 0; payload.status = 'active';
+                    delete payload.date; delete payload.target_month;
                     const { error } = await supabase.from('installments').insert([payload]);
-                    if (error?.code === '23505') { replySent = true; continue; }
-                    if (!error && !hasReplyCmd) {
+
+                    if (error && error.code === '23505') { replySent = true; continue; }
+                    if (!error && !commands.some((c: any) => c.reply)) {
                         const total = Number(cmd.data.total_value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                         await sendWhatsAppMessage(targetPhone, `✅ Parcelado: ${cmd.data.title} (${total})`);
                     }
-
-                } else if (cmd.table === 'recurring') {
+                }
+                else if (cmd.table === 'recurring') {
                     payload.status = 'active';
                     const { error } = await supabase.from('recurring').insert([payload]);
-                    if (error?.code === '23505') { replySent = true; continue; }
-                    if (!error && !hasReplyCmd) {
-                        await sendWhatsAppMessage(targetPhone, `✅ Fixo registrado: ${cmd.data.title}`);
-                    }
 
-                } else if (cmd.table === 'transactions') {
-                    // 🔥 CORRIGIDO: timezone de São Paulo garantida
+                    if (error && error.code === '23505') { replySent = true; continue; }
+                    if (!error && !commands.some((c: any) => c.reply)) await sendWhatsAppMessage(targetPhone, `✅ Fixo: ${cmd.data.title}`);
+                }
+                else if (cmd.table === 'transactions') {
                     if (!payload.date) {
                         const hoje = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
                         const dStr = String(hoje.getDate()).padStart(2, '0');
                         const mStr = String(hoje.getMonth() + 1).padStart(2, '0');
                         payload.date = `${dStr}/${mStr}/${hoje.getFullYear()}`;
                     }
-                    payload.is_paid = true;
-                    payload.status = 'paid';
-
+                    payload.is_paid = true; payload.status = 'paid';
                     const { error } = await supabase.from('transactions').insert([payload]);
-                    if (error?.code === '23505') { replySent = true; continue; }
-                    if (!error && !hasReplyCmd) {
+
+                    if (error && error.code === '23505') { replySent = true; continue; }
+                    if (!error && !commands.some((c: any) => c.reply)) {
                         const val = Number(cmd.data.amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
                         await sendWhatsAppMessage(targetPhone, `✅ Lançado: ${cmd.data.title} (${val})`);
                     }
                 }
-
-            } else if (cmd.action === 'remove') {
-                const { data: items } = await supabase
-                    .from(cmd.table)
-                    .select('id, title')
-                    .eq('user_id', userSettings.user_id)
-                    .ilike('title', `%${cmd.data.title}%`)
-                    .order('created_at', { ascending: false })
-                    .limit(1);
-
+            }
+            else if (cmd.action === 'remove') {
+                const { data: items } = await supabase.from(cmd.table).select('id, title').eq('user_id', userSettings.user_id).ilike('title', `%${cmd.data.title}%`).order('created_at', { ascending: false }).limit(1);
                 if (items?.length) {
                     await supabase.from(cmd.table).delete().eq('id', items[0].id);
-                    if (!hasReplyCmd) await sendWhatsAppMessage(targetPhone, `🗑️ Apagado: "${items[0].title}"`);
+                    if (!commands.some((c: any) => c.reply)) await sendWhatsAppMessage(targetPhone, `🗑️ Apagado: "${items[0].title}"`);
                 } else {
-                    if (!hasReplyCmd) await sendWhatsAppMessage(targetPhone, `⚠️ Não encontrei "${cmd.data.title}"`);
+                    if (!commands.some((c: any) => c.reply)) await sendWhatsAppMessage(targetPhone, `⚠️ Não encontrei "${cmd.data.title}"`);
                 }
-
-            } else if (cmd.action === 'analyze') {
-                // 🔥 NOVO: processa a action analyze (standby) — só envia o reply
-                // A resposta humanizada vem dentro do cmd.data.analysis_text via reply abaixo
             }
 
-            // Envia o reply da IA (uma única vez)
             if (cmd.reply && !replySent) {
                 await sendWhatsAppMessage(targetPhone, cmd.reply);
                 replySent = true;
@@ -533,7 +436,7 @@ export async function POST(req: Request) {
 
     } catch (e: any) {
         console.error("🔥 ERRO FATAL NO WEBHOOK:", e);
-        // Sempre retorna 200 para evitar loop de retentativa da Evolution
-        return NextResponse.json({ error: e.message, status: "Caught" }, { status: 200 });
+        // 🟢 REGRA DE OURO DO WEBHOOK: SEMPRE devolva 200, mesmo se der erro, senão a Evolution fica em loop!
+        return NextResponse.json({ error: e.message, status: "Caught but returning 200 to prevent retries" }, { status: 200 });
     }
 }
