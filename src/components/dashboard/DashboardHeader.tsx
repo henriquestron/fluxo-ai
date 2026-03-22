@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import {
     ShieldCheck, Briefcase, User, UserPlus, BarChart3, FileSpreadsheet,
     Lock, HelpCircle, ChevronDown, CreditCard, Smartphone, Palette,
-    LogOut, Sparkles, Plus, Search, Calculator, Trash2, FileUp // 🟢 Adicionei o FileUp aqui
+    LogOut, Sparkles, Plus, Search, Calculator, Trash2, FileUp, // 🟢 Adicionei o FileUp aqui
+    Link
 } from 'lucide-react';
 import NotificationBell from '@/components/dashboard/NotificationBell';
 
@@ -22,7 +23,7 @@ interface DashboardHeaderProps {
     whatsappEnabled: boolean;
     toggleWhatsappNotification: () => void;
     setIsCustomizationOpen: (v: boolean) => void;
-    handleCheckout: (plan: 'START' | 'PREMIUM' | 'PRO' | 'AGENT') => void; 
+    handleCheckout: (plan: 'START' | 'PREMIUM' | 'PRO' | 'AGENT') => void;
     handleLogout: () => void;
     setIsAIOpen: (v: boolean) => void;
     setIsCreditCardModalOpen: (v: boolean) => void;
@@ -30,7 +31,7 @@ interface DashboardHeaderProps {
     setIsCalculatorOpen: (isOpen: boolean) => void;
     handleRemoveClient: (client: any) => void;
     setIsTutorialOpen: (v: boolean) => void;
-    
+
     client: any;
     setIsImportOpen: (v: boolean) => void; // 🟢 Propriedade nova para o Modal de Importação
 }
@@ -40,7 +41,7 @@ export default function DashboardHeader({
     setIsHistoryOpen, setIsExportModalOpen, openPricingModal, runTour,
     setIsProfileModalOpen, handleManageSubscription, whatsappEnabled, toggleWhatsappNotification,
     setIsCustomizationOpen, handleCheckout, handleLogout,
-    setIsAIOpen, setIsCreditCardModalOpen, openNewTransactionModal, setIsCalculatorOpen,handleRemoveClient, client,
+    setIsAIOpen, setIsCreditCardModalOpen, openNewTransactionModal, setIsCalculatorOpen, handleRemoveClient, client,
     setIsImportOpen, setIsTutorialOpen // 🟢 Recebendo a propriedade
 }: DashboardHeaderProps) {
 
@@ -57,7 +58,7 @@ export default function DashboardHeader({
                 </h1>
 
                 <div id="menu-clientes" className="w-full mt-2 flex justify-center xl:justify-start">
-                    {(userPlan === 'agent' || userPlan === 'admin') && (
+                    {(userPlan === 'agent') && (
                         <div id="agent-bar" className="w-full max-w-md xl:max-w-none bg-purple-950/20 border border-purple-500/20 rounded-lg p-1.5 overflow-x-auto scrollbar-hide backdrop-blur-sm">
                             <div className="flex items-center gap-3 px-1 min-w-max">
                                 <div className="flex items-center gap-1.5 text-purple-400 font-bold uppercase text-[10px] tracking-wider whitespace-nowrap">
@@ -79,7 +80,7 @@ export default function DashboardHeader({
                                     <UserPlus size={10} /> Add
                                 </button>
                                 {viewingAs && (
-                                    <button onClick={() => handleRemoveClient(client)} className="text-red-500 hover:text-red-400"><Trash2 size={18}/></button>
+                                    <button onClick={() => handleRemoveClient(client)} className="text-red-500 hover:text-red-400"><Trash2 size={18} /></button>
                                 )}
                             </div>
                         </div>
@@ -101,8 +102,8 @@ export default function DashboardHeader({
                             {userPlan === 'free' && <Lock size={10} className="absolute top-2 right-2 text-amber-500" />}
                         </button>
                         {/* 🟢 O NOVO BOTÃO DE IMPORTAR (ESTILO CALCULADORA COM SELO BETA) */}
-                        <button 
-                            id="btn-import" 
+                        <button
+                            id="btn-import"
                             onClick={() => setIsImportOpen(true)}
                             className="relative h-10 w-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-emerald-400 hover:bg-gray-800 transition"
                             title="Importar Contas Mágica"
@@ -112,28 +113,27 @@ export default function DashboardHeader({
                                 BETA
                             </span>
                         </button>
-                        {<button 
+                        {<button
                             onClick={() => setIsTutorialOpen(true)} // 🟢 ABRINDO O NOVO TUTORIAL AQUI
-                            className="h-10 w-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition" 
+                            className="h-10 w-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition"
                             title="Ver Tutorial em Vídeo"
                         >
                             <HelpCircle size={20} />
-                        </button> }
+                        </button>}
                         <button
-                                onClick={() => setIsCalculatorOpen(true)}
-                                className="h-10 w-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition"
-                                title="Abrir Calculadora"
-                            >
-                                <Calculator size={20} />
-                            </button>
+                            onClick={() => setIsCalculatorOpen(true)}
+                            className="h-10 w-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition"
+                            title="Abrir Calculadora"
+                        >
+                            <Calculator size={20} />
+                        </button>
                     </div>
 
                     <div className="hidden xl:block w-px h-8 bg-gray-800 mx-1"></div>
 
                     <div className="flex items-center gap-2 pl-0 xl:pl-2 xl:border-none">
                         <NotificationBell userId={user.id} />
-                        
-                        {/* MENU DO USUÁRIO (DROPDOWN) */}
+
                         <div id="btn-menu" className="relative z-50">
                             <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className={`h-11 px-3 xl:px-4 bg-gray-900 border border-gray-800 rounded-xl hover:bg-gray-800 flex items-center justify-center gap-2 transition ${isUserMenuOpen ? 'ring-2 ring-cyan-500/50 border-cyan-500/50' : ''}`}>
                                 {user.user_metadata?.avatar_url
@@ -143,7 +143,6 @@ export default function DashboardHeader({
                                 <span className="hidden md:inline text-gray-400 text-sm font-medium">Menu</span>
                                 <ChevronDown size={14} className="text-gray-500 hidden md:block" />
                             </button>
-                            
 
                             {isUserMenuOpen && (
                                 <>
@@ -162,18 +161,32 @@ export default function DashboardHeader({
                                                     </div>
                                                 </div>
                                                 <div className="mt-3 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-gray-800 border border-gray-700 text-[10px] font-medium text-gray-300 uppercase tracking-wide">
-                                                    {userPlan === 'agent' ? 'Consultor' : `Plano ${userPlan}`}
+                                                    {userPlan === 'admin' ? 'CEO / Admin' : userPlan === 'agent' ? 'Consultor' : `Plano ${userPlan}`}
                                                 </div>
                                             </div>
                                             <div className="p-2 space-y-1">
+
+                                                {/* 🟢 BOTÃO EXCLUSIVO DO ADMIN (CEO) */}
+                                                {userPlan === 'admin' && (
+                                                    <button onClick={() => { setIsUserMenuOpen(false); window.location.href = '/api/admin'; }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition">
+                                                        👨‍💼 Painel do CEO
+                                                    </button>
+                                                )}
+
                                                 <button onClick={() => { setIsUserMenuOpen(false); setIsProfileModalOpen(true); }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition"><User size={16} className="text-cyan-500" /> Meu Perfil</button>
+
                                                 {userPlan !== 'free' && (<button onClick={() => { setIsUserMenuOpen(false); handleManageSubscription(); }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition"><CreditCard size={16} className="text-emerald-500" /> Assinatura</button>)}
+
                                                 <div className="px-3 py-2.5 flex items-center justify-between group cursor-pointer hover:bg-gray-800 rounded-lg transition" onClick={(e) => { e.stopPropagation(); toggleWhatsappNotification(); }}>
                                                     <div className="flex items-center gap-3 text-sm text-gray-300 group-hover:text-white"><Smartphone size={16} className="text-emerald-500" /> Notificações Zap {(userPlan !== 'pro' && userPlan !== 'agent' && userPlan !== 'admin') && <Lock size={12} className="text-amber-500" />}</div>
                                                     <div className={`w-9 h-5 rounded-full transition-colors relative ${whatsappEnabled ? 'bg-emerald-600' : 'bg-gray-700'}`}><div className={`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform ${whatsappEnabled ? 'translate-x-4' : 'translate-x-0'}`}></div></div>
                                                 </div>
-                                                {(userPlan === 'pro' || userPlan === 'agent') && (<button onClick={() => { setIsUserMenuOpen(false); setIsCustomizationOpen(true); }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition"><Palette size={16} className="text-purple-500" /> Tema e Cores</button>)}
-                                                {userPlan !== 'agent' && (<button onClick={() => { setIsUserMenuOpen(false); handleCheckout('AGENT'); }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition"><Briefcase size={16} className="text-amber-500" /> Virar Consultor</button>)}
+
+                                                {(userPlan === 'pro' || userPlan === 'agent' || userPlan === 'admin') && (<button onClick={() => { setIsUserMenuOpen(false); setIsCustomizationOpen(true); }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition"><Palette size={16} className="text-purple-500" /> Tema e Cores</button>)}
+
+                                                {/* 🔥 Esconde o "Virar Consultor" se o cara já for Consultor OU Admin */}
+                                                {(userPlan !== 'agent' && userPlan !== 'admin') && (<button onClick={() => { setIsUserMenuOpen(false); handleCheckout('AGENT'); }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition"><Briefcase size={16} className="text-amber-500" /> Virar Consultor</button>)}
+
                                                 <div className="h-px bg-gray-800 my-1 mx-2"></div>
                                                 <button onClick={handleLogout} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-red-400 hover:bg-red-950/30 transition font-medium"><LogOut size={16} /> Sair da Conta</button>
                                             </div>
@@ -181,6 +194,7 @@ export default function DashboardHeader({
                                     </div>
                                 </>
                             )}
+
                         </div>
                     </div>
                 </div>
@@ -188,7 +202,7 @@ export default function DashboardHeader({
                 {/* GRUPO 2: Ações Principais (Importar, IA, Fatura, Novo) */}
                 {/* 🟢 Ajustei o grid responsivo para caber 4 botões! */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 xl:flex gap-2 xl:gap-3 w-full xl:w-auto order-2 xl:order-none">
-                    
+
 
                     <button id="btn-ai" onClick={() => setIsAIOpen(true)} className={`h-11 px-3 xl:px-5 rounded-xl font-bold transition flex items-center justify-center gap-2 text-sm shadow-lg border border-white/5 whitespace-nowrap ${['premium', 'pro', 'agent', 'admin'].includes(userPlan) ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white hover:brightness-110' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
                         <Sparkles size={16} className={['premium', 'pro', 'agent', 'admin'].includes(userPlan) ? "text-cyan-200 fill-cyan-200" : ""} />

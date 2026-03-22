@@ -1,46 +1,71 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
+import { createClient } from '@supabase/supabase-js';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
-// ⚠️ IMPORTANTE: COLOCAR SEUS PRICE_IDS REAIS AQUI IGUAL AO PAGE.TSX
-const STRIPE_PRICES = {
-    START: 'price_1SyvGvBVKV78UpHayU9XXe2Q',
-    PREMIUM: 'price_1SyvHkBVKV78UpHaHryy3YYP',
-    PRO: 'price_1SyvIYBVKV78UpHahHXN0APT',
-    AGENT: 'price_1SwQumBVKV78UpHaxUSMAGhW'
-};
-
 export async function POST(req: Request) {
   try {
-    const { userId, email, priceId } = await req.json();
+    const { userId, email, planType } = await req.json();
 
-    if (!userId || !email || !priceId) {
+    if (!userId || !email || !planType) {
       return NextResponse.json({ error: 'Dados incompletos' }, { status: 400 });
     }
 
-    // --- 1. IDENTIFICAR QUAL PLANO ESTÁ SENDO COMPRADO ---
-    let planType = 'free';
-    
-    // Varre nosso objeto de preços para descobrir qual é o nome do plano (start, premium, etc)
-    // baseando-se no ID que chegou (price_123...)
-    if (priceId === STRIPE_PRICES.START) planType = 'start';
-    else if (priceId === STRIPE_PRICES.PREMIUM) planType = 'premium'; // Plus no front, Premium no banco
-    else if (priceId === STRIPE_PRICES.PRO) planType = 'pro';
-    else if (priceId === STRIPE_PRICES.AGENT) planType = 'agent';
+    // --- 1. BUSCAR AS CONFIGURAÇÕES NO "CONTROLE REMOTO" DO SUPABASE ---
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // --- 2. CRIAR A SESSÃO DE CHECKOUT ---
+    const { data: appSettings, error } = await supabase
+      .from('app_settings')
+      .select('*')
+      .single();
+
+    if (error || !appSettings) {
+      console.error("Erro ao buscar configurações do app:", error);
+      return NextResponse.json({ error: 'Erro de configuração do servidor' }, { status: 500 });
+    }
+
+    // --- 2. IDENTIFICAR O ID DO STRIPE BASEADO NA PROMOÇÃO E NO PLANO ---
+    let activePriceId = '';
+    const isPromo = appSettings.is_promo_active;
+    
+    // Normaliza para minúsculo (START vira start) para não dar erro no webhook depois
+    const normalizedPlan = planType.toLowerCase();
+
+    if (normalizedPlan === 'start') {
+      activePriceId = isPromo ? appSettings.stripe_start_promo : appSettings.stripe_start_normal;
+    } 
+    else if (normalizedPlan === 'premium') {
+      activePriceId = isPromo ? appSettings.stripe_premium_promo : appSettings.stripe_premium_normal;
+    } 
+    else if (normalizedPlan === 'pro') {
+      // Lembrando que o Pro usa os nomes antigos que já existiam
+      activePriceId = isPromo ? appSettings.stripe_price_promo : appSettings.stripe_price_pro;
+    } 
+    else if (normalizedPlan === 'agent') {
+      activePriceId = isPromo ? appSettings.stripe_agent_promo : appSettings.stripe_agent_normal;
+    } 
+    else {
+      return NextResponse.json({ error: 'Plano inválido' }, { status: 400 });
+    }
+
+    if (!activePriceId) {
+       return NextResponse.json({ error: `Preço Stripe não configurado para o plano ${normalizedPlan}` }, { status: 400 });
+    }
+
+    // --- 3. CRIAR A SESSÃO DE CHECKOUT COM O PREÇO DINÂMICO ---
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'], // Assinatura recorrente exige cartão
+      payment_method_types: ['card'], 
       
       line_items: [
         {
-          price: priceId,
+          price: activePriceId, // 🟢 Puxa exatamente o ID que está valendo agora!
           quantity: 1,
         },
       ],
       
-      // ✅ AGORA TODOS SÃO SUBSCRIPTION (MENSAL)
       mode: 'subscription', 
       
       success_url: `${req.headers.get('origin')}/?success=true`,
@@ -48,9 +73,9 @@ export async function POST(req: Request) {
       customer_email: email,
       client_reference_id: userId,
       
-      // 🔥 AQUI ESTÁ O SEGREDO: Enviamos o nome do plano para o Webhook ler depois
+      // Enviamos o nome do plano normalizado (minúsculo) para o Webhook ler depois
       metadata: {
-          planType: planType 
+          planType: normalizedPlan 
       }
     });
 

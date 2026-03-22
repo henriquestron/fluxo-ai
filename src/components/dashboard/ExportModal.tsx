@@ -29,7 +29,7 @@ const TYPES = [
 export default function ExportModal({ isOpen, onClose, user, userPlan, clients, activeTab, selectedYear: initialYear, currentWorkspace }: ExportModalProps) {
     if (!isOpen || !user) return null;
 
-    const isAgent = userPlan === 'agent' || userPlan === 'admin';
+    const isAgent = userPlan === 'agent';
 
     // --- ESTADOS ---
     const [exportYear, setExportYear] = useState(initialYear);

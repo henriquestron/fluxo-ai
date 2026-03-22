@@ -983,7 +983,9 @@ export default function FinancialDashboard() {
         if (btn) btn.innerText = "Processando...";
         const priceId = STRIPE_PRICES[planType];
         try {
-            const response = await fetch('/api/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, email: user.email, priceId }), });
+            const response = await fetch('/api/checkout', {
+                body: JSON.stringify({ userId: user.id, email: user.email, planType: 'pro' }) // 🟢 Envie o nome do plano
+            })
             const data = await response.json();
             if (data.url) window.location.href = data.url; else toast.error("Erro ao criar pagamento.");
         } catch (e) { toast.error("Erro de conexão. Tente novamente."); }
@@ -1834,7 +1836,7 @@ export default function FinancialDashboard() {
                                     category: cmd.data.category || 'Outros',
                                     icon: cmd.data.icon || 'dollar-sign',
                                     status: cmd.data.status || 'active',
-                                    is_paid: cmd.data.is_paid === true 
+                                    is_paid: cmd.data.is_paid === true
                                 };
 
                                 const extractedValue = parseFloat(cmd.data.amount) || parseFloat(cmd.data.value) || 0;
@@ -1879,7 +1881,7 @@ export default function FinancialDashboard() {
                                     console.error("Erro detalhado Supabase:", JSON.stringify(error, null, 2));
                                 }
                             }
-                            
+
                             // 🟢 A MÁGICA ESTÁ AQUI: SE A AÇÃO FOR 'ANALYZE', GUARDA O TEXTO!
                             else if (cmd.action === 'analyze') {
                                 analysisTextGenerated = cmd.data.analysis_text;
