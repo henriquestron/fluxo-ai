@@ -979,18 +979,36 @@ export default function FinancialDashboard() {
     const openPricingModal = () => { if (!user) { setIsAuthModalOpen(true); setAuthMessage("✨ Crie uma conta grátis."); return; } setIsPricingOpen(true); };
 
     const handleCheckout = async (planType: 'START' | 'PREMIUM' | 'PRO' | 'AGENT') => {
-        const btn = document.getElementById(`checkout-btn-${planType}`);
-        if (btn) btn.innerText = "Processando...";
-        const priceId = STRIPE_PRICES[planType];
-        try {
-            const response = await fetch('/api/checkout', {
-                body: JSON.stringify({ userId: user.id, email: user.email, planType: 'pro' }) // 🟢 Envie o nome do plano
-            })
-            const data = await response.json();
-            if (data.url) window.location.href = data.url; else toast.error("Erro ao criar pagamento.");
-        } catch (e) { toast.error("Erro de conexão. Tente novamente."); }
-        if (btn) btn.innerText = "Assinar Agora";
-    };
+    const btn = document.getElementById(`checkout-btn-${planType}`);
+    if (btn) btn.innerText = "Processando...";
+    
+    try {
+        const response = await fetch('/api/checkout', {
+            method: 'POST', // 🟢 AGORA SIM! Ele sabe que é pra enviar dados
+            headers: {
+                'Content-Type': 'application/json' // Avisa o servidor que é um JSON
+            },
+            body: JSON.stringify({ 
+                userId: user.id, 
+                email: user.email, 
+                planType: planType // 🟢 DINÂMICO! Manda exatamente o botão que o cara clicou
+            }) 
+        });
+
+        const data = await response.json();
+        
+        if (data.url) {
+            window.location.href = data.url; // Vai pro Stripe!
+        } else {
+            toast.error(data.error || "Erro ao criar pagamento.");
+        }
+    } catch (e) { 
+        console.error("Erro no checkout:", e);
+        toast.error("Erro de conexão. Tente novamente."); 
+    }
+    
+    if (btn) btn.innerText = "Assinar Agora"; // Volta o texto normal caso dê erro
+};
 
     const handleManageSubscription = async () => {
         if (!user) return;
