@@ -2,19 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { ArrowLeft, Rocket, Users, Settings, Save, ShieldCheck, Tag } from "lucide-react";
+import { ArrowLeft, Rocket, Users, Settings, Save, ShieldCheck, Tag, Ticket } from "lucide-react";
 
-// Inicializa o Supabase no lado do cliente
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// 🟢 CORREÇÃO DO FOCO: O Card agora vive FORA da função principal
 const PlanConfigCard = ({ title, prefix, dbPrefix, settings, onChange }: any) => {
-  // Define os nomes exatos das colunas baseados no plano
   const stripeNormalKey = prefix === 'pro' ? 'stripe_price_pro' : `stripe_${dbPrefix}_normal`;
-  const stripePromoKey = prefix === 'pro' ? 'stripe_price_promo' : `stripe_${dbPrefix}_promo`;
 
   return (
     <div className="bg-gray-50 dark:bg-[#151515] p-6 rounded-2xl border border-gray-200 dark:border-gray-800 space-y-4">
@@ -51,25 +47,15 @@ const PlanConfigCard = ({ title, prefix, dbPrefix, settings, onChange }: any) =>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 pt-2">
-        <div>
-          <label className="text-xs font-bold text-gray-500 uppercase">Stripe ID (Normal)</label>
-          <input 
-            type="text" 
-            className="w-full mt-1 p-2 border rounded-lg bg-white dark:bg-[#1a1a1a] text-xs font-mono focus:border-cyan-500 outline-none"
-            value={settings[stripeNormalKey] || ''}
-            onChange={(e) => onChange(stripeNormalKey, e.target.value)}
-          />
-        </div>
-        <div>
-          <label className="text-xs font-bold text-cyan-600 uppercase">Stripe ID (Promo)</label>
-          <input 
-            type="text" 
-            className="w-full mt-1 p-2 border-2 border-cyan-200 dark:border-cyan-900/50 rounded-lg bg-white dark:bg-[#1a1a1a] text-xs font-mono focus:border-cyan-500 outline-none"
-            value={settings[stripePromoKey] || ''}
-            onChange={(e) => onChange(stripePromoKey, e.target.value)}
-          />
-        </div>
+      <div>
+        <label className="text-xs font-bold text-gray-500 uppercase">Stripe ID (Preço Oficial do Plano)</label>
+        <input 
+          type="text" 
+          placeholder="ex: price_1xyz..."
+          className="w-full mt-1 p-2 border rounded-lg bg-white dark:bg-[#1a1a1a] text-xs font-mono focus:border-cyan-500 outline-none"
+          value={settings[stripeNormalKey] || ''}
+          onChange={(e) => onChange(stripeNormalKey, e.target.value)}
+        />
       </div>
     </div>
   );
@@ -117,7 +103,6 @@ export default function AdminDashboard() {
     if (data) setUsers(data);
   }
 
-  // 🟢 NOVA FUNÇÃO PARA ATUALIZAR OS CAMPOS SEM PERDER O FOCO
   const handleSettingChange = (key: string, value: any) => {
     setSettings((prev: any) => ({ ...prev, [key]: value }));
   };
@@ -170,7 +155,6 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0a] text-gray-900 dark:text-gray-100 pb-20">
       
-      {/* HEADER DO PAINEL */}
       <div className="bg-white dark:bg-[#111111] border-b border-gray-200 dark:border-gray-800 sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -192,41 +176,53 @@ export default function AdminDashboard() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-10 space-y-10">
         
-        {/* BLOCO 1: GESTÃO DE PROMOÇÕES E PLANOS */}
         <section className="bg-white dark:bg-[#111111] p-8 rounded-3xl shadow-xl border border-gray-100 dark:border-gray-800 relative">
           <div className="flex items-center gap-3 mb-8 border-b border-gray-200 dark:border-gray-800 pb-6">
             <div className="p-3 bg-cyan-500/10 rounded-xl text-cyan-500"><Settings size={24} /></div>
             <div>
               <h2 className="text-2xl font-bold">Motor de Lançamento e Preços</h2>
-              <p className="text-sm text-gray-500">Gere as promoções e os dados do Stripe de todos os planos</p>
+              <p className="text-sm text-gray-500">Controle a promoção global via Cupom</p>
             </div>
           </div>
           
           {settings && (
             <div className="space-y-8">
-              {/* CHAVE MESTRA DA PROMOÇÃO */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-cyan-50 dark:bg-cyan-950/20 p-6 rounded-2xl border border-cyan-100 dark:border-cyan-900/30">
+              {/* BLOCO DA PROMOÇÃO (AGORA COM O CAMPO DO CUPOM) */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-cyan-50 dark:bg-cyan-950/20 p-6 rounded-2xl border border-cyan-100 dark:border-cyan-900/30">
                 <div>
                   <label className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2 mb-2">
-                    <Rocket size={16} className="text-cyan-500"/> Status Global da Promoção
+                    <Rocket size={16} className="text-cyan-500"/> Promoção
                   </label>
                   <select 
                     className={`w-full p-4 border-2 rounded-xl bg-white dark:bg-[#1a1a1a] font-bold transition-all outline-none ${settings.is_promo_active ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400' : 'border-gray-200 dark:border-gray-700'}`}
                     value={settings.is_promo_active ? "true" : "false"}
                     onChange={(e) => handleSettingChange("is_promo_active", e.target.value === "true")}
                   >
-                    <option value="false">🔴 DESLIGADA (Site mostra preços normais)</option>
-                    <option value="true">🟢 ATIVADA (Site risca preço antigo e mostra desconto)</option>
+                    <option value="false">🔴 DESLIGADA</option>
+                    <option value="true">🟢 ATIVADA</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2 mb-2">
-                    <Tag size={16} className="text-cyan-500"/> Frase de Destaque no Site
+                    <Ticket size={16} className="text-cyan-500"/> ID do Cupom Stripe
                   </label>
                   <input 
                     type="text" 
-                    placeholder="Ex: Oferta de Black Friday!"
+                    placeholder="Ex: PROMO50"
+                    className="w-full p-4 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-[#1a1a1a] outline-none focus:border-cyan-500 font-mono"
+                    value={settings.stripe_coupon_id || ''}
+                    onChange={(e) => handleSettingChange("stripe_coupon_id", e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2 mb-2">
+                    <Tag size={16} className="text-cyan-500"/> Frase no Site
+                  </label>
+                  <input 
+                    type="text" 
+                    placeholder="Ex: Oferta de Lançamento!"
                     className="w-full p-4 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-[#1a1a1a] outline-none focus:border-cyan-500 font-medium"
                     value={settings.promo_text || ''}
                     onChange={(e) => handleSettingChange("promo_text", e.target.value)}
@@ -234,7 +230,7 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* GRELHA DOS 4 PLANOS */}
+              {/* GRELHA DOS PLANOS LIMPÍSSIMA */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <PlanConfigCard title="🚀 Plano Start" prefix="start" dbPrefix="start" settings={settings} onChange={handleSettingChange} />
                 <PlanConfigCard title="💎 Plano Premium" prefix="premium" dbPrefix="premium" settings={settings} onChange={handleSettingChange} />
@@ -245,7 +241,7 @@ export default function AdminDashboard() {
           )}
         </section>
 
-        {/* BLOCO 2: GESTÃO DE CLIENTES */}
+        {/* ... (BLOCO DE CLIENTES CONTINUA IGUAL AQUI PARA BAIXO) ... */}
         <section className="bg-white dark:bg-[#111111] rounded-3xl shadow-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
           <div className="p-8 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
             <div className="flex items-center gap-3">

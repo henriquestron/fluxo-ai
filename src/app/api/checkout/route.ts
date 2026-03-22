@@ -12,10 +12,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Dados incompletos' }, { status: 400 });
     }
 
-    // --- 1. BUSCAR AS CONFIGURAÇÕES NO "CONTROLE REMOTO" DO SUPABASE ---
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
 
     const { data: appSettings, error } = await supabase
       .from('app_settings')
@@ -23,57 +23,49 @@ export async function POST(req: Request) {
       .single();
 
     if (error || !appSettings) {
-      console.error("Erro ao buscar configurações do app:", error);
       return NextResponse.json({ error: 'Erro de configuração do servidor' }, { status: 500 });
     }
 
-    // --- 2. IDENTIFICAR O ID DO STRIPE BASEADO NA PROMOÇÃO E NO PLANO ---
     let activePriceId = '';
-    const isPromo = appSettings.is_promo_active;
-    
-    // Normaliza para minúsculo (START vira start) para não dar erro no webhook depois
     const normalizedPlan = planType.toLowerCase();
 
+    // 🟢 MUDANÇA: Agora ele SEMPRE puxa o ID do Preço NORMAL
     if (normalizedPlan === 'start') {
-      activePriceId = isPromo ? appSettings.stripe_start_promo : appSettings.stripe_start_normal;
-    } 
-    else if (normalizedPlan === 'premium') {
-      activePriceId = isPromo ? appSettings.stripe_premium_promo : appSettings.stripe_premium_normal;
-    } 
-    else if (normalizedPlan === 'pro') {
-      // Lembrando que o Pro usa os nomes antigos que já existiam
-      activePriceId = isPromo ? appSettings.stripe_price_promo : appSettings.stripe_price_pro;
-    } 
-    else if (normalizedPlan === 'agent') {
-      activePriceId = isPromo ? appSettings.stripe_agent_promo : appSettings.stripe_agent_normal;
-    } 
-    else {
+      activePriceId = appSettings.stripe_start_normal;
+    } else if (normalizedPlan === 'premium') {
+      activePriceId = appSettings.stripe_premium_normal;
+    } else if (normalizedPlan === 'pro') {
+      activePriceId = appSettings.stripe_price_pro; // O nome antigo do normal que mantivemos
+    } else if (normalizedPlan === 'agent') {
+      activePriceId = appSettings.stripe_agent_normal;
+    } else {
       return NextResponse.json({ error: 'Plano inválido' }, { status: 400 });
     }
 
     if (!activePriceId) {
-       return NextResponse.json({ error: `Preço Stripe não configurado para o plano ${normalizedPlan}` }, { status: 400 });
+       return NextResponse.json({ error: `Preço não configurado para o plano ${normalizedPlan}` }, { status: 400 });
     }
 
-    // --- 3. CRIAR A SESSÃO DE CHECKOUT COM O PREÇO DINÂMICO ---
+    // 🟢 MÁGICA DO CUPOM: Se a promoção estiver ON e o ID do cupom existir, ele anexa o desconto!
+    const discountArray = (appSettings.is_promo_active && appSettings.stripe_coupon_id) 
+        ? [{ coupon: appSettings.stripe_coupon_id }] 
+        : undefined;
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'], 
-      
       line_items: [
         {
-          price: activePriceId, // 🟢 Puxa exatamente o ID que está valendo agora!
+          price: activePriceId, 
           quantity: 1,
         },
       ],
-      
       mode: 'subscription', 
+      discounts: discountArray, // Aplica o cupom de 1 mês aqui!
       
       success_url: `${req.headers.get('origin')}/?success=true`,
       cancel_url: `${req.headers.get('origin')}/?canceled=true`,
       customer_email: email,
       client_reference_id: userId,
-      
-      // Enviamos o nome do plano normalizado (minúsculo) para o Webhook ler depois
       metadata: {
           planType: normalizedPlan 
       }
