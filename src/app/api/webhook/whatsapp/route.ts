@@ -203,11 +203,14 @@ export async function POST(req: Request) {
         const messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
 
         // --- PROCESSAMENTO DE ÁUDIO ---
+        // --- PROCESSAMENTO DE ÁUDIO E IMAGEM ---
         let promptParts: any[] = [];
         let hasAudio = false;
+        let hasImage = false;
         const msgData = body.data?.message;
         const msgType = body.data?.messageType;
 
+        // 1. Lida com ÁUDIO
         if (msgType === "audioMessage" || msgData?.audioMessage) {
             let audioBase64 = body.data?.base64 || msgData?.audioMessage?.base64 || body.data?.message?.base64;
             if (!audioBase64) {
@@ -221,7 +224,30 @@ export async function POST(req: Request) {
                 await sendWhatsAppMessage(remoteJid, "⚠️ Ocorreu um erro ao processar o seu áudio. Pode me mandar em texto?");
                 return NextResponse.json({ status: 'Audio Failed' });
             }
-        } else {
+        } 
+        // 2. Lida com IMAGEM (A Mágica Nova Aqui! 📸)
+        else if (msgType === "imageMessage" || msgData?.imageMessage) {
+            let imageBase64 = body.data?.base64 || msgData?.imageMessage?.base64 || body.data?.message?.base64;
+            if (!imageBase64) {
+                const url = msgData?.imageMessage?.url || body.data?.mediaUrl;
+                if (url) imageBase64 = await downloadMedia(url);
+            }
+            
+            if (imageBase64) {
+                hasImage = true;
+                const mime = msgData?.imageMessage?.mimetype || "image/jpeg";
+                promptParts.push({ inlineData: { mimeType: mime, data: imageBase64 } });
+                
+                // Se o usuário mandou uma legenda com a foto (ex: foto + "lanche de hoje")
+                const caption = msgData?.imageMessage?.caption;
+                if (caption) promptParts.push(caption);
+            } else {
+                await sendWhatsAppMessage(remoteJid, "⚠️ Não consegui ler a imagem. Pode tentar enviar de novo?");
+                return NextResponse.json({ status: 'Image Failed' });
+            }
+        } 
+        // 3. Lida com TEXTO PADRÃO
+        else {
             if (!messageContent) return NextResponse.json({ status: 'No Content' });
             promptParts.push(messageContent);
         }
@@ -349,7 +375,7 @@ export async function POST(req: Request) {
             {"reply": "Anotei! 🍽️ R$ 32,50 no almoço. Saldo continua firme!"}
             ]
             ${hasAudio ? "\n⚠️ ÁUDIO RECEBIDO: Transcreva mentalmente a fala e responda com base no que foi dito." : ""}
-            `;
+${hasImage ? "\n📸 IMAGEM RECEBIDA: Se for um comprovante ou nota fiscal, extraia o valor total, a data e o nome do estabelecimento (título) para registrar o gasto automaticamente." : ""}
 
         const finalPrompt = [systemPrompt, ...promptParts];
 
