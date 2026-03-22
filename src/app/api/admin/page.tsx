@@ -11,6 +11,7 @@ const supabase = createClient(
 
 const PlanConfigCard = ({ title, prefix, dbPrefix, settings, onChange }: any) => {
   const stripeNormalKey = prefix === 'pro' ? 'stripe_price_pro' : `stripe_${dbPrefix}_normal`;
+  const couponKey = `coupon_${prefix}`; // 🟢 Chave para o cupom individual
 
   return (
     <div className="bg-gray-50 dark:bg-[#151515] p-6 rounded-2xl border border-gray-200 dark:border-gray-800 space-y-4">
@@ -26,36 +27,26 @@ const PlanConfigCard = ({ title, prefix, dbPrefix, settings, onChange }: any) =>
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-4 pt-2">
         <div>
-          <label className="text-xs font-bold text-gray-500 uppercase">Preço Normal (Tela)</label>
+          <label className="text-xs font-bold text-gray-500 uppercase">Stripe ID (Preço)</label>
           <input 
             type="text" 
-            className="w-full mt-1 p-2 border rounded-lg bg-white dark:bg-[#1a1a1a] text-sm focus:border-cyan-500 outline-none"
-            value={settings[`price_${prefix}_normal`] || ''}
-            onChange={(e) => onChange(`price_${prefix}_normal`, e.target.value)}
+            className="w-full mt-1 p-2 border rounded-lg bg-white dark:bg-[#1a1a1a] text-xs font-mono outline-none"
+            value={settings[stripeNormalKey] || ''}
+            onChange={(e) => onChange(stripeNormalKey, e.target.value)}
           />
         </div>
         <div>
-          <label className="text-xs font-bold text-cyan-600 uppercase">Preço Promo (Tela)</label>
+          <label className="text-xs font-bold text-emerald-600 uppercase">Cupom Stripe (Opcional)</label>
           <input 
             type="text" 
-            className="w-full mt-1 p-2 border-2 border-cyan-200 dark:border-cyan-900/50 rounded-lg bg-white dark:bg-[#1a1a1a] text-sm focus:border-cyan-500 outline-none"
-            value={settings[`price_${prefix}_promo`] || ''}
-            onChange={(e) => onChange(`price_${prefix}_promo`, e.target.value)}
+            placeholder="Ex: PROMO_PRO"
+            className="w-full mt-1 p-2 border-2 border-emerald-100 dark:border-emerald-900/30 rounded-lg bg-white dark:bg-[#1a1a1a] text-xs font-mono outline-none"
+            value={settings[couponKey] || ''}
+            onChange={(e) => onChange(couponKey, e.target.value)}
           />
         </div>
-      </div>
-
-      <div>
-        <label className="text-xs font-bold text-gray-500 uppercase">Stripe ID (Preço Oficial do Plano)</label>
-        <input 
-          type="text" 
-          placeholder="ex: price_1xyz..."
-          className="w-full mt-1 p-2 border rounded-lg bg-white dark:bg-[#1a1a1a] text-xs font-mono focus:border-cyan-500 outline-none"
-          value={settings[stripeNormalKey] || ''}
-          onChange={(e) => onChange(stripeNormalKey, e.target.value)}
-        />
       </div>
     </div>
   );
