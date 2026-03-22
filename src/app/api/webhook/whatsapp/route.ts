@@ -18,17 +18,14 @@ const getPhoneVariations = (phone: string): string[] => {
     const number = clean.substring(4);
 
     if (number.length === 9) {
-        // [Versão original com 9, Versão sem o 9]
         return [clean, `55${ddd}${number.substring(1)}`];
     } else if (number.length === 8) {
-        // [Versão original sem 9, Versão com o 9]
         return [clean, `55${ddd}9${number}`];
     }
     return [clean];
 };
 
 // --- FUNÇÕES AUXILIARES ---
-// 🟢 ENVIO BLINDADO: Tenta todas as variações de número até o WhatsApp aceitar
 // 🟢 ENVIO BLINDADO: Tenta todas as variações de número até o WhatsApp aceitar
 async function sendWhatsAppMessage(jid: string, text: string, delay: number = 1200) {
     const variations = getPhoneVariations(jid.split('@')[0]);
@@ -43,7 +40,6 @@ async function sendWhatsAppMessage(jid: string, text: string, delay: number = 12
             const res = await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE_NAME}`, {
                 method: 'POST',
                 headers: { 'apikey': EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
-                // 🔥 A CORREÇÃO FOI FEITA EXATAMENTE AQUI NESTE BODY 🔥
                 body: JSON.stringify({
                     number: finalJid,
                     options: { delay: delay },
@@ -52,7 +48,7 @@ async function sendWhatsAppMessage(jid: string, text: string, delay: number = 12
             });
             const json = await res.json();
 
-            // Verifica se a Evolution aceitou (Status 200/201 ou contém ID de sucesso)
+            // Verifica se a Evolution aceitou
             if (res.ok || json?.status === 'SUCCESS' || json?.key?.id) {
                 console.log(`✅ Status Envio Sucesso no número ${phoneAttempt}!`);
                 success = true;
@@ -80,14 +76,12 @@ async function downloadMedia(url: string) {
 }
 
 // 🧠 CÁLCULO FINANCEIRO
-// 🧠 CÁLCULO FINANCEIRO (Com o Efeito Cascata Oficial)
 async function getFinancialContext(supabase: any, userId: string, workspaceId: string) {
     const today = new Date();
     const currentYear = today.getFullYear();
     const activeMonthIdx = today.getMonth(); // 0 a 11
 
     const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-    const activeTab = MONTHS[activeMonthIdx];
 
     // 🟢 Puxa TUDO do banco para conseguir arrastar o saldo dos meses anteriores
     const { data: transactions } = await supabase.from('transactions').select('*').eq('user_id', userId).eq('context', workspaceId);
@@ -112,7 +106,6 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
     let computedExp = 0;
     let computedBalance = 0;
 
-    // 🟢 O MESMO LAÇO DE REPETIÇÃO DO SITE (Calcula de Jan até o Mês Atual)
     for (let idx = 0; idx <= activeMonthIdx; idx++) {
         const month = MONTHS[idx];
         const mCode = (idx + 1).toString().padStart(2, '0');
@@ -178,7 +171,8 @@ export async function POST(req: Request) {
 
         const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+        // Atualizado para o modelo 2.5 Flash, que é ainda mais inteligente para leitura de imagens
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
         const body = await req.json();
 
@@ -202,7 +196,6 @@ export async function POST(req: Request) {
         const senderId = remoteJid.split('@')[0];
         const messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
 
-        // --- PROCESSAMENTO DE ÁUDIO ---
         // --- PROCESSAMENTO DE ÁUDIO E IMAGEM ---
         let promptParts: any[] = [];
         let hasAudio = false;
@@ -225,7 +218,7 @@ export async function POST(req: Request) {
                 return NextResponse.json({ status: 'Audio Failed' });
             }
         } 
-        // 2. Lida com IMAGEM (A Mágica Nova Aqui! 📸)
+        // 2. Lida com IMAGEM 📸
         else if (msgType === "imageMessage" || msgData?.imageMessage) {
             let imageBase64 = body.data?.base64 || msgData?.imageMessage?.base64 || body.data?.message?.base64;
             if (!imageBase64) {
@@ -238,7 +231,7 @@ export async function POST(req: Request) {
                 const mime = msgData?.imageMessage?.mimetype || "image/jpeg";
                 promptParts.push({ inlineData: { mimeType: mime, data: imageBase64 } });
                 
-                // Se o usuário mandou uma legenda com a foto (ex: foto + "lanche de hoje")
+                // Pega a legenda da foto, se tiver
                 const caption = msgData?.imageMessage?.caption;
                 if (caption) promptParts.push(caption);
             } else {
@@ -256,7 +249,6 @@ export async function POST(req: Request) {
         let { data: userSettings } = await supabase.from('user_settings').select('*').or(`whatsapp_phone.eq.${senderId},whatsapp_id.eq.${senderId}`).maybeSingle();
 
         if (!userSettings) {
-            // 🟢 Usa a nova função de variações para procurar no banco de dados!
             const variations = getPhoneVariations(senderId);
             const { data: found } = await supabase.from('user_settings').select('*').in('whatsapp_phone', variations).maybeSingle();
             if (found) {
@@ -268,7 +260,6 @@ export async function POST(req: Request) {
         if (!userSettings) {
             const numbersInText = messageContent.replace(/\D/g, '');
             if (numbersInText.length >= 10) {
-                // 🟢 Usa a nova função de variações para o vínculo!
                 const possiblePhones = getPhoneVariations(numbersInText);
                 const { data: userToLink } = await supabase.from('user_settings').select('*').in('whatsapp_phone', possiblePhones).maybeSingle();
                 if (userToLink) {
@@ -375,7 +366,8 @@ export async function POST(req: Request) {
             {"reply": "Anotei! 🍽️ R$ 32,50 no almoço. Saldo continua firme!"}
             ]
             ${hasAudio ? "\n⚠️ ÁUDIO RECEBIDO: Transcreva mentalmente a fala e responda com base no que foi dito." : ""}
-${hasImage ? "\n📸 IMAGEM RECEBIDA: Se for um comprovante ou nota fiscal, extraia o valor total, a data e o nome do estabelecimento (título) para registrar o gasto automaticamente." : ""}
+            ${hasImage ? "\n📸 IMAGEM RECEBIDA: Extraia o valor total, a data e o nome do estabelecimento da foto/comprovante para registrar o gasto automaticamente." : ""}
+            `;
 
         const finalPrompt = [systemPrompt, ...promptParts];
 
@@ -383,8 +375,15 @@ ${hasImage ? "\n📸 IMAGEM RECEBIDA: Se for um comprovante ou nota fiscal, extr
         let commands: any[] = [];
         try {
             const result = await model.generateContent(finalPrompt);
-            let cleanJson = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+            
+            // 🔥 SOLUÇÃO PARA O ERRO DO TURBOPACK 🔥
+            // Usamos split e join para remover os blocos de código markdown sem usar Regex com crases
+            let cleanJson = result.response.text()
+                .split('```json').join('')
+                .split('```').join('')
+                .trim();
 
+            // Pega apenas a parte do array para evitar sujeiras de texto solto
             const arrayMatch = cleanJson.match(/\[[\s\S]*\]/);
             if (arrayMatch) cleanJson = arrayMatch[0];
 
