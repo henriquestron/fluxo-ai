@@ -75,7 +75,7 @@ async function downloadMedia(url: string) {
     } catch (error) { return null; }
 }
 
-// 🧠 CÁLCULO FINANCEIRO (Agora com Memória Histórica!)
+// 🧠 CÁLCULO FINANCEIRO
 async function getFinancialContext(supabase: any, userId: string, workspaceId: string) {
     const today = new Date();
     const currentYear = today.getFullYear();
@@ -105,7 +105,6 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
     let computedInc = 0;
     let computedExp = 0;
     let computedBalance = 0;
-    let historicoArray: string[] = []; // 🟢 NOVA VARIÁVEL: Guarda o resumo dos meses passados
 
     for (let idx = 0; idx <= activeMonthIdx; idx++) {
         const month = MONTHS[idx];
@@ -141,11 +140,6 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
         const saldoMensal = inc - exp;
         const saldoAcumulado = saldoMensal + previousSurplus;
 
-        // 🟢 Salva o resumo de cada mês no histórico (se teve movimentação)
-        if (inc > 0 || exp > 0 || saldoAcumulado !== 0) {
-            historicoArray.push(`${month}: In R$ ${inc.toFixed(2)} | Out R$ ${exp.toFixed(2)} | Saldo R$ ${saldoAcumulado.toFixed(2)}`);
-        }
-
         if (idx === activeMonthIdx) {
             computedInc = inc;
             computedExp = exp;
@@ -164,7 +158,6 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
         entradas: computedInc.toFixed(2),
         saidas: computedExp.toFixed(2),
         estado_conta: estado,
-        historico_texto: historicoArray.join('\n'), // 🟢 Enviando o histórico pro Prompt!
         resumo_texto: `Receitas: R$ ${computedInc.toFixed(2)} | Despesas: R$ ${computedExp.toFixed(2)} | Saldo: R$ ${computedBalance.toFixed(2)}`
     };
 }
@@ -178,7 +171,8 @@ export async function POST(req: Request) {
 
         const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        // Atualizado para o modelo 2.5 Flash, que é ainda mais inteligente para leitura de imagens
+        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
         const body = await req.json();
 
@@ -237,6 +231,7 @@ export async function POST(req: Request) {
                 const mime = msgData?.imageMessage?.mimetype || "image/jpeg";
                 promptParts.push({ inlineData: { mimeType: mime, data: imageBase64 } });
                 
+                // Pega a legenda da foto, se tiver
                 const caption = msgData?.imageMessage?.caption;
                 if (caption) promptParts.push(caption);
             } else {
@@ -276,12 +271,9 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "User unknown" });
         }
 
-        // 🔒 TRAVA DE SEGURANÇA E CAPTURA DO NOME DO USUÁRIO
-        // 🟢 Buscamos todos os dados do profile para pegar o nome
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', userSettings.user_id).single();
+        // 🔒 TRAVA DE SEGURANÇA: VERIFICAÇÃO DE PLANO
+        const { data: profile } = await supabase.from('profiles').select('plan_tier').eq('id', userSettings.user_id).single();
         const plan = profile?.plan_tier || 'free';
-        // 🟢 Pega o nome do banco de dados (tenta full_name, name, ou chama de amigo)
-        const userName = profile?.full_name || profile?.name || profile?.first_name || 'amigo(a)';
 
         if (!['pro', 'agent', 'admin'].includes(plan)) {
             console.log(`🚫 Bloqueado: ${senderId} é plano '${plan}' - ENVIANDO AVISO...`);
@@ -301,37 +293,30 @@ export async function POST(req: Request) {
         const { data: workspace } = await supabase.from('workspaces').select('id').eq('user_id', userSettings.user_id).limit(1).single();
 
         // 3. CONTEXTO FINANCEIRO
-        let contextInfo = { saldo: "0", entradas: "0", saidas: "0", resumo_texto: "Sem dados", estado_conta: "Indefinido", historico_texto: "" };
+        let contextInfo = { saldo: "0", entradas: "0", saidas: "0", resumo_texto: "Sem dados", estado_conta: "Indefinido" };
         if (workspace) contextInfo = await getFinancialContext(supabase, userSettings.user_id, workspace.id);
 
-        // 4. PROMPT DA IA (VERSÃO 5.0 - NOME, HISTÓRICO E INTELIGÊNCIA)
+        // 4. PROMPT DA IA MELHORADO E BLINDADO
         const systemPrompt = `
             IDENTIDADE: Você é "Meu Aliado", assistente financeiro pessoal via WhatsApp.
-            Tom: amigável, direto, humano e inteligente. Nunca robótico.
+            Tom: amigável, direto, humano. Nunca robótico.
             DATA DE HOJE: ${new Date().toLocaleDateString('pt-BR')}.
-            NOME DO USUÁRIO: ${userName} (Chame a pessoa pelo nome para ser mais pessoal).
 
-            ━━━ SITUAÇÃO FINANCEIRA DO MÊS ATUAL ━━━
+            ━━━ SITUAÇÃO FINANCEIRA DO MÊS ━━━
             💰 Receitas:  R$ ${contextInfo.entradas}
             💸 Despesas:  R$ ${contextInfo.saidas}
             📊 Saldo:     R$ ${contextInfo.saldo}
             ⚠️  Status:   ${contextInfo.estado_conta}
-            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-            ━━━ HISTÓRICO DOS MESES ANTERIORES (ANO ATUAL) ━━━
-            ${contextInfo.historico_texto || "Sem movimentações nos meses anteriores."}
-            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
             COMO AGIR EM CADA SITUAÇÃO:
 
-            [BATE-PAPO / CONSULTAS GERAIS]
-            → Mês Atual: Responda naturalmente com os dados do mês atual.
-            → Outros Meses: Se o usuário perguntar como foi Janeiro, Fevereiro, etc., consulte o HISTÓRICO acima e responda os valores exatos de forma amigável.
+            [BATE-PAPO / SALDO]
+            → Responda naturalmente com os dados acima. Seja breve e humano.
 
-            [REGISTRO DE TRANSAÇÃO & INTELIGÊNCIA]
+            [REGISTRO DE TRANSAÇÃO]
             → Extraia título, valor, data e tipo (receita/despesa). Monte o JSON.
-            → DEDUÇÃO INTELIGENTE: Nunca pergunte a categoria se for óbvio (Ex: iFood/Mercado = Alimentação | Uber/Posto = Transporte | Farmácia = Saúde).
-            → FALTAM DADOS?: Se faltar informação essencial (especialmente o VALOR), NÃO invente e NÃO registre. Retorne o JSON com a "reply" perguntando educadamente o valor do gasto.
+            → Se faltar informação essencial (ex: valor), pergunte antes de registrar.
 
             [PARCELA / FIXO]
             → Identifique se é gasto parcelado (installments) ou recorrente mensal (recurring).
@@ -377,12 +362,11 @@ export async function POST(req: Request) {
 
             EXEMPLO DE SAÍDA COMPLETA:
             [
-            {"action": "add", "table": "transactions", "data": {"title": "Almoço", "amount": 32.50, "type": "expense", "date": "21/03/2026", "category": "Alimentação", "target_month": "Março 2026"}},
-            {"reply": "Anotado, ${userName}! 🍽️ R$ 32,50 no almoço. Saldo continua firme!"}
+            {"action": "add", "table": "transactions", "data": {"title": "Almoço", "amount": 32.50, "type": "expense", "date": "21/03/2025", "category": "Alimentação", "target_month": "Março 2025"}},
+            {"reply": "Anotei! 🍽️ R$ 32,50 no almoço. Saldo continua firme!"}
             ]
-
             ${hasAudio ? "\n⚠️ ÁUDIO RECEBIDO: Transcreva mentalmente a fala e responda com base no que foi dito." : ""}
-            ${hasImage ? "\n📸 IMAGEM RECEBIDA (AUDITORIA): Analise o comprovante/nota fiscal. Extraia o Valor Total, a Data e quem recebeu/pagou para registrar automaticamente. Identifique se é receita ou despesa e não pergunte a categoria se for óbvio." : ""}
+            ${hasImage ? "\n📸 IMAGEM RECEBIDA: Extraia o valor total, a data e o nome do estabelecimento da foto/comprovante para registrar o gasto automaticamente." : ""}
             `;
 
         const finalPrompt = [systemPrompt, ...promptParts];
@@ -393,11 +377,13 @@ export async function POST(req: Request) {
             const result = await model.generateContent(finalPrompt);
             
             // 🔥 SOLUÇÃO PARA O ERRO DO TURBOPACK 🔥
+            // Usamos split e join para remover os blocos de código markdown sem usar Regex com crases
             let cleanJson = result.response.text()
                 .split('```json').join('')
                 .split('```').join('')
                 .trim();
 
+            // Pega apenas a parte do array para evitar sujeiras de texto solto
             const arrayMatch = cleanJson.match(/\[[\s\S]*\]/);
             if (arrayMatch) cleanJson = arrayMatch[0];
 
@@ -407,9 +393,9 @@ export async function POST(req: Request) {
         } catch (error: any) {
             console.error("❌ ERRO NA IA OU NO JSON:", error);
             if (error?.status === 503 || error?.message?.includes('503')) {
-                await sendWhatsAppMessage(targetPhone, `Oi ${userName}, a IA está com muita demanda agora. Tente novamente em alguns segundos! ⏳`);
+                await sendWhatsAppMessage(targetPhone, "A IA está com muita demanda agora. Tente novamente em alguns segundos! ⏳");
             } else {
-                await sendWhatsAppMessage(targetPhone, `Desculpe ${userName}, meu cérebro (IA) deu uma travada agora. Pode me mandar a mensagem de novo de uma forma mais simples? 🤖`);
+                await sendWhatsAppMessage(targetPhone, "Desculpe, meu cérebro (IA) deu uma travada agora. Pode me mandar a mensagem de novo de uma forma mais simples? 🤖");
             }
             return NextResponse.json({ success: false, reason: 'AI/JSON Error' });
         }
@@ -475,6 +461,7 @@ export async function POST(req: Request) {
 
     } catch (e: any) {
         console.error("🔥 ERRO FATAL NO WEBHOOK:", e);
+        // 🟢 REGRA DE OURO DO WEBHOOK: SEMPRE devolva 200, mesmo se der erro, senão a Evolution fica em loop!
         return NextResponse.json({ error: e.message, status: "Caught but returning 200 to prevent retries" }, { status: 200 });
     }
 }
