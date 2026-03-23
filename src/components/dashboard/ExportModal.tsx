@@ -196,11 +196,13 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
 
     // --- 4. GERAR DASHBOARD ---
     // --- 4. GERAR DASHBOARD ---
+    // --- 4. GERAR DASHBOARD ---
     const generateDashboardSheet = (workbook: ExcelJS.Workbook, trans: any[], inst: any[], recur: any[], ownerName: string) => {
         const sheetName = sanitizeSheetName(`Dash - ${ownerName}`);
         const sheet = workbook.addWorksheet(sheetName, { views: [{ showGridLines: false }] });
 
-        sheet.mergeCells('B2:F2');
+        // 🟢 MUDOU DE F2 PARA G2 (Para cobrir a nova coluna adicionada)
+        sheet.mergeCells('B2:G2');
         const title = sheet.getCell('B2');
         title.value = `DASHBOARD FINANCEIRO ${exportYear}`;
         title.font = { size: 16, bold: true, color: { argb: 'FFFFFFFF' } };
@@ -208,9 +210,10 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
         title.alignment = { horizontal: 'center' };
 
         sheet.addRow([]);
-        // 🟢 CORREÇÃO: Colunas separadas para bater com a tela do site!
-        const header = sheet.addRow(['', 'MÊS', 'ENTRADAS', 'SAÍDAS', 'SALDO DO MÊS', 'SALDO ACUMULADO']);
-        ['B', 'C', 'D', 'E', 'F'].forEach(col => {
+        
+        // 🟢 ADICIONADA A COLUNA 'SALDO ANTERIOR' E O CABEÇALHO ATUALIZADO
+        const header = sheet.addRow(['', 'MÊS', 'SALDO ANTERIOR', 'ENTRADAS', 'SAÍDAS', 'SALDO DO MÊS', 'SALDO ACUMULADO']);
+        ['B', 'C', 'D', 'E', 'F', 'G'].forEach(col => {
             const cell = header.getCell(col);
             cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4B5563' } };
@@ -218,7 +221,7 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
         });
         header.height = 20;
 
-        // 🟢 A MÁQUINA DO TEMPO (Efeito Cascata para a Planilha)
+        // A MÁQUINA DO TEMPO (Efeito Cascata para a Planilha)
         let previousSurplus = 0;
 
         MONTHS.forEach((month, idx) => {
@@ -253,33 +256,33 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
                             return (act >= 1 && act <= i.installments_count) ? acc + Number(i.value_per_month) : acc;
                         }, 0));
 
-            // 🟢 LÓGICA DE SALDO EXATAMENTE IGUAL AO SITE
+            // 🟢 LÓGICA DE SALDO CLARA (Com a nova coluna)
+            const saldoAnterior = previousSurplus;
             const saldoMensal = inc - exp;
-            const saldoAcumulado = saldoMensal + previousSurplus;
+            const saldoAcumulado = saldoMensal + saldoAnterior;
 
-            // Define o que sobra para o próximo mês da planilha
-            if (saldoAcumulado > 0) {
-                previousSurplus = saldoAcumulado;
-            } else {
-                previousSurplus = 0; // Não arrasta a dívida para o lucro, igual no site!
-            }
+            // Define o que sobra para o próximo mês da planilha (Arrasta lucro e dívida)
+            previousSurplus = saldoAcumulado;
 
-            const r = sheet.addRow(['', month, inc, exp, saldoMensal, saldoAcumulado]);
+            // 🟢 Passando as 6 colunas de dados agora
+            const r = sheet.addRow(['', month, saldoAnterior, inc, exp, saldoMensal, saldoAcumulado]);
             
-            // Formatando como Moeda
-            ['C', 'D', 'E', 'F'].forEach(col => r.getCell(col).numFmt = '"R$" #,##0.00;[Red]-"R$" #,##0.00');
+            // Formatando como Moeda (Da coluna C até a G)
+            ['C', 'D', 'E', 'F', 'G'].forEach(col => r.getCell(col).numFmt = '"R$" #,##0.00;[Red]-"R$" #,##0.00');
             
-            // Pintando de Verde ou Vermelho
-            r.getCell('E').font = { color: { argb: saldoMensal >= 0 ? 'FF166534' : 'FFDC2626' } };
-            r.getCell('F').font = { color: { argb: saldoAcumulado >= 0 ? 'FF166534' : 'FFDC2626' }, bold: true };
+            // Pintando de Verde (Positivo) ou Vermelho (Negativo)
+            r.getCell('C').font = { color: { argb: saldoAnterior >= 0 ? 'FF166534' : 'FFDC2626' } };
+            r.getCell('F').font = { color: { argb: saldoMensal >= 0 ? 'FF166534' : 'FFDC2626' } };
+            r.getCell('G').font = { color: { argb: saldoAcumulado >= 0 ? 'FF166534' : 'FFDC2626' }, bold: true };
         });
 
-        // Largura das colunas
+        // 🟢 Largura das colunas (Adicionada a Coluna G)
         sheet.getColumn('B').width = 10;
-        sheet.getColumn('C').width = 18;
-        sheet.getColumn('D').width = 18;
-        sheet.getColumn('E').width = 18;
-        sheet.getColumn('F').width = 22;
+        sheet.getColumn('C').width = 18; // Saldo Anterior
+        sheet.getColumn('D').width = 18; // Entradas
+        sheet.getColumn('E').width = 18; // Saídas
+        sheet.getColumn('F').width = 18; // Saldo do Mês
+        sheet.getColumn('G').width = 22; // Saldo Acumulado
     };
 
     // --- EXPORTAÇÃO FINAL ---
