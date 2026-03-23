@@ -1793,7 +1793,7 @@ export default function FinancialDashboard() {
                 saldo_atual: displayBalance,
                 receita_mensal: currentMonthData.income,
                 despesa_mensal: currentMonthData.expenseTotal,
-                transacoes_do_mes: transactions.slice(0, 15).map(t => ({ ...t, date: t.date })),
+                transacoes_do_mes: transactions.map(t => ({ ...t, date: t.date })),
                 contas_fixas: recurring.filter(r => r.status === 'active' || r.status === 'standby'),
                 parcelamentos_ativos: installments.filter(i => i.status === 'active' || i.status === 'standby'),
                 mes_visualizado: activeTab,
