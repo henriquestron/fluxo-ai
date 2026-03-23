@@ -329,6 +329,32 @@ export default function FinancialDashboard() {
         }
     }, [userPlan, transactions, user]);
 
+    useEffect(() => {
+        // 1. Procura se tem intenção de compra
+        const intentPlan = localStorage.getItem('intent_plan');
+
+        if (intentPlan) {
+            console.log(`Intenção detectada: ${intentPlan}`);
+
+            if (intentPlan === 'agent') {
+                // O cara quer ser consultor! 
+                // Aqui você pode abrir um modal específico de B2B ou já jogar ele pro Checkout do Agent
+                setIsPricingOpen(true); 
+                
+            } else {
+                // O cara quer um plano pago (start, premium, pro)
+                // Abre o modal de preços ou já abre o link do Stripe direto!
+                setIsPricingOpen(true);
+            }
+
+            // 2. RASGA O POST-IT! (Crucial para não abrir o modal de novo se ele der F5 na página)
+            localStorage.removeItem('intent_plan');
+        } else {
+            // Se NÃO tem post-it, é um usuário normal que só clicou em "Acessar"
+            // Aqui você pode deixar rodar o tutorial gratuito normalmente
+        }
+    }, []);
+
     const getReceiptForMonth = (item: any, month: string) => {
         const tag = `${month}/${selectedYear}`;
 
