@@ -339,8 +339,8 @@ export default function FinancialDashboard() {
             if (intentPlan === 'agent') {
                 // O cara quer ser consultor! 
                 // Aqui você pode abrir um modal específico de B2B ou já jogar ele pro Checkout do Agent
-                setIsPricingOpen(true); 
-                
+                setIsPricingOpen(true);
+
             } else {
                 // O cara quer um plano pago (start, premium, pro)
                 // Abre o modal de preços ou já abre o link do Stripe direto!
@@ -436,28 +436,59 @@ export default function FinancialDashboard() {
     };
 
     const handleCreateProfile = async () => {
-        if (!user) { setIsNewProfileModalOpen(false); setIsAuthModalOpen(true); return; }
+    if (!user) { 
+        setIsNewProfileModalOpen(false); 
+        // setIsAuthModalOpen(true); // Descomente se usar modal de auth no dashboard
+        return; 
+    }
 
-        // 🔒 TRAVA: Free e Start não podem ter múltiplos perfis. Apenas Premium e acima.
-        if ((userPlan === 'free' || userPlan === 'start') && workspaces.length >= 1) {
-            toast.error("Limite de Perfis", {
-                description: "Para gerenciar múltiplas contas/perfis, faça o upgrade para o Premium."
-            });
-            setIsNewProfileModalOpen(false);
-            openPricingModal();
-            return;
-        }
+    // 🔒 TRAVA BLINDADA: Free e Start não passam daqui!
+    if ((userPlan === 'free' || userPlan === 'start') && workspaces.length >= 1) {
+        toast.error("Limite de Perfis", {
+            description: "Para gerenciar múltiplas contas/perfis, faça o upgrade para o Premium ou Pro."
+        });
+        setIsNewProfileModalOpen(false); // Fecha o modal de criar perfil
+        openPricingModal(); // Abre a vitrine para o cara comprar!
+        return;
+    }
 
-        if (!newProfileName) return;
-        const { data } = await supabase.from('workspaces').insert({ user_id: user.id, title: newProfileName }).select().single();
-        if (data) {
-            setWorkspaces([...workspaces, data]);
-            setCurrentWorkspace(data);
-            setNewProfileName('');
-            setIsNewProfileModalOpen(false);
-            setTransactions([]); setInstallments([]); setRecurring([]);
-        }
-    };
+    if (!newWorkspaceName.trim()) {
+        toast.error("Digite um nome para o perfil.");
+        return;
+    }
+
+    setIsSavingWorkspace(true);
+    try {
+        const userId = getActiveUserId(); 
+        
+        // Salva no banco
+        const { data, error } = await supabase
+            .from('workspaces')
+            .insert([{ user_id: userId, title: newWorkspaceName }])
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        // Sucesso!
+        toast.success("Novo perfil criado com sucesso!");
+        setWorkspaces([...workspaces, data]);
+        setCurrentWorkspace(data);
+        setNewWorkspaceName('');
+        setIsNewProfileModalOpen(false);
+        
+        // Limpa a tela para o novo perfil aparecer vazio
+        setTransactions([]); 
+        setInstallments([]); 
+        setRecurring([]);
+        
+    } catch (error: any) {
+        console.error(error);
+        toast.error("Erro ao criar perfil: " + error.message);
+    } finally {
+        setIsSavingWorkspace(false);
+    }
+};
     const toggleSimulationMode = () => {
         if (isSimulationMode) {
             // SAIR DA SIMULAÇÃO: Recarrega os dados reais do banco
@@ -1005,36 +1036,36 @@ export default function FinancialDashboard() {
     const openPricingModal = () => { if (!user) { setIsAuthModalOpen(true); setAuthMessage("✨ Crie uma conta grátis."); return; } setIsPricingOpen(true); };
 
     const handleCheckout = async (planType: 'START' | 'PREMIUM' | 'PRO' | 'AGENT') => {
-    const btn = document.getElementById(`checkout-btn-${planType}`);
-    if (btn) btn.innerText = "Processando...";
-    
-    try {
-        const response = await fetch('/api/checkout', {
-            method: 'POST', // 🟢 AGORA SIM! Ele sabe que é pra enviar dados
-            headers: {
-                'Content-Type': 'application/json' // Avisa o servidor que é um JSON
-            },
-            body: JSON.stringify({ 
-                userId: user.id, 
-                email: user.email, 
-                planType: planType // 🟢 DINÂMICO! Manda exatamente o botão que o cara clicou
-            }) 
-        });
+        const btn = document.getElementById(`checkout-btn-${planType}`);
+        if (btn) btn.innerText = "Processando...";
 
-        const data = await response.json();
-        
-        if (data.url) {
-            window.location.href = data.url; // Vai pro Stripe!
-        } else {
-            toast.error(data.error || "Erro ao criar pagamento.");
+        try {
+            const response = await fetch('/api/checkout', {
+                method: 'POST', // 🟢 AGORA SIM! Ele sabe que é pra enviar dados
+                headers: {
+                    'Content-Type': 'application/json' // Avisa o servidor que é um JSON
+                },
+                body: JSON.stringify({
+                    userId: user.id,
+                    email: user.email,
+                    planType: planType // 🟢 DINÂMICO! Manda exatamente o botão que o cara clicou
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.url) {
+                window.location.href = data.url; // Vai pro Stripe!
+            } else {
+                toast.error(data.error || "Erro ao criar pagamento.");
+            }
+        } catch (e) {
+            console.error("Erro no checkout:", e);
+            toast.error("Erro de conexão. Tente novamente.");
         }
-    } catch (e) { 
-        console.error("Erro no checkout:", e);
-        toast.error("Erro de conexão. Tente novamente."); 
-    }
-    
-    if (btn) btn.innerText = "Assinar Agora"; // Volta o texto normal caso dê erro
-};
+
+        if (btn) btn.innerText = "Assinar Agora"; // Volta o texto normal caso dê erro
+    };
 
     const handleManageSubscription = async () => {
         if (!user) return;
@@ -2155,6 +2186,7 @@ export default function FinancialDashboard() {
                 client={viewingAs}
                 setIsImportOpen={setIsImportOpen}
                 setIsTutorialOpen={setIsTutorialOpen}
+
             />
             <TabNavigation
                 activeSection={activeSection}
@@ -2591,39 +2623,7 @@ export default function FinancialDashboard() {
                         />
 
                         <button
-                            onClick={async () => {
-                                if (!newWorkspaceName.trim()) {
-                                    toast.error("Digite um nome para o perfil.");
-                                    return;
-                                }
-                                setIsSavingWorkspace(true);
-                                try {
-                                    const userId = getActiveUserId(); // Ou user?.id dependendo de como está no seu page.tsx
-
-                                    // Salva no Supabase (ajuste o nome da tabela se for diferente de 'workspaces')
-                                    const { data, error } = await supabase
-                                        .from('workspaces') // Confirme se o nome da sua tabela é esse mesmo
-                                        .insert([{
-                                            user_id: userId,
-                                            title: newWorkspaceName
-                                        }]);
-
-                                    if (error) throw error;
-
-                                    toast.success("Novo perfil criado com sucesso!");
-                                    setIsNewProfileModalOpen(false);
-                                    setNewWorkspaceName('');
-
-                                    // Recarrega a página para puxar o novo perfil
-                                    window.location.reload();
-
-                                } catch (error: any) {
-                                    console.error(error);
-                                    toast.error("Erro ao criar perfil: " + error.message);
-                                } finally {
-                                    setIsSavingWorkspace(false);
-                                }
-                            }}
+                            onClick={handleCreateProfile} // 🟢 A fechadura foi instalada aqui!
                             disabled={isSavingWorkspace}
                             className="w-full bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white font-bold py-3 rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-cyan-900/20"
                         >
