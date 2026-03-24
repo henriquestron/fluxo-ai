@@ -499,7 +499,7 @@ export default function FinancialDashboard() {
             .from('manager_clients')
             .select('*')
             .eq('client_id', currentUserId)
-            .eq('status', 'active')
+            .in('status', ['active', 'contract_signed'])
             .maybeSingle(); // Puxa apenas um registro (o vínculo dele)
 
         if (data) setMyConsultantLink(data);
@@ -569,7 +569,7 @@ export default function FinancialDashboard() {
         }
     };
     const handleOpenContract = async () => {
-        console.log("🕵️ Botão clicado! Cliente selecionado:", viewingAs);
+        
 
         if (!viewingAs) {
             toast.error("⚠️ Você precisa clicar no nome de um cliente na barra roxa primeiro!");
@@ -587,14 +587,14 @@ export default function FinancialDashboard() {
                 .single();
 
             if (data) {
-                console.log("✅ Dados atualizados encontrados:", data);
+                
                 // Se o banco trouxe o dado fresco, a gente atualiza a "visão" atual pra não ir com dado velho pro contrato
                 setViewingAs(data); 
             } else {
-                console.log("⚠️ Nenhum dado extra achado, abrindo com o que tem.");
+                
             }
         } catch (err) {
-            console.error("❌ Erro na busca (mas vou abrir o modal mesmo assim):", err);
+            
         } finally {
             // Essa é a linha que manda o modal abrir, não importa o que aconteça!
             toast.dismiss(toastId);
@@ -2253,6 +2253,7 @@ export default function FinancialDashboard() {
                 isManagedClient={!!myConsultantLink}
                 clientContractUrl={myConsultantLink?.contract_url}
                 onOpenContract={handleOpenContract}
+                clientStatus={myConsultantLink?.status}
             />
             <TabNavigation
                 activeSection={activeSection}

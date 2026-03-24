@@ -69,7 +69,45 @@ export default function ContractGenerator({ consultant, client, onClose }: any) 
     return (
         <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-sm overflow-y-auto p-4 sm:p-8 font-sans">
             <div className="max-w-4xl mx-auto mb-8 bg-[#111] p-6 rounded-2xl border border-gray-800 print:hidden relative mt-10 shadow-2xl">
+                {/* 🟢 TELA DE BLOQUEIO SE O CONTRATO JÁ EXISTIR */}
+                {client?.contract_url ? (
+                    <div className="text-center py-10">
+                        <div className="bg-emerald-500/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <ShieldCheck size={40} className="text-emerald-500" />
+                        </div>
+                        <h3 className="text-2xl font-bold text-white mb-2">Contrato Já Enviado!</h3>
+                        <p className="text-gray-400 mb-8 max-w-md mx-auto">
+                            Você já gerou e enviou o contrato para <strong>{clientName}</strong>. Agora é só aguardar a assinatura do cliente pelo painel dele.
+                        </p>
 
+                        <div className="flex items-center justify-center gap-4">
+                            <a
+                                href={client?.contract_url}
+                                target="_blank"
+                                className="bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-xl transition flex items-center gap-2"
+                            >
+                                <FileSignature size={18} /> Ver Contrato Enviado
+                            </a>
+                            <button
+                                onClick={onClose}
+                                className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 px-6 rounded-xl transition"
+                            >
+                                Voltar ao Painel
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    /* 🟢 SE NÃO TIVER CONTRATO, MOSTRA O FORMULÁRIO NORMAL QUE VOCÊ JÁ TEM */
+                    <>
+                        <div className="flex items-center gap-4 mb-6">
+                            <h2 className="text-2xl font-bold flex items-center gap-2 text-white">
+                                <FileSignature className="text-cyan-500" /> Gerador de Contrato
+                            </h2>
+                        </div>
+
+                        {/* ... Todo o resto do seu código de inputs e a folha A4 ... */}
+                    </>
+                )}
                 <button onClick={onClose} className="absolute top-6 right-6 text-gray-500 hover:text-white transition">
                     <X size={24} />
                 </button>
@@ -195,7 +233,7 @@ export default function ContractGenerator({ consultant, client, onClose }: any) 
                 <h2 className="text-center text-lg font-bold underline uppercase mb-8">Contrato de Prestação de Serviços de Consultoria Financeira</h2>
 
                 <div className="text-sm leading-relaxed space-y-6 text-justify">
-                    
+
                     <p>
                         Pelo presente instrumento particular, de um lado <strong>{consultantName || "[SEU NOME OU EMPRESA]"}</strong>, portador(a) do CPF/CNPJ nº {consultantDoc || "[SEU CPF/CNPJ]"}, doravante denominado(a) <strong>CONTRATADA</strong>, e de outro lado <strong>{clientName || "[NOME DO CLIENTE]"}</strong>, portador(a) do CPF nº {clientCPF || "[CPF DO CLIENTE]"}, doravante denominado(a) <strong>CONTRATANTE</strong>, celebram o presente contrato mediante as cláusulas a seguir:
                     </p>

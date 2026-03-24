@@ -38,6 +38,7 @@ interface DashboardHeaderProps {
     clientContractUrl?: string;
     onOpenContract: () => void;
     client: any;
+    clientStatus?: string;
     setIsImportOpen: (v: boolean) => void;
 }
 
@@ -47,7 +48,7 @@ export default function DashboardHeader({
     setIsProfileModalOpen, handleManageSubscription, whatsappEnabled, toggleWhatsappNotification,
     setIsCustomizationOpen, handleCheckout, handleLogout,
     setIsAIOpen, setIsCreditCardModalOpen, openNewTransactionModal, setIsCalculatorOpen, handleRemoveClient, client,
-    setIsImportOpen, setIsTutorialOpen, setIsContractOpen, handleClientContractUpload, isManagedClient, clientContractUrl, onOpenContract
+    setIsImportOpen, setIsTutorialOpen, setIsContractOpen, handleClientContractUpload, isManagedClient, clientContractUrl, onOpenContract, clientStatus
 }: DashboardHeaderProps) {
 
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -106,9 +107,22 @@ export default function DashboardHeader({
                             <FileSpreadsheet size={20} />
                             {userPlan === 'free' && <Lock size={10} className="absolute top-2 right-2 text-amber-500" />}
                         </button>
-                        
+
                         {/* 🟢 BOTÃO DE UPLOAD (EXCLUSIVO PARA QUEM TEM CONSULTOR E O CONTRATO JÁ FOI GERADO) */}
+                        {/* 🟢 BOTÃO DE VER CONTRATO (PARA O CLIENTE) */}
                         {(isManagedClient && clientContractUrl) && (
+                            <a
+                                href={clientContractUrl}
+                                target="_blank"
+                                className="h-10 px-3 flex items-center justify-center rounded-lg text-emerald-400 bg-gray-800 hover:bg-gray-700 transition gap-2 text-sm font-bold border border-emerald-500/20"
+                                title="Visualizar Meu Contrato"
+                            >
+                                <FileSignature size={18} /> <span className="hidden "></span>
+                            </a>
+                        )}
+
+                        {/* 🟢 BOTÃO DE UPLOAD DO CLIENTE (SÓ APARECE SE NÃO ESTIVER ASSINADO AINDA) */}
+                        {(isManagedClient && clientContractUrl && clientStatus !== 'contract_signed') && (
                             <label
                                 className="relative h-10 w-10 flex items-center justify-center rounded-lg text-emerald-500 hover:text-white hover:bg-emerald-900/30 transition border border-emerald-500/20 bg-emerald-500/10 cursor-pointer"
                                 title="Enviar Contrato Assinado"
@@ -118,7 +132,19 @@ export default function DashboardHeader({
                                 <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse border-2 border-gray-900"></span>
                             </label>
                         )}
-                        
+
+                        {/* 🟢 BOTÃO DE VER CONTRATO (PARA O CONSULTOR VENDO A CARTEIRA) */}
+                        {(userPlan === 'agent' || userPlan === 'admin') && viewingAs?.contract_url && (
+                            <a
+                                href={viewingAs.contract_url}
+                                target="_blank"
+                                className="h-10 px-3 flex items-center justify-center rounded-lg text-emerald-400 bg-emerald-900/20 hover:bg-emerald-900/40 transition gap-2 text-sm font-bold border border-emerald-500/20"
+                                title="Visualizar Contrato do Cliente"
+                            >
+                                <FileSignature size={18} />
+                            </a>
+                        )}
+
                         {/* BOTÃO DE IMPORTAR */}
                         <button
                             id="btn-import"
