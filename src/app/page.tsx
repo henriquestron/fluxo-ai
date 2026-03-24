@@ -561,136 +561,106 @@ export default function FinancialDashboard() {
     };
 
     const checkUpcomingBills = async (userId: string) => {
-        if (!userId) return;
+    if (!userId) return;
 
-        // 1. Prepara as datas atuais reais (Hoje)
-        const today = new Date();
-        const dayNum = today.getDate();
-        const dayStr = dayNum.toString().padStart(2, '0');
-        const currentYear = today.getFullYear();
-        const currentMonthIdx = today.getMonth(); // 0 a 11
+    // 1. Prepara as datas atuais reais (Hoje)
+    const today = new Date();
+    const dayNum = today.getDate();
+    const dayStr = dayNum.toString().padStart(2, '0');
+    const currentYear = today.getFullYear();
+    const currentMonthIdx = today.getMonth();
 
-        const monthMap: Record<number, string> = {
-            0: 'Jan', 1: 'Fev', 2: 'Mar', 3: 'Abr', 4: 'Mai', 5: 'Jun',
-            6: 'Jul', 7: 'Ago', 8: 'Set', 9: 'Out', 10: 'Nov', 11: 'Dez'
-        };
-        const currentMonthName = monthMap[currentMonthIdx];
-
-        // 🔥 NOVA TAG: Agora buscamos por "Jan/2026"
-        const currentPaymentTag = `${currentMonthName}/${currentYear}`;
-
-        // 🟢 HELPER: Descobre quando a conta realmente começa
-        const getStartData = (item: any) => {
-            if (item.start_date && item.start_date.includes('/')) {
-                const p = item.start_date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
-            }
-            if (item.date && item.date.includes('/')) {
-                const p = item.date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
-            }
-            if (item.created_at) {
-                const d = new Date(item.created_at); return { m: d.getMonth(), y: d.getFullYear() };
-            }
-            return { m: 0, y: currentYear };
-        };
-
-        // 🟢 TRAVA DE FUTURO: Impede que o sistema cobre contas de meses que não chegaram
-        const isFuture = (item: any) => {
-            const { m: startM, y: startY } = getStartData(item);
-            // É futuro se o ano atual for menor, OU se for o mesmo ano mas o mês atual for menor
-            return (currentYear < startY) || (currentYear === startY && currentMonthIdx < startM);
-        };
-
-        // 2. Identificar contas vencendo HOJE (Lógica Corrigida com a Trava)
-        const billsDueToday = [
-            // Transações: Filtra pelo dia/mês E pelo ano atual
-            ...transactions.filter(t =>
-                t.type === 'expense' &&
-                !t.is_paid &&
-                t.status !== 'delayed' &&
-                t.status !== 'standby' &&
-                t.date?.startsWith(`${dayStr}/`) &&
-                t.date?.endsWith(`/${currentYear}`) &&
-                !isFuture(t) // <-- Trava de futuro!
-            ),
-
-            // Recorrentes: Checa a nova tag de pagamento (Ex: Jan/2026)
-            ...recurring.filter(r =>
-                r.type === 'expense' &&
-                r.due_day === dayNum &&
-                r.status !== 'delayed' &&
-                r.status !== 'standby' &&
-                !r.paid_months?.includes(currentPaymentTag) &&
-                !r.paid_months?.includes(currentMonthName) &&
-                !isFuture(r) // <-- Trava de futuro!
-            ),
-
-            // Parcelas: Checa a nova tag de pagamento
-            ...installments.filter(i =>
-                i.due_day === dayNum &&
-                i.status !== 'delayed' &&
-                i.status !== 'standby' &&
-                !i.paid_months?.includes(currentPaymentTag) &&
-                !isFuture(i) // <-- Trava de futuro!
-            )
-        ];
-
-        // Se não tiver contas hoje, encerra.
-        if (billsDueToday.length === 0) return;
-
-        // 3. VERIFICAÇÃO DE SEGURANÇA (Anti-Duplicidade)
-        const startOfDay = new Date();
-        startOfDay.setHours(0, 0, 0, 0);
-        const startOfDayISO = startOfDay.toISOString();
-
-        const { data: existingNotifs } = await supabase
-            .from('notifications')
-            .select('id')
-            .eq('user_id', userId)
-            .eq('title', 'Contas Vencendo Hoje! 💸')
-            .gte('created_at', startOfDayISO)
-            .limit(1);
-
-        if (existingNotifs && existingNotifs.length > 0) {
-            console.log("🔕 Notificação diária já enviada. Ignorando...");
-            return;
-        }
-
-        // 4. Criação da Notificação e disparo do WhatsApp
-        const messageSignature = `Você tem ${billsDueToday.length} conta(s) para pagar hoje. Não esqueça!`;
-
-        const { error } = await supabase.from('notifications').insert({
-            user_id: userId,
-            title: 'Contas Vencendo Hoje! 💸',
-            message: messageSignature,
-            type: 'warning',
-            is_read: false
-        });
-
-        if (!error) {
-            toast.warning("Atenção: Contas Vencendo Hoje!", {
-                description: messageSignature,
-                duration: 5000,
-                icon: <AlertTriangle className="text-orange-500" />
-            });
-
-            console.log("📤 Enviando comando para WhatsApp...");
-            fetch('/api/check-notifications', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    userId,
-                    bills: billsDueToday,
-                    forceSend: false
-                })
-            })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.success) console.log("✅ WhatsApp enviado!");
-                    else console.log("⚠️ WhatsApp ignorado:", data.reason);
-                })
-                .catch(err => console.error("❌ Erro API WhatsApp:", err));
-        }
+    const monthMap: Record<number, string> = {
+        0: 'Jan', 1: 'Fev', 2: 'Mar', 3: 'Abr', 4: 'Mai', 5: 'Jun',
+        6: 'Jul', 7: 'Ago', 8: 'Set', 9: 'Out', 10: 'Nov', 11: 'Dez'
     };
+    const currentMonthName = monthMap[currentMonthIdx];
+    const currentPaymentTag = `${currentMonthName}/${currentYear}`;
+
+    const getStartData = (item: any) => {
+        if (item.start_date && item.start_date.includes('/')) {
+            const p = item.start_date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+        }
+        if (item.date && item.date.includes('/')) {
+            const p = item.date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+        }
+        return { m: 0, y: currentYear };
+    };
+
+    const isFuture = (item: any) => {
+        const { m: startM, y: startY } = getStartData(item);
+        return (currentYear < startY) || (currentYear === startY && currentMonthIdx < startM);
+    };
+
+    // 2. Identifica as contas para a notificação INTERNA (Sininho do site)
+    const billsDueToday = [
+        ...transactions.filter(t => 
+            t.type === 'expense' && !t.is_paid && t.status !== 'delayed' && t.status !== 'standby' &&
+            t.date?.startsWith(`${dayStr}/`) && t.date?.endsWith(`/${currentYear}`) && !isFuture(t)
+        ),
+        ...recurring.filter(r => 
+            r.type === 'expense' && r.due_day === dayNum && r.status !== 'delayed' && r.status !== 'standby' &&
+            !r.paid_months?.includes(currentPaymentTag) && !isFuture(r)
+        ),
+        ...installments.filter(i => 
+            i.due_day === dayNum && i.status !== 'delayed' && i.status !== 'standby' &&
+            !i.paid_months?.includes(currentPaymentTag) && !isFuture(i)
+        )
+    ];
+
+    if (billsDueToday.length === 0) return;
+
+    // 3. ANTI-DUPLICIDADE (Sininho do site)
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const { data: existingNotifs } = await supabase
+        .from('notifications')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('title', 'Contas Vencendo Hoje! 💸')
+        .gte('created_at', startOfDay.toISOString())
+        .limit(1);
+
+    if (existingNotifs && existingNotifs.length > 0) return;
+
+    // 4. Salva no banco de notificações do SITE
+    const messageSignature = `Você tem ${billsDueToday.length} conta(s) para pagar hoje. Não esqueça!`;
+    const { error } = await supabase.from('notifications').insert({
+        user_id: userId,
+        title: 'Contas Vencendo Hoje! 💸',
+        message: messageSignature,
+        type: 'warning',
+        is_read: false
+    });
+
+    if (!error) {
+        toast.warning("Atenção: Contas Vencendo Hoje!", { description: messageSignature });
+
+        // 🔴🔴 AQUI ESTÁ A MUDANÇA PARA O WHATSAPP 🔴🔴
+        console.log("📤 Solicitando disparo de WhatsApp ao Backend...");
+        
+        // Buscamos o Token da sessão atual
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+
+        fetch('/api/check-notifications', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}` // ✅ ENVIANDO O TOKEN
+            },
+            body: JSON.stringify({
+                forceSend: false // ✅ MANDAMOS SÓ O ESSENCIAL (Backend faz o resto)
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) console.log("✅ WhatsApp enviado com sucesso!");
+            else console.log("⚠️ WhatsApp não enviado:", data.reason || data.error);
+        })
+        .catch(err => console.error("❌ Erro ao chamar API de WhatsApp:", err));
+    }
+};
 
     const fetchClients = async (managerId: string) => {
         const { data } = await supabase.from('manager_clients').select('*').eq('manager_id', managerId);
