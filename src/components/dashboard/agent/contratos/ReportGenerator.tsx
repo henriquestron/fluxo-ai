@@ -156,7 +156,7 @@ export default function ReportGenerator({ consultant, client, onClose }: ReportG
                 {aiReport && (
                     <div className="bg-gray-200 p-8 overflow-y-auto print:p-0 print:overflow-visible flex justify-center">
 
-                        <div className="bg-white text-black w-full max-w-[21cm] min-h-[29.7cm] h-max p-12 shadow-md print:shadow-none print:p-8 relative">
+                        <div className="w-full max-w-[21cm] h-max bg-white text-black p-6 sm:p-8 md:p-12 shadow-md print:shadow-none print:p-8 relative overflow-hidden break-words">
 
                             {/* CABEÇALHO DO DOCUMENTO */}
                             <div className="border-b-2 border-indigo-600 pb-6 mb-8 flex justify-between items-end">

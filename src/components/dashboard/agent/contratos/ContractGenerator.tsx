@@ -295,24 +295,23 @@ export default function ContractGenerator({ consultant, client, onClose, company
             </div>
 
             {/* A FOLHA DO CONTRATO */}
-            <div id="print-area" className="max-w-[210mm] mx-auto bg-white text-black p-[20mm] shadow-2xl min-h-[297mm] print:shadow-none print:p-0 print:min-h-0 print:m-0 relative">
+            {/* A FOLHA DO CONTRATO */}
+            {/* 🟢 AJUSTE MOBILE: Adicionado w-full, p-6 para celular e md:p-[20mm] para PC, e overflow-hidden para o texto não estourar a caixa */}
+            <div id="print-area" className="w-full max-w-[210mm] mx-auto bg-white text-black p-6 sm:p-10 md:p-[20mm] shadow-2xl min-h-max md:min-h-[297mm] print:shadow-none print:p-0 print:min-h-0 print:m-0 relative overflow-hidden break-words">
                 
-                {/* 🟢 CABEÇALHO ORIGINAL PRESERVADO (Com a Logo adicionada) */}
-                <div className="flex justify-between items-center border-b-2 border-gray-200 pb-6 mb-8">
-                    <div className="flex items-center gap-4">
-                        {/* Se o consultor subiu a logo, ela aparece aqui à esquerda */}
+                {/* 🟢 CABEÇALHO RESPONSIVO: No celular ele empilha (flex-col), no PC fica lado a lado (md:flex-row) */}
+                <div className="flex flex-col md:flex-row justify-between items-center md:items-start border-b-2 border-gray-200 pb-6 mb-8 gap-4 text-center md:text-left">
+                    <div className="flex flex-col md:flex-row items-center gap-4">
                         {companyLogoUrl && (
-                            <img 
-                                src={companyLogoUrl} 
-                                alt="Logo do Consultor" 
-                                className="max-w-[120px] max-h-[60px] object-contain" 
-                            />
+                            <img src={companyLogoUrl} alt="Logo" className="max-w-[120px] max-h-[60px] object-contain" />
                         )}
                         <div>
-                            <h1 className="text-2xl font-black uppercase tracking-wider">{consultantName || consultant?.user_metadata?.full_name || consultant?.name || "Nome do Consultor"}</h1>
-                            <p className="text-sm text-gray-500 font-bold uppercase tracking-widest">Consultoria Financeira Estratégica</p>
+                            <h1 className="text-xl md:text-2xl font-black uppercase tracking-wider">{consultantName || consultant?.user_metadata?.full_name || consultant?.name || "Nome do Consultor"}</h1>
+                            <p className="text-xs md:text-sm text-gray-500 font-bold uppercase tracking-widest">Consultoria Financeira</p>
                         </div>
                     </div>
+                    
+                   
                     
                     {/* Selo do Meu Aliado (Intacto!) */}
                     <div className="text-right">
