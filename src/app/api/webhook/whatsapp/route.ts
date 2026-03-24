@@ -7,7 +7,6 @@ import { Redis } from '@upstash/redis';
 // 🔴 1. FIM DO HARDCODE (Segurança de IP e Chaves)
 const EVOLUTION_URL = process.env.EVOLUTION_URL;
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY;
-const EVOLUTION_WEBHOOK_SECRET = process.env.EVOLUTION_WEBHOOK_SECRET;
 
 if (!EVOLUTION_URL) throw new Error('EVOLUTION_URL não definida no .env');
 if (!EVOLUTION_API_KEY) throw new Error('EVOLUTION_API_KEY não definida no .env');
@@ -69,7 +68,6 @@ async function downloadMedia(url: string) {
 }
 
 async function getFinancialContext(supabase: any, userId: string, workspaceId: string) {
-    // (Mantido exatamente como estava...)
     const today = new Date();
     const currentYear = today.getFullYear();
     const activeMonthIdx = today.getMonth();
@@ -146,8 +144,8 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
 export async function POST(req: Request) {
     console.log("Headers recebidos:", JSON.stringify(Object.fromEntries(req.headers.entries())));
     console.log("Secret esperado:", process.env.EVOLUTION_WEBHOOK_SECRET);
+    
     try {
-        // 🔴 3. PROTEÇÃO DO WEBHOOK (Valida se o pedido veio da Evolution de verdade)
         // 🔴 3. PROTEÇÃO DO WEBHOOK (Obrigatória: Falha Segura)
         const EVOLUTION_WEBHOOK_SECRET = process.env.EVOLUTION_WEBHOOK_SECRET;
 
@@ -155,7 +153,15 @@ export async function POST(req: Request) {
             throw new Error('🔥 ALERTA DE SEGURANÇA: EVOLUTION_WEBHOOK_SECRET não definida no .env');
         }
 
-        const webhookToken = req.headers.get('apikey') ?? req.headers.get('authorization')?.replace('Bearer ', '');
+        // 🟢 A MÁGICA DA URL ENTRA AQUI! 
+        // Lemos os parâmetros da URL para buscar o '?token='
+        const { searchParams } = new URL(req.url);
+        const urlToken = searchParams.get('token');
+
+        // O código tenta achar no Header (apikey/authorization). Se não achar, ele pega o urlToken!
+        const webhookToken = req.headers.get('apikey') 
+            ?? req.headers.get('authorization')?.replace('Bearer ', '') 
+            ?? urlToken;
 
         if (webhookToken !== EVOLUTION_WEBHOOK_SECRET) {
             console.warn('⚠️ Webhook recusado: token inválido ou ausente. Possível tentativa de invasão.');
@@ -164,7 +170,7 @@ export async function POST(req: Request) {
 
         const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
         const body = await req.json();
 
@@ -193,7 +199,6 @@ export async function POST(req: Request) {
         }
 
         // 🔴 6. INTERCEPTADOR DE CONFIRMAÇÃO DE DELEÇÃO
-        // 🔴 6. INTERCEPTADOR DE CONFIRMAÇÃO DE DELEÇÃO
         const pendingDeleteStr = await redis.get(`pending_delete:${senderId}`);
         if (pendingDeleteStr) {
             const userInput = messageContent.trim().toUpperCase();
@@ -208,7 +213,6 @@ export async function POST(req: Request) {
                     return NextResponse.json({ status: 'Blocked' });
                 }
 
-                // Puxa o user_settings rapidinho pra ter o user_id
                 const { data: us } = await supabase.from('user_settings').select('user_id').eq('whatsapp_id', senderId).single();
 
                 if (us) {
@@ -373,11 +377,11 @@ export async function POST(req: Request) {
 
         // PROCESSAMENTO DAS AÇÕES
         let replySent = false;
-        // 🔴 7. WHITELIST DE TABELAS (As únicas permitidas para o Meu Aliado)
         const ALLOWED_TABLES = ['transactions', 'installments', 'recurring'];
 
         for (const cmd of commands) {
-            if (!ALLOWED_TABLES.includes(cmd.table) && cmd.table) {
+            // Trava extra para evitar que a IA mande tabelas não permitidas
+            if (cmd.table && !ALLOWED_TABLES.includes(cmd.table)) {
                 console.warn(`⛔ Tabela bloqueada pela IA: ${cmd.table}`);
                 continue;
             }
@@ -385,7 +389,6 @@ export async function POST(req: Request) {
             if (cmd.action === 'add') {
                 let payload: any = { ...cmd.data, user_id: userSettings.user_id, context: workspace?.id || null, created_at: new Date(), message_id: messageId };
 
-                // Trava contra valores fantasmas ou strings
                 const extractedValue = parseFloat(cmd.data.amount) || parseFloat(cmd.data.value) || parseFloat(cmd.data.value_per_month) || parseFloat(cmd.data.total_value) || 0;
                 if (extractedValue <= 0) continue;
 
