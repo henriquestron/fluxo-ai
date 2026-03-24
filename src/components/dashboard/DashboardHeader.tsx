@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import {
     ShieldCheck, Briefcase, User, UserPlus, BarChart3, FileSpreadsheet,
     Lock, HelpCircle, ChevronDown, CreditCard, Smartphone, Palette,
-    LogOut, Sparkles, Plus, Search, Calculator, Trash2, FileUp, // 🟢 Adicionei o FileUp aqui
-    Link
+    LogOut, Sparkles, Plus, Search, Calculator, Trash2, FileUp,
+    Link,
+    FileSignature
 } from 'lucide-react';
 import NotificationBell from '@/components/dashboard/NotificationBell';
 
@@ -31,9 +32,13 @@ interface DashboardHeaderProps {
     setIsCalculatorOpen: (isOpen: boolean) => void;
     handleRemoveClient: (client: any) => void;
     setIsTutorialOpen: (v: boolean) => void;
-
+    setIsContractOpen: (v: boolean) => void;
+    handleClientContractUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    isManagedClient: boolean;
+    clientContractUrl?: string;
+    onOpenContract: () => void;
     client: any;
-    setIsImportOpen: (v: boolean) => void; // 🟢 Propriedade nova para o Modal de Importação
+    setIsImportOpen: (v: boolean) => void;
 }
 
 export default function DashboardHeader({
@@ -42,7 +47,7 @@ export default function DashboardHeader({
     setIsProfileModalOpen, handleManageSubscription, whatsappEnabled, toggleWhatsappNotification,
     setIsCustomizationOpen, handleCheckout, handleLogout,
     setIsAIOpen, setIsCreditCardModalOpen, openNewTransactionModal, setIsCalculatorOpen, handleRemoveClient, client,
-    setIsImportOpen, setIsTutorialOpen // 🟢 Recebendo a propriedade
+    setIsImportOpen, setIsTutorialOpen, setIsContractOpen, handleClientContractUpload, isManagedClient, clientContractUrl, onOpenContract
 }: DashboardHeaderProps) {
 
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -58,7 +63,7 @@ export default function DashboardHeader({
                 </h1>
 
                 <div id="menu-clientes" className="w-full mt-2 flex justify-center xl:justify-start">
-                    {(userPlan === 'agent') && (
+                    {(userPlan === 'agent' || userPlan === 'admin') && (
                         <div id="agent-bar" className="w-full max-w-md xl:max-w-none bg-purple-950/20 border border-purple-500/20 rounded-lg p-1.5 overflow-x-auto scrollbar-hide backdrop-blur-sm">
                             <div className="flex items-center gap-3 px-1 min-w-max">
                                 <div className="flex items-center gap-1.5 text-purple-400 font-bold uppercase text-[10px] tracking-wider whitespace-nowrap">
@@ -69,10 +74,10 @@ export default function DashboardHeader({
                                     <button onClick={() => switchView(null)} className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs transition whitespace-nowrap ${!viewingAs ? 'bg-purple-600 text-white shadow-md' : 'text-purple-300 hover:bg-purple-500/10'}`}>
                                         <User size={12} /> Carteira
                                     </button>
-                                    {clients.map(client => (
-                                        <button key={client.id} onClick={() => switchView(client)} className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs transition whitespace-nowrap ${viewingAs?.id === client.id ? 'bg-purple-600 text-white shadow-md' : 'text-purple-300 hover:bg-purple-500/10'}`}>
-                                            <div className={`w-1.5 h-1.5 rounded-full ${client.client_id ? 'bg-emerald-400' : 'bg-orange-500'}`}></div>
-                                            {client.client_email.split('@')[0]}
+                                    {clients.map(c => (
+                                        <button key={c.id} onClick={() => switchView(c)} className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs transition whitespace-nowrap ${viewingAs?.id === c.id ? 'bg-purple-600 text-white shadow-md' : 'text-purple-300 hover:bg-purple-500/10'}`}>
+                                            <div className={`w-1.5 h-1.5 rounded-full ${c.client_id ? 'bg-emerald-400' : 'bg-orange-500'}`}></div>
+                                            {c.client_email.split('@')[0]}
                                         </button>
                                     ))}
                                 </div>
@@ -80,7 +85,7 @@ export default function DashboardHeader({
                                     <UserPlus size={10} /> Add
                                 </button>
                                 {viewingAs && (
-                                    <button onClick={() => handleRemoveClient(client)} className="text-red-500 hover:text-red-400"><Trash2 size={18} /></button>
+                                    <button onClick={() => handleRemoveClient(viewingAs)} className="text-red-500 hover:text-red-400"><Trash2 size={18} /></button>
                                 )}
                             </div>
                         </div>
@@ -101,7 +106,20 @@ export default function DashboardHeader({
                             <FileSpreadsheet size={20} />
                             {userPlan === 'free' && <Lock size={10} className="absolute top-2 right-2 text-amber-500" />}
                         </button>
-                        {/* 🟢 O NOVO BOTÃO DE IMPORTAR (ESTILO CALCULADORA COM SELO BETA) */}
+                        
+                        {/* 🟢 BOTÃO DE UPLOAD (EXCLUSIVO PARA QUEM TEM CONSULTOR E O CONTRATO JÁ FOI GERADO) */}
+                        {(isManagedClient && clientContractUrl) && (
+                            <label
+                                className="relative h-10 w-10 flex items-center justify-center rounded-lg text-emerald-500 hover:text-white hover:bg-emerald-900/30 transition border border-emerald-500/20 bg-emerald-500/10 cursor-pointer"
+                                title="Enviar Contrato Assinado"
+                            >
+                                <input type="file" accept=".pdf" className="hidden" onChange={handleClientContractUpload} />
+                                <FileUp size={20} />
+                                <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse border-2 border-gray-900"></span>
+                            </label>
+                        )}
+                        
+                        {/* BOTÃO DE IMPORTAR */}
                         <button
                             id="btn-import"
                             onClick={() => setIsImportOpen(true)}
@@ -113,13 +131,14 @@ export default function DashboardHeader({
                                 BETA
                             </span>
                         </button>
-                        {<button
-                            onClick={() => setIsTutorialOpen(true)} // 🟢 ABRINDO O NOVO TUTORIAL AQUI
+
+                        <button
+                            onClick={() => setIsTutorialOpen(true)}
                             className="h-10 w-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition"
                             title="Ver Tutorial em Vídeo"
                         >
                             <HelpCircle size={20} />
-                        </button>}
+                        </button>
                         <button
                             onClick={() => setIsCalculatorOpen(true)}
                             className="h-10 w-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition"
@@ -128,6 +147,17 @@ export default function DashboardHeader({
                             <Calculator size={20} />
                         </button>
                     </div>
+
+                    {/* 🟢 BOTÃO DE GERAR CONTRATO DO CONSULTOR CORRIGIDO */}
+                    {(userPlan === 'agent' || userPlan === 'admin') && (
+                        <button
+                            onClick={onOpenContract}
+                            className="h-10 w-10 flex items-center justify-center rounded-lg text-cyan-500 hover:text-white hover:bg-cyan-900/30 transition border border-cyan-500/20 bg-cyan-500/10"
+                            title="Gerar Contrato de Consultoria"
+                        >
+                            <FileSignature size={20} />
+                        </button>
+                    )}
 
                     <div className="hidden xl:block w-px h-8 bg-gray-800 mx-1"></div>
 
@@ -166,7 +196,6 @@ export default function DashboardHeader({
                                             </div>
                                             <div className="p-2 space-y-1">
 
-                                                {/* 🟢 BOTÃO EXCLUSIVO DO ADMIN (CEO) */}
                                                 {userPlan === 'admin' && (
                                                     <button onClick={() => { setIsUserMenuOpen(false); window.location.href = '/api/admin'; }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition">
                                                         👨‍💼 Painel do CEO
@@ -184,7 +213,6 @@ export default function DashboardHeader({
 
                                                 {(userPlan === 'pro' || userPlan === 'agent' || userPlan === 'admin') && (<button onClick={() => { setIsUserMenuOpen(false); setIsCustomizationOpen(true); }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition"><Palette size={16} className="text-purple-500" /> Tema e Cores</button>)}
 
-                                                {/* 🔥 Esconde o "Virar Consultor" se o cara já for Consultor OU Admin */}
                                                 {(userPlan !== 'agent' && userPlan !== 'admin') && (<button onClick={() => { setIsUserMenuOpen(false); handleCheckout('AGENT'); }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition"><Briefcase size={16} className="text-amber-500" /> Virar Consultor</button>)}
 
                                                 <div className="h-px bg-gray-800 my-1 mx-2"></div>
@@ -199,10 +227,8 @@ export default function DashboardHeader({
                     </div>
                 </div>
 
-                {/* GRUPO 2: Ações Principais (Importar, IA, Fatura, Novo) */}
-                {/* 🟢 Ajustei o grid responsivo para caber 4 botões! */}
+                {/* GRUPO 2: Ações Principais */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 xl:flex gap-2 xl:gap-3 w-full xl:w-auto order-2 xl:order-none">
-
 
                     <button id="btn-ai" onClick={() => setIsAIOpen(true)} className={`h-11 px-3 xl:px-5 rounded-xl font-bold transition flex items-center justify-center gap-2 text-sm shadow-lg border border-white/5 whitespace-nowrap ${['premium', 'pro', 'agent', 'admin'].includes(userPlan) ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white hover:brightness-110' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
                         <Sparkles size={16} className={['premium', 'pro', 'agent', 'admin'].includes(userPlan) ? "text-cyan-200 fill-cyan-200" : ""} />

@@ -43,6 +43,7 @@ import CalendarView from '@/components/dashboard/CalendarView';
 import GoalModal from '@/components/dashboard/GoalModal';
 
 import { Transaction, Installment, Recurring, Goal, ClientUser } from '@/types';
+import ContractGenerator from '@/components/dashboard/agent/contratos/ContractGenerator';
 
 
 
@@ -98,6 +99,8 @@ export default function FinancialDashboard() {
     const [termsAccepted, setTermsAccepted] = useState(false);
     const [isTermsOpen, setIsTermsOpen] = useState(false);
     const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
+    const [isContractOpen, setIsContractOpen] = useState(false);
+    const [myConsultantLink, setMyConsultantLink] = useState<any>(null);
 
     // --- AUTH & USER DATA ---
     const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
@@ -276,23 +279,23 @@ export default function FinancialDashboard() {
 
 
 
-    // --- 2. LÓGICA DE MONTAGEM ---
-    let finalSteps = (userPlan === 'agent') ? [...agentSteps, ...commonSteps] : commonSteps;
+        // --- 2. LÓGICA DE MONTAGEM ---
+        let finalSteps = (userPlan === 'agent') ? [...agentSteps, ...commonSteps] : commonSteps;
 
-    finalSteps = finalSteps.filter(step => document.querySelector(step.element));
+        finalSteps = finalSteps.filter(step => document.querySelector(step.element));
 
-    // --- 3. EXECUÇÃO ---
-    const driverObj = driverLib({
-        showProgress: true,
-        animate: true,
-        allowClose: true,
-        overlayClickNext: false,
-        keyboardControl: true,
-        nextBtnText: 'Próximo →',
-        prevBtnText: '← Voltar',
-        doneBtnText: 'Concluir 🚀',
-        steps: finalSteps,
-    });
+        // --- 3. EXECUÇÃO ---
+        const driverObj = driverLib({
+            showProgress: true,
+            animate: true,
+            allowClose: true,
+            overlayClickNext: false,
+            keyboardControl: true,
+            nextBtnText: 'Próximo →',
+            prevBtnText: '← Voltar',
+            doneBtnText: 'Concluir 🚀',
+            steps: finalSteps,
+        });
 
         driverObj.drive();
     };
@@ -491,6 +494,24 @@ export default function FinancialDashboard() {
         }
     };
 
+    const fetchMyConsultant = async (currentUserId: string) => {
+        const { data, error } = await supabase
+            .from('manager_clients')
+            .select('*')
+            .eq('client_id', currentUserId)
+            .eq('status', 'active')
+            .maybeSingle(); // Puxa apenas um registro (o vínculo dele)
+
+        if (data) setMyConsultantLink(data);
+    };
+
+    // 🟢 useEffect focado apenas em verificar se o usuário tem um consultor
+    useEffect(() => {
+        if (user?.id) {
+            fetchMyConsultant(user.id);
+        }
+    }, [user?.id]);
+
     const toggleWhatsappNotification = async () => {
         if (!user) return;
 
@@ -547,108 +568,141 @@ export default function FinancialDashboard() {
             await supabase.from('profiles').update(updateData).eq('id', user.id);
         }
     };
+    const handleOpenContract = async () => {
+        console.log("🕵️ Botão clicado! Cliente selecionado:", viewingAs);
+
+        if (!viewingAs) {
+            toast.error("⚠️ Você precisa clicar no nome de um cliente na barra roxa primeiro!");
+            return;
+        }
+
+        const toastId = toast.loading("Buscando a papelada...");
+
+        try {
+            // Tenta puxar o dado atualizado
+            const { data, error } = await supabase
+                .from('manager_clients')
+                .select('*')
+                .eq('client_id', viewingAs.client_id || viewingAs.id)
+                .single();
+
+            if (data) {
+                console.log("✅ Dados atualizados encontrados:", data);
+                // Se o banco trouxe o dado fresco, a gente atualiza a "visão" atual pra não ir com dado velho pro contrato
+                setViewingAs(data); 
+            } else {
+                console.log("⚠️ Nenhum dado extra achado, abrindo com o que tem.");
+            }
+        } catch (err) {
+            console.error("❌ Erro na busca (mas vou abrir o modal mesmo assim):", err);
+        } finally {
+            // Essa é a linha que manda o modal abrir, não importa o que aconteça!
+            toast.dismiss(toastId);
+            setIsContractOpen(true); 
+        }
+    };
 
     const checkUpcomingBills = async (userId: string) => {
-    if (!userId) return;
+        if (!userId) return;
 
-    // 1. Prepara as datas atuais reais (Hoje)
-    const today = new Date();
-    const dayNum = today.getDate();
-    const dayStr = dayNum.toString().padStart(2, '0');
-    const currentYear = today.getFullYear();
-    const currentMonthIdx = today.getMonth();
+        // 1. Prepara as datas atuais reais (Hoje)
+        const today = new Date();
+        const dayNum = today.getDate();
+        const dayStr = dayNum.toString().padStart(2, '0');
+        const currentYear = today.getFullYear();
+        const currentMonthIdx = today.getMonth();
 
-    const monthMap: Record<number, string> = {
-        0: 'Jan', 1: 'Fev', 2: 'Mar', 3: 'Abr', 4: 'Mai', 5: 'Jun',
-        6: 'Jul', 7: 'Ago', 8: 'Set', 9: 'Out', 10: 'Nov', 11: 'Dez'
-    };
-    const currentMonthName = monthMap[currentMonthIdx];
-    const currentPaymentTag = `${currentMonthName}/${currentYear}`;
+        const monthMap: Record<number, string> = {
+            0: 'Jan', 1: 'Fev', 2: 'Mar', 3: 'Abr', 4: 'Mai', 5: 'Jun',
+            6: 'Jul', 7: 'Ago', 8: 'Set', 9: 'Out', 10: 'Nov', 11: 'Dez'
+        };
+        const currentMonthName = monthMap[currentMonthIdx];
+        const currentPaymentTag = `${currentMonthName}/${currentYear}`;
 
-    const getStartData = (item: any) => {
-        if (item.start_date && item.start_date.includes('/')) {
-            const p = item.start_date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
-        }
-        if (item.date && item.date.includes('/')) {
-            const p = item.date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
-        }
-        return { m: 0, y: currentYear };
-    };
+        const getStartData = (item: any) => {
+            if (item.start_date && item.start_date.includes('/')) {
+                const p = item.start_date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+            }
+            if (item.date && item.date.includes('/')) {
+                const p = item.date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+            }
+            return { m: 0, y: currentYear };
+        };
 
-    const isFuture = (item: any) => {
-        const { m: startM, y: startY } = getStartData(item);
-        return (currentYear < startY) || (currentYear === startY && currentMonthIdx < startM);
-    };
+        const isFuture = (item: any) => {
+            const { m: startM, y: startY } = getStartData(item);
+            return (currentYear < startY) || (currentYear === startY && currentMonthIdx < startM);
+        };
 
-    // 2. Identifica as contas para a notificação INTERNA (Sininho do site)
-    const billsDueToday = [
-        ...transactions.filter(t => 
-            t.type === 'expense' && !t.is_paid && t.status !== 'delayed' && t.status !== 'standby' &&
-            t.date?.startsWith(`${dayStr}/`) && t.date?.endsWith(`/${currentYear}`) && !isFuture(t)
-        ),
-        ...recurring.filter(r => 
-            r.type === 'expense' && r.due_day === dayNum && r.status !== 'delayed' && r.status !== 'standby' &&
-            !r.paid_months?.includes(currentPaymentTag) && !isFuture(r)
-        ),
-        ...installments.filter(i => 
-            i.due_day === dayNum && i.status !== 'delayed' && i.status !== 'standby' &&
-            !i.paid_months?.includes(currentPaymentTag) && !isFuture(i)
-        )
-    ];
+        // 2. Identifica as contas para a notificação INTERNA (Sininho do site)
+        const billsDueToday = [
+            ...transactions.filter(t =>
+                t.type === 'expense' && !t.is_paid && t.status !== 'delayed' && t.status !== 'standby' &&
+                t.date?.startsWith(`${dayStr}/`) && t.date?.endsWith(`/${currentYear}`) && !isFuture(t)
+            ),
+            ...recurring.filter(r =>
+                r.type === 'expense' && r.due_day === dayNum && r.status !== 'delayed' && r.status !== 'standby' &&
+                !r.paid_months?.includes(currentPaymentTag) && !isFuture(r)
+            ),
+            ...installments.filter(i =>
+                i.due_day === dayNum && i.status !== 'delayed' && i.status !== 'standby' &&
+                !i.paid_months?.includes(currentPaymentTag) && !isFuture(i)
+            )
+        ];
 
-    if (billsDueToday.length === 0) return;
+        if (billsDueToday.length === 0) return;
 
-    // 3. ANTI-DUPLICIDADE (Sininho do site)
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    const { data: existingNotifs } = await supabase
-        .from('notifications')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('title', 'Contas Vencendo Hoje! 💸')
-        .gte('created_at', startOfDay.toISOString())
-        .limit(1);
+        // 3. ANTI-DUPLICIDADE (Sininho do site)
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+        const { data: existingNotifs } = await supabase
+            .from('notifications')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('title', 'Contas Vencendo Hoje! 💸')
+            .gte('created_at', startOfDay.toISOString())
+            .limit(1);
 
-    if (existingNotifs && existingNotifs.length > 0) return;
+        if (existingNotifs && existingNotifs.length > 0) return;
 
-    // 4. Salva no banco de notificações do SITE
-    const messageSignature = `Você tem ${billsDueToday.length} conta(s) para pagar hoje. Não esqueça!`;
-    const { error } = await supabase.from('notifications').insert({
-        user_id: userId,
-        title: 'Contas Vencendo Hoje! 💸',
-        message: messageSignature,
-        type: 'warning',
-        is_read: false
-    });
+        // 4. Salva no banco de notificações do SITE
+        const messageSignature = `Você tem ${billsDueToday.length} conta(s) para pagar hoje. Não esqueça!`;
+        const { error } = await supabase.from('notifications').insert({
+            user_id: userId,
+            title: 'Contas Vencendo Hoje! 💸',
+            message: messageSignature,
+            type: 'warning',
+            is_read: false
+        });
 
-    if (!error) {
-        toast.warning("Atenção: Contas Vencendo Hoje!", { description: messageSignature });
+        if (!error) {
+            toast.warning("Atenção: Contas Vencendo Hoje!", { description: messageSignature });
 
-        // 🔴🔴 AQUI ESTÁ A MUDANÇA PARA O WHATSAPP 🔴🔴
-        console.log("📤 Solicitando disparo de WhatsApp ao Backend...");
-        
-        // Buscamos o Token da sessão atual
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
+            // 🔴🔴 AQUI ESTÁ A MUDANÇA PARA O WHATSAPP 🔴🔴
+            console.log("📤 Solicitando disparo de WhatsApp ao Backend...");
 
-        fetch('/api/check-notifications', {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}` // ✅ ENVIANDO O TOKEN
-            },
-            body: JSON.stringify({
-                forceSend: false // ✅ MANDAMOS SÓ O ESSENCIAL (Backend faz o resto)
+            // Buscamos o Token da sessão atual
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+
+            fetch('/api/check-notifications', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}` // ✅ ENVIANDO O TOKEN
+                },
+                body: JSON.stringify({
+                    forceSend: false // ✅ MANDAMOS SÓ O ESSENCIAL (Backend faz o resto)
+                })
             })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) console.log("✅ WhatsApp enviado com sucesso!");
-            else console.log("⚠️ WhatsApp não enviado:", data.reason || data.error);
-        })
-        .catch(err => console.error("❌ Erro ao chamar API de WhatsApp:", err));
-    }
-};
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) console.log("✅ WhatsApp enviado com sucesso!");
+                    else console.log("⚠️ WhatsApp não enviado:", data.reason || data.error);
+                })
+                .catch(err => console.error("❌ Erro ao chamar API de WhatsApp:", err));
+        }
+    };
 
     const fetchClients = async (managerId: string) => {
         const { data } = await supabase.from('manager_clients').select('*').eq('manager_id', managerId);
@@ -962,6 +1016,38 @@ export default function FinancialDashboard() {
             else setShowEmailCheck(true);
         }
         setLoadingAuth(false);
+    };
+    const handleClientContractUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const toastId = toast.loading("Enviando contrato finalizado...");
+
+        try {
+            // O nome do arquivo fica único pro cliente
+            const fileName = `contrato_finalizado_cliente_${user.id}_${Date.now()}.pdf`;
+
+            const { error: uploadError } = await supabase.storage
+                .from('contracts')
+                .upload(fileName, file);
+
+            if (uploadError) throw uploadError;
+
+            const { data: { publicUrl } } = supabase.storage.from('contracts').getPublicUrl(fileName);
+
+            // Atualiza a tabela com o link final
+            const { error: dbError } = await supabase
+                .from('manager_clients')
+                .update({ contract_url: publicUrl, status: 'contract_signed' })
+                .eq('client_id', user.id); // Atualiza onde ele é o cliente
+
+            if (dbError) throw dbError;
+
+            toast.success("Contrato enviado com sucesso! Tudo oficializado.", { id: toastId });
+
+        } catch (error: any) {
+            toast.error("Erro ao enviar: " + error.message, { id: toastId });
+        }
     };
 
     const handleResetPassword = async () => {
@@ -2162,7 +2248,11 @@ export default function FinancialDashboard() {
                 client={viewingAs}
                 setIsImportOpen={setIsImportOpen}
                 setIsTutorialOpen={setIsTutorialOpen}
-
+                setIsContractOpen={setIsContractOpen}
+                handleClientContractUpload={handleClientContractUpload}
+                isManagedClient={!!myConsultantLink}
+                clientContractUrl={myConsultantLink?.contract_url}
+                onOpenContract={handleOpenContract}
             />
             <TabNavigation
                 activeSection={activeSection}
@@ -2214,6 +2304,16 @@ export default function FinancialDashboard() {
                 </div>
 
             )}
+            {/* 🟢 DEIXE APENAS ESTE AQUI! (Com a trava dupla: botão apertado + plano agent/admin) */}
+            {(userPlan === 'agent' || userPlan === 'admin') && isContractOpen && (
+                <ContractGenerator
+                    consultant={user?.user_metadata} // Passa os dados do consultor
+                    clients={clients}                // Passa a lista de clientes
+                    onClose={() => setIsContractOpen(false)}
+                    client={viewingAs}
+                />
+            )}
+
             {/* --- RENDERIZAÇÃO DOS LAYOUTS (Sintaxe Corrigida) --- */}
             {/* =================================================================================
     CONTEÚDO DA ABA: DASHBOARD (FLUXO)

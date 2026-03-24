@@ -108,7 +108,13 @@ export default function CreditCardModal({ isOpen, onClose, user, activeTab, cont
         { id: 1, title: '', value: '', installments: '1', isPaid: false }
     ]);
 
+    // 🟢 LIMITE DE ITENS (Anti-Spam / Anti-Travamento)
+    const MAX_ITEMS = 50;
     const addNewLine = () => {
+        if (items.length >= MAX_ITEMS) {
+            toast.warning(`Você atingiu o limite de ${MAX_ITEMS} itens por vez.`);
+            return;
+        }
         setItems([...items, { id: Date.now(), title: '', value: '', installments: '1', isPaid: false }]);
     };
 
@@ -143,8 +149,8 @@ export default function CreditCardModal({ isOpen, onClose, user, activeTab, cont
             
             const startOffset = currentRealMonth - targetMonthIndex;
             
-            // 🟢 Pega o dia digitado para O BANCO SELECIONADO (ou assume 10 por padrão)
-            const finalDueDay = parseInt(dueDays[selectedBank] || '10') || 10;
+            // 🟢 SANITIZAÇÃO DE VENCIMENTO (Sempre entre 1 e 31)
+            const finalDueDay = Math.min(31, Math.max(1, parseInt(dueDays[selectedBank] || '10') || 10));
 
             const inserts = items.map(item => {
                 const valParcela = parseFloat(item.value.toString().replace(',', '.')) || 0;
@@ -160,7 +166,7 @@ export default function CreditCardModal({ isOpen, onClose, user, activeTab, cont
                     current_installment: startOffset, 
                     value_per_month: valParcela,
                     payment_method: selectedBank,
-                    due_day: finalDueDay, // 🟢 Salva no banco com o dia individual daquele cartão
+                    due_day: finalDueDay,
                     status: 'active',
                     paid_months: item.isPaid ? [`${activeTab}/${currentYear}`] : [],
                     icon: 'shopping-cart'
@@ -177,7 +183,9 @@ export default function CreditCardModal({ isOpen, onClose, user, activeTab, cont
             setItems([{ id: 1, title: '', value: '', installments: '1', isPaid: false }]);
 
         } catch (error: any) {
-            toast.error("Erro ao salvar: " + error.message);
+            // 🟢 MENSAGEM GENÉRICA DE ERRO (Protege a estrutura do banco)
+            console.error("❌ Erro interno ao salvar fatura:", error);
+            toast.error("Não foi possível salvar os dados. Verifique sua conexão e tente novamente.");
         } finally {
             setIsSaving(false);
         }
@@ -200,7 +208,6 @@ export default function CreditCardModal({ isOpen, onClose, user, activeTab, cont
                         </div>
                         
                         <div className="flex items-center gap-4">
-                            {/* CAMPO DE VENCIMENTO INTELIGENTE (Muda de acordo com o banco) */}
                             <div className="flex items-center gap-2 bg-gray-900 border border-gray-800 px-3 py-2 rounded-xl" title="Dia do Vencimento da Fatura">
                                 <CalendarDays size={16} className={currentBankStyle.text.replace('text-', 'text-').split(' ')[0] || "text-gray-500"} />
                                 <span className="text-xs text-gray-500 font-bold uppercase">Venc. {BANK_STYLES[selectedBank].label}:</span>
@@ -248,7 +255,18 @@ export default function CreditCardModal({ isOpen, onClose, user, activeTab, cont
                     {items.map((item, index) => (
                         <div key={item.id} className="flex gap-2 items-center animate-in slide-in-from-left-2 duration-300">
                             <span className="text-gray-600 text-xs font-mono w-4">{index + 1}.</span>
-                            <input type="text" placeholder="O que você comprou?" value={item.title} onChange={(e) => updateItem(item.id, 'title', e.target.value)} autoFocus={index === items.length - 1} className="flex-1 bg-gray-800 border border-gray-700 rounded-lg p-3 text-sm text-white focus:border-purple-500 outline-none"/>
+                            
+                            {/* 🟢 LIMITE DE TEXTO (maxLength="100") */}
+                            <input 
+                                type="text" 
+                                placeholder="O que você comprou?" 
+                                value={item.title} 
+                                onChange={(e) => updateItem(item.id, 'title', e.target.value)} 
+                                autoFocus={index === items.length - 1} 
+                                maxLength={100}
+                                className="flex-1 bg-gray-800 border border-gray-700 rounded-lg p-3 text-sm text-white focus:border-purple-500 outline-none"
+                            />
+                            
                             <div className="w-28 relative"><span className="absolute left-3 top-3 text-xs text-gray-500">R$</span><input type="number" placeholder="0,00" value={item.value} onChange={(e) => updateItem(item.id, 'value', e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 pl-8 text-sm text-white focus:border-purple-500 outline-none font-mono"/></div>
                             <div className="w-20 relative" title="Número de Parcelas"><span className="absolute right-3 top-3.5 text-[10px] text-gray-500 font-bold">x</span><input type="number" placeholder="1" value={item.installments} onChange={(e) => updateItem(item.id, 'installments', e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-sm text-white focus:border-purple-500 outline-none text-center"/></div>
                             <button onClick={() => updateItem(item.id, 'isPaid', !item.isPaid)} className={`p-3 rounded-lg border transition ${item.isPaid ? 'bg-emerald-500/20 border-emerald-500 text-emerald-500' : 'bg-gray-800 border-gray-700 text-gray-600 hover:text-white'}`} title={item.isPaid ? "Marcado como Pago" : "Marcar como Pago"}>{item.isPaid ? <CheckCircle2 size={18}/> : <Circle size={18}/>}</button>
