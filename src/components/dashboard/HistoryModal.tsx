@@ -9,14 +9,13 @@ interface HistoryModalProps {
     transactions: any[];
     installments: any[];
     recurring: any[];
-    selectedYear: number; // <--- ADICIONADO
+    selectedYear: number;
 }
 
 export default function HistoryModal({ isOpen, onClose, transactions, installments, recurring, selectedYear }: HistoryModalProps) {
-    // Estado para controlar qual barra está ativa
     const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
-    // --- HELPER UNIFICADO DE DATA ---
+    // HELPER UNIFICADO DE DATA
     const getStartData = (item: any) => {
         if (item.start_date && item.start_date.includes('/')) {
             const p = item.start_date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
@@ -30,7 +29,7 @@ export default function HistoryModal({ isOpen, onClose, transactions, installmen
         return { m: 0, y: selectedYear };
     };
 
-    // --- CÁLCULO DE DADOS ---
+    // CÁLCULO DE DADOS
     const chartData = useMemo(() => {
         let accumulatedBalance = 0;
 
@@ -89,7 +88,7 @@ export default function HistoryModal({ isOpen, onClose, transactions, installmen
 
     const maxValue = Math.max(...chartData.map(d => Math.max(d.income, d.expense)));
 
-    // Dados do mês selecionado (para o painel mobile)
+    // Dados do mês selecionado (para painel mobile)
     const activeData = activeIndex !== null ? chartData[activeIndex] : null;
 
     if (!isOpen) return null;
@@ -98,7 +97,6 @@ export default function HistoryModal({ isOpen, onClose, transactions, installmen
         <div className="fixed inset-0 bg-black/95 backdrop-blur-xl flex items-center justify-center z-[200] p-0 md:p-4 overflow-hidden">
             <div className="w-full max-w-6xl bg-[#0a0a0a] border-0 md:border border-gray-800 rounded-none md:rounded-3xl flex flex-col h-full md:max-h-[90vh]">
                 
-                {/* HEADER */}
                 <div className="p-4 md:p-6 border-b border-gray-800 flex justify-between items-center bg-[#111]">
                     <div>
                         <h2 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2"><TrendingUp className="text-cyan-500"/> Histórico Anual ({selectedYear})</h2>
@@ -107,8 +105,6 @@ export default function HistoryModal({ isOpen, onClose, transactions, installmen
                     <button onClick={onClose} className="text-gray-500 hover:text-white transition bg-gray-800 p-2 rounded-full"><X size={24}/></button>
                 </div>
 
-                {/* --- PAINEL DE DETALHES MOBILE (FIXO NO TOPO) --- */}
-                {/* Só aparece em telas pequenas (md:hidden) */}
                 <div className="md:hidden bg-gray-900 border-b border-gray-800 p-4 shrink-0 transition-all duration-300">
                     {activeData ? (
                         <div className="animate-in fade-in slide-in-from-top-2">
@@ -137,11 +133,9 @@ export default function HistoryModal({ isOpen, onClose, transactions, installmen
                     )}
                 </div>
 
-                {/* CORPO - GRÁFICO (COM SCROLL) */}
                 <div className="flex-1 overflow-y-hidden overflow-x-auto relative bg-[#0a0a0a]">
                     <div className="h-full min-h-[300px] p-4 md:p-10 min-w-[800px] flex items-end justify-between gap-2 md:gap-4 relative pb-8 md:pt-35" onClick={() => setActiveIndex(null)}>
                         
-                        {/* Linhas de Grade */}
                         <div className="absolute inset-0 flex flex-col justify-end pointer-events-none opacity-20 pb-8 px-4 md:px-10">
                             <div className="border-t border-gray-500 w-full mb-[20%]"></div>
                             <div className="border-t border-gray-500 w-full mb-[20%]"></div>
@@ -165,7 +159,6 @@ export default function HistoryModal({ isOpen, onClose, transactions, installmen
                                     onMouseEnter={() => setActiveIndex(idx)}
                                 >
                                     
-                                    {/* TOOLTIP FLUTUANTE (SÓ DESKTOP - HIDDEN NO MOBILE) */}
                                     <div className={`hidden md:block absolute bottom-full mb-3 transition-all duration-200 pointer-events-none bg-[#1a1a1a] border border-gray-600 p-3 rounded-xl shadow-2xl z-50 w-48 text-center left-1/2 -translate-x-1/2 ${isActive ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
                                         <p className="text-white font-bold mb-2 border-b border-gray-700 pb-1">{data.month}</p>
                                         <div className="flex justify-between text-xs text-emerald-400 mb-1">
@@ -180,17 +173,13 @@ export default function HistoryModal({ isOpen, onClose, transactions, installmen
                                         <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-[#1a1a1a]"></div>
                                     </div>
 
-                                    {/* BARRAS */}
                                     <div className={`flex gap-1 w-full justify-center items-end h-full transition-opacity duration-300 ${isActive ? 'opacity-100' : 'opacity-60 md:hover:opacity-90'}`}>
-                                        {/* Barras ficam um pouco mais largas no mobile para facilitar o toque */}
                                         <div style={{ height: `${incomeHeight}%` }} className={`w-3 md:w-4 bg-emerald-500 rounded-t-sm ${isActive ? 'shadow-[0_0_15px_rgba(16,185,129,0.4)]' : ''}`}></div>
                                         <div style={{ height: `${expenseHeight}%` }} className={`w-3 md:w-4 bg-red-500 rounded-t-sm ${isActive ? 'shadow-[0_0_15px_rgba(239,68,68,0.4)]' : ''}`}></div>
                                     </div>
 
-                                    {/* MÊS */}
                                     <span className={`text-[10px] md:text-xs font-bold mt-2 uppercase transition-colors ${isActive ? 'text-white scale-110' : 'text-gray-500'}`}>{data.month}</span>
                                     
-                                    {/* Indicador de Seleção no Mobile (Bolinha embaixo do mês) */}
                                     {isActive && <div className="md:hidden w-1 h-1 bg-white rounded-full mt-1"></div>}
                                 </div>
                             )

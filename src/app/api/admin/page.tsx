@@ -12,7 +12,7 @@ const supabase = createClient(
 
 const PlanConfigCard = ({ title, prefix, dbPrefix, settings, onChange }: any) => {
   const stripeNormalKey = prefix === 'pro' ? 'stripe_price_pro' : `stripe_${dbPrefix}_normal`;
-  const couponKey = `coupon_${prefix}`; // 🟢 Chave para o cupom individual
+  const couponKey = `coupon_${prefix}`;
 
   return (
     <div className="bg-gray-50 dark:bg-[#151515] p-6 rounded-2xl border border-gray-200 dark:border-gray-800 space-y-4">
@@ -91,7 +91,6 @@ export default function AdminDashboard() {
   }
 
   async function fetchUsers() {
-    // 🟢 Busca apenas o que importa para a tela, ignorando dados sensíveis
     const { data } = await supabase
       .from("profiles")
       .select("id, email, plan_tier, created_at")
@@ -104,15 +103,13 @@ export default function AdminDashboard() {
     setSettings((prev: any) => ({ ...prev, [key]: value }));
   };
 
-  // 🟢 FUNÇÃO 1: SALVAR CONFIGURAÇÕES (Com Token)
+  // SALVAR CONFIGURAÇÕES COM AUTENTICAÇÃO
   async function saveSettings() {
     const toastId = toast.loading("Salvando configurações do sistema...");
     try {
-      // 🟢 getUser() obriga o Supabase a checar com o servidor se o usuário ainda é válido
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error("Sessão inválida. Recarregue a página.");
 
-      // Pegamos o token fresco
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
 
@@ -133,11 +130,10 @@ export default function AdminDashboard() {
     }
   }
 
-  // 🟢 FUNÇÃO 2: ATUALIZAR PLANO DE USUÁRIO (Com Token e Sem adminId forjado)
+  // ATUALIZAR PLANO DE USUÁRIO COM VERIFICAÇÃO DE SEGURANÇA
   async function updateUserPlan(userId: string, newPlan: string) {
     const toastId = toast.loading(`Alterando plano para ${newPlan.toUpperCase()}...`);
     try {
-      // 🟢 Verificação de segurança profunda antes de chamar a API
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error("Sessão inválida. Recarregue a página.");
 
@@ -156,7 +152,7 @@ export default function AdminDashboard() {
       if (!res.ok) throw new Error("Acesso negado ou erro no servidor.");
 
       toast.success(`Plano alterado para ${newPlan.toUpperCase()} com sucesso!`, { id: toastId });
-      fetchUsers(); // Recarrega a lista para mostrar o novo plano
+      fetchUsers();
     } catch (error: any) {
       toast.error("Erro ao mudar o plano: " + error.message, { id: toastId });
     }
@@ -206,7 +202,6 @@ export default function AdminDashboard() {
 
           {settings && (
             <div className="space-y-8">
-              {/* BLOCO DA PROMOÇÃO (AGORA COM O CAMPO DO CUPOM) */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-cyan-50 dark:bg-cyan-950/20 p-6 rounded-2xl border border-cyan-100 dark:border-cyan-900/30">
                 <div>
                   <label className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2 mb-2">
@@ -249,7 +244,6 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* GRELHA DOS PLANOS LIMPÍSSIMA */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <PlanConfigCard title="🚀 Plano Start" prefix="start" dbPrefix="start" settings={settings} onChange={handleSettingChange} />
                 <PlanConfigCard title="💎 Plano Premium" prefix="premium" dbPrefix="premium" settings={settings} onChange={handleSettingChange} />
@@ -260,7 +254,6 @@ export default function AdminDashboard() {
           )}
         </section>
 
-        {/* ... (BLOCO DE CLIENTES CONTINUA IGUAL AQUI PARA BAIXO) ... */}
         <section className="bg-white dark:bg-[#111111] rounded-3xl shadow-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
           <div className="p-8 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
             <div className="flex items-center gap-3">

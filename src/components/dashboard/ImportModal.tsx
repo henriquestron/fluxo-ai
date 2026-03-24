@@ -18,8 +18,6 @@ export default function ImportModal({ isOpen, onClose, userId, workspaceId, onSu
     const [isProcessing, setIsProcessing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [statusText, setStatusText] = useState("");
-    
-    // Novos estados para o modo Multimodal
     const [textInput, setTextInput] = useState("");
     const [showInfo, setShowInfo] = useState(false);
     const [reviewData, setReviewData] = useState<any>(null);
@@ -27,7 +25,6 @@ export default function ImportModal({ isOpen, onClose, userId, workspaceId, onSu
     const callAI = async (payload: any) => {
         setIsProcessing(true);
         try {
-            // 🔴 1. PEGA O CRACHÁ (TOKEN) DO USUÁRIO LOGADO
             const { data: { session } } = await supabase.auth.getSession();
             const token = session?.access_token;
 
@@ -36,12 +33,11 @@ export default function ImportModal({ isOpen, onClose, userId, workspaceId, onSu
                 return;
             }
 
-            // 🔴 2. ENVIA O ARQUIVO JUNTO COM O CRACHÁ DE SEGURANÇA
             const response = await fetch('/api/import-spreadsheet', {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}` // ✅ A MÁGICA ACONTECE AQUI!
+                    'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify(payload)
             });
@@ -56,7 +52,6 @@ export default function ImportModal({ isOpen, onClose, userId, workspaceId, onSu
             }
         } catch (error: any) {
             console.error("Erro na importação:", error);
-            // Mostra o erro exato que o backend retornou (ex: "Imagem muito grande", "Apenas plano Pro", etc)
             toast.error(error.message || "Erro ao ler os dados. Verifique o arquivo e tente novamente.");
             setStatusText("Houve um erro na leitura.");
         } finally {
@@ -70,7 +65,6 @@ export default function ImportModal({ isOpen, onClose, userId, workspaceId, onSu
 
         setStatusText(`Analisando ${file.name}... 🤖`);
         
-        // Se for Excel/CSV
         if (file.name.endsWith('.xlsx') || file.name.endsWith('.csv')) {
             const data = await file.arrayBuffer();
             const workbook = XLSX.read(data, { type: 'array' });
@@ -78,7 +72,6 @@ export default function ImportModal({ isOpen, onClose, userId, workspaceId, onSu
             const rawJsonData = XLSX.utils.sheet_to_json(worksheet);
             callAI({ rawData: rawJsonData });
         } 
-        // Se for Imagem (Foto de caderno, print, recibo)
         else if (file.type.startsWith('image/')) {
             const reader = new FileReader();
             reader.onload = () => {
@@ -97,7 +90,7 @@ export default function ImportModal({ isOpen, onClose, userId, workspaceId, onSu
         callAI({ textData: textInput });
     };
 
-    // 🟢 FUNÇÕES PARA EDITAR AS CONTAS NA TELA
+    // FUNÇÕES PARA EDITAR AS CONTAS NA TELA
     const handleEditItem = (table: string, index: number, field: string, value: any) => {
         const newData = { ...reviewData };
         newData[table][index][field] = value;
@@ -110,8 +103,7 @@ export default function ImportModal({ isOpen, onClose, userId, workspaceId, onSu
         setReviewData(newData);
     };
 
-    // FUNÇÃO PARA SALVAR NO BANCO
-    // 🟢 FUNÇÃO PARA SALVAR NO BANCO (BLINDADA CONTRA ERROS DO SUPABASE)
+    // SALVAR CONTAS NO BANCO
     const handleSaveToDatabase = async () => {
         if (!reviewData) return;
         setIsSaving(true);
@@ -121,7 +113,7 @@ export default function ImportModal({ isOpen, onClose, userId, workspaceId, onSu
             const now = new Date();
             let hasError = false;
 
-            // 1. SALVAR AVULSAS
+            // SALVAR TRANSAÇÕES AVULSAS
             if (reviewData.transactions?.length > 0) {
                 const transPayload = reviewData.transactions.map((t: any) => ({
                     title: t.title,
@@ -139,7 +131,7 @@ export default function ImportModal({ isOpen, onClose, userId, workspaceId, onSu
                 if (error) { console.error("Erro nas Avulsas:", error); hasError = true; }
             }
 
-            // 2. SALVAR FIXAS
+            // SALVAR CONTAS FIXAS
             if (reviewData.recurring?.length > 0) {
                 const recPayload = reviewData.recurring.map((r: any) => ({
                     title: r.title,
@@ -156,7 +148,7 @@ export default function ImportModal({ isOpen, onClose, userId, workspaceId, onSu
                 if (error) { console.error("Erro nas Fixas:", error); hasError = true; }
             }
 
-            // 3. SALVAR PARCELADAS
+            // SALVAR CONTAS PARCELADAS
             if (reviewData.installments?.length > 0) {
                 const instPayload = reviewData.installments.map((i: any) => {
                     const qtd = Number(i.installments_count) || 1;
@@ -175,7 +167,6 @@ export default function ImportModal({ isOpen, onClose, userId, workspaceId, onSu
                         current_installment: 0,
                         payment_method: 'outros',
                         paid_months: []
-                        // 🚫 MÁGICA AQUI: Não mandamos "category" nem "type", senão o Supabase infarta!
                     };
                 });
                 
@@ -187,7 +178,7 @@ export default function ImportModal({ isOpen, onClose, userId, workspaceId, onSu
                 toast.error("Algumas contas deram erro. Verifique o painel.", { id: toastId });
             } else {
                 toast.success("Migração concluída com sucesso! 🎉", { id: toastId });
-                onSuccess(); // Recarrega o dashboard
+                onSuccess();
                 handleClose();
             }
             
@@ -223,12 +214,11 @@ export default function ImportModal({ isOpen, onClose, userId, workspaceId, onSu
                 </button>
 
                 {!reviewData ? (
-                    // TELA 1: UPLOAD E TEXTO
                     <div className="animate-in zoom-in-95 duration-300">
                         <div className="flex items-center justify-between mb-6">
                             <div>
                                 <h2 className="text-2xl font-black text-white flex items-center gap-2">
-                                    <SparklesIcon /> Importação Inteligente
+                                    <FileSpreadsheet /> Importação Inteligente
                                 </h2>
                                 <p className="text-gray-400 text-sm mt-1">Planilhas, fotos ou textos do WhatsApp. A IA cuida do resto.</p>
                             </div>
@@ -238,7 +228,6 @@ export default function ImportModal({ isOpen, onClose, userId, workspaceId, onSu
                         </div>
 
                         {showInfo ? (
-                            // TELA DE DICAS
                             <div className="bg-[#111] border border-gray-800 rounded-2xl p-6 mb-2 animate-in fade-in slide-in-from-top-4">
                                 <h3 className="text-white font-bold mb-4 flex items-center gap-2"><AlertTriangle size={18} className="text-amber-500"/> Regras para a IA não errar:</h3>
                                 <ul className="space-y-3 text-sm text-gray-400">

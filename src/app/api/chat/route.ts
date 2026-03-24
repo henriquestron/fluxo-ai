@@ -6,9 +6,8 @@ import { Redis } from '@upstash/redis';
 
 const apiKey = process.env.GEMINI_API_KEY || ""; 
 
-// 🟡 BLINDAGEM 1: Rate Limiter (Upstash Redis)
-// Evita que robôs esgotem sua cota do Gemini e gerem custos astronômicos
-// Limite: 15 mensagens por minuto por usuário
+// RATE LIMITER UPSTASH REDIS
+// Limita a 15 mensagens por minuto por usuário
 const ratelimit = new Ratelimit({
   redis: Redis.fromEnv(),
   limiter: Ratelimit.slidingWindow(15, '1 m'), 
@@ -18,7 +17,7 @@ export async function POST(req: Request) {
   if (!apiKey) return NextResponse.json({ error: "Erro interno no servidor." }, { status: 500 });
 
   try {
-    // 🔴 BLINDAGEM 2: Autenticação Real via Token
+    // VALIDAÇÃO DE AUTENTICAÇÃO
     const authHeader = req.headers.get('Authorization');
     const token = authHeader?.replace('Bearer ', '');
 
@@ -37,26 +36,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Sessão inválida ou expirada.' }, { status: 401 });
     }
 
-    // Aplica o Rate Limiting usando o ID seguro do usuário
+    // APLICAR RATE LIMITING
     const { success } = await ratelimit.limit(user.id);
     if (!success) {
       return NextResponse.json({ error: 'Você enviou muitas mensagens muito rápido. Aguarde um minuto.' }, { status: 429 });
     }
 
-    // Recebe os dados do Frontend (NÃO confiamos no userPlan que vem daqui)
+    // RECEBER DADOS DO FRONTEND
     const { prompt, contextData, images, history, selectedYear } = await req.json();
 
-    // 🔴 BLINDAGEM 3: Validação de Prompt (Anti Prompt-Injection)
+    // VALIDAÇÃO DE PROMPT
     if (!prompt || typeof prompt !== 'string' || prompt.length > 2000) {
       return NextResponse.json({ error: 'Texto da mensagem inválido ou muito longo.' }, { status: 400 });
     }
 
-    // 🔴 BLINDAGEM 4: Segurança de Imagens (Evita travar o servidor com arquivos gigantes)
+    // VALIDAÇÃO DE IMAGENS
     let messageParts: any[] = [];
     if (images && images.length > 0) {
       const img = images[0];
       const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-      const MAX_B64_LENGTH = 1_500_000; // Aprox 1MB em Base64
+      const MAX_B64_LENGTH = 1_500_000;
 
       if (!ALLOWED_TYPES.includes(img.mimeType)) {
         return NextResponse.json({ error: 'Formato de imagem não suportado. Use JPG, PNG ou WEBP.' }, { status: 400 });
@@ -70,21 +69,19 @@ export async function POST(req: Request) {
       messageParts.push({ inlineData: { data: base64Data, mimeType: img.mimeType } });
     }
 
-    // Adiciona o texto do prompt validado
     messageParts.push({ text: prompt });
 
-    // 🔴 BLINDAGEM 5: Limpeza de Histórico (Evita gastar milhares de tokens atoa)
-    const MAX_HISTORY = 15; // Lembra as últimas 15 mensagens apenas
+    // LIMPEZA DE HISTÓRICO - ÚLTIMAS 15 MENSAGENS
+    const MAX_HISTORY = 15;
     const chatHistory = (history || [])
       .slice(-MAX_HISTORY)
-      .filter((h: any) => ['user', 'model'].includes(h.role)) // Garante que não injetem roles falsas
+      .filter((h: any) => ['user', 'model'].includes(h.role))
       .map((h: any) => ({
         role: h.role,
         parts: h.parts
       }));
 
-    // 🔴 BLINDAGEM 6: Fim da Escalada de Privilégio
-    // O backend agora busca a verdade absoluta no banco de dados, ignorando o que o frontend diz
+    // BUSCAR PLANO REAL DO USUÁRIO NO BANCO
     const { data: profile } = await supabase
       .from('profiles')
       .select('plan_tier')
@@ -179,8 +176,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ response: responseText });
 
   } catch (error: any) {
-    // 🔴 BLINDAGEM 7: Erro Silencioso (Esconde a stack trace e API keys)
-    console.error("🔥 Erro IA:", error);
+    console.error("Erro IA:", error);
     return NextResponse.json({ error: "Ocorreu um erro interno ao processar a inteligência artificial." }, { status: 500 });
   }
 }

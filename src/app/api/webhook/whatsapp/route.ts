@@ -4,7 +4,6 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 
-// 🔴 1. FIM DO HARDCODE (Segurança de IP e Chaves)
 const EVOLUTION_URL = process.env.EVOLUTION_URL;
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY;
 
@@ -13,15 +12,15 @@ if (!EVOLUTION_API_KEY) throw new Error('EVOLUTION_API_KEY não definida no .env
 
 const INSTANCE_NAME = "MEO_ALIADO_INSTANCE";
 
-// 🔴 2. UPSTASH INICIALIZADO (Para Duplicidades e Rate Limit)
+// UPSTASH REDIS PARA DUPLICIDADES E RATE LIMIT
 const redis = Redis.fromEnv();
 const ratelimit = new Ratelimit({
     redis: redis,
-    limiter: Ratelimit.slidingWindow(10, '1 m'), // 10 mensagens por minuto por usuário
+    limiter: Ratelimit.slidingWindow(10, '1 m'),
 });
 
 // ============================================================================
-// AS SUAS FUNÇÕES AUXILIARES INTACTAS (Não alterei nada aqui)
+// FUNÇÕES AUXILIARES
 // ============================================================================
 const getPhoneVariations = (phone: string): string[] => {
     const clean = phone.replace(/\D/g, '');
@@ -139,30 +138,27 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
 }
 // ============================================================================
 
-
-// --- ROTA PRINCIPAL CORRIGIDA ---
+// --- ROTA PRINCIPAL ---
 export async function POST(req: Request) {
 
     try {
-        // 🔴 3. PROTEÇÃO DO WEBHOOK (Obrigatória: Falha Segura)
+        // PROTEÇÃO DO WEBHOOK COM TOKEN
         const EVOLUTION_WEBHOOK_SECRET = process.env.EVOLUTION_WEBHOOK_SECRET;
 
         if (!EVOLUTION_WEBHOOK_SECRET) {
-            throw new Error('🔥 ALERTA DE SEGURANÇA: EVOLUTION_WEBHOOK_SECRET não definida no .env');
+            throw new Error('ALERTA: EVOLUTION_WEBHOOK_SECRET não definida no .env');
         }
 
-        // 🟢 A MÁGICA DA URL ENTRA AQUI! 
-        // Lemos os parâmetros da URL para buscar o '?token='
+        // LEITURA DE PARÂMETROS DA URL
         const { searchParams } = new URL(req.url);
         const urlToken = searchParams.get('token');
 
-        // O código tenta achar no Header (apikey/authorization). Se não achar, ele pega o urlToken!
         const webhookToken = req.headers.get('apikey')
             ?? req.headers.get('authorization')?.replace('Bearer ', '')
             ?? urlToken;
 
         if (webhookToken !== EVOLUTION_WEBHOOK_SECRET) {
-            console.warn('⚠️ Webhook recusado: token inválido ou ausente. Possível tentativa de invasão.');
+            console.warn('Webhook recusado: token inválido ou ausente.');
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
@@ -181,29 +177,29 @@ export async function POST(req: Request) {
         const senderId = remoteJid.split('@')[0];
         const messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
 
-        // 🔴 4. ANTI-DUPLICIDADE DE VERDADE (Usando Redis)
+        // ANTI-DUPLICIDADE COM REDIS
         const alreadyProcessed = await redis.get(`msg:${messageId}`);
         if (alreadyProcessed) {
-            console.log("♻️ Ignorando mensagem duplicada (Redis capturou):", messageId);
+            console.log("Mensagem duplicada ignorada:", messageId);
             return NextResponse.json({ status: 'Ignored Duplicate' });
         }
-        await redis.set(`msg:${messageId}`, '1', { ex: 86400 }); // Expira em 24h
+        await redis.set(`msg:${messageId}`, '1', { ex: 86400 });
 
-        // 🔴 5. RATE LIMITING (Anti-Flood por Número)
+        // RATE LIMITING POR NÚMERO
         const { success: rateLimitSuccess } = await ratelimit.limit(senderId);
         if (!rateLimitSuccess) {
             await sendWhatsAppMessage(remoteJid, "⏳ Calma! Você está enviando mensagens muito rápido. Aguarde um minuto.");
             return NextResponse.json({ status: 'Rate Limited' });
         }
 
-        // 🔴 6. INTERCEPTADOR DE CONFIRMAÇÃO DE DELEÇÃO
+        // VERIFICAR DELEÇÃO PENDENTE
         const pendingDeleteStr = await redis.get(`pending_delete:${senderId}`);
         if (pendingDeleteStr) {
             const userInput = messageContent.trim().toUpperCase();
             if (userInput === 'SIM') {
                 const cmd = typeof pendingDeleteStr === 'string' ? JSON.parse(pendingDeleteStr) : pendingDeleteStr;
 
-                // 🛡️ REVALIDAÇÃO DA WHITELIST (Defesa em Profundidade)
+                // VALIDAÇÃO DA WHITELIST
                 const ALLOWED_TABLES = ['transactions', 'installments', 'recurring'];
                 if (!ALLOWED_TABLES.includes(cmd.table)) {
                     await sendWhatsAppMessage(remoteJid, '⚠️ Operação inválida. Tabela não permitida.');
@@ -231,8 +227,7 @@ export async function POST(req: Request) {
             }
         }
 
-
-        // --- PROCESSAMENTO DE ÁUDIO E IMAGEM ---
+        // PROCESSAMENTO DE ÁUDIO E IMAGEM
         let promptParts: any[] = [];
         let hasAudio = false;
         let hasImage = false;

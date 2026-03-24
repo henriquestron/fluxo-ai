@@ -19,11 +19,11 @@ import BentoView from '@/components/dashboard/BentoView';
 import { Toaster, toast } from 'sonner';
 import ProfileModal from '@/components/dashboard/ProfileModal';
 import ExportModal from '@/components/dashboard/ExportModal';
-import CreditCardModal from '@/components/dashboard/CreditCardModal'; // <--- IMPORTAÇÃO NOVA
-import HistoryModal from '@/components/dashboard/HistoryModal'; // <--- Adicione lá em cima
+import CreditCardModal from '@/components/dashboard/CreditCardModal';
+import HistoryModal from '@/components/dashboard/HistoryModal';
 import NotificationBell from '@/components/dashboard/NotificationBell';
-import LandingPage from '@/components/LandingPage'; // <--- ADICIONE ISSO
-import { MONTHS, STRIPE_PRICES, ACCOUNTS, ICON_MAP } from '@/utils/constants'; // <--- IMPORT NOVO
+import LandingPage from '@/components/LandingPage';
+import { MONTHS, STRIPE_PRICES, ACCOUNTS, ICON_MAP } from '@/utils/constants';
 import PricingModal from '@/components/dashboard/PricingModal';
 import TransactionForm from '@/components/dashboard/TransactionForm';
 import AiAssistantModal from '@/components/dashboard/AiAssistantModal';
@@ -34,18 +34,13 @@ import TabNavigation from '@/components/dashboard/TabNavigation';
 import YearSelector from '@/components/dashboard/YearSelector';
 import CalculatorModal from '@/components/dashboard/CalculatorModal';
 import OnboardingTutorial from '@/components/dashboard/OnboardingTutorial';
-import ImportModal from '@/components/dashboard/ImportModal'; // Ajuste o caminho se precisar
-
-
-
-
-// COMPONENTES
+import ImportModal from '@/components/dashboard/ImportModal';
 import StandardView from '@/components/dashboard/StandardView';
 import TraderView from '@/components/dashboard/TraderView';
 import CustomizationModal from '@/components/dashboard/CustomizationModal';
 import ZenView from '@/components/dashboard/ZenView';
 import CalendarView from '@/components/dashboard/CalendarView';
-import GoalModal from '@/components/dashboard/GoalModal'; // <--- ADICIONE ISSO
+import GoalModal from '@/components/dashboard/GoalModal';
 
 import { Transaction, Installment, Recurring, Goal, ClientUser } from '@/types';
 
@@ -129,7 +124,6 @@ export default function FinancialDashboard() {
 
     const [formMode, setFormMode] = useState<'income' | 'expense' | 'installment' | 'fixed_expense'>('income');
     const [editingId, setEditingId] = useState<number | null>(null);
-    // Crie essa variável de "hoje" logo acima do initialFormState
     const diaDeHoje = String(new Date().getDate()).padStart(2, '0');
 
     const initialFormState = {
@@ -137,7 +131,7 @@ export default function FinancialDashboard() {
         amount: '',
         installments: '',
         dueDay: '',
-        day: diaDeHoje, // <--- AGORA ELE SEMPRE COMEÇA COM O DIA DE HOJE! (ex: "03")
+        day: diaDeHoje,
         category: 'Outros',
         targetMonth: 'Jan',
         isFixedIncome: false,
@@ -282,29 +276,23 @@ export default function FinancialDashboard() {
 
 
 
-        // --- 2. LÓGICA DE MONTAGEM ---
-        let finalSteps = (userPlan === 'agent') ? [...agentSteps, ...commonSteps] : commonSteps;
+    // --- 2. LÓGICA DE MONTAGEM ---
+    let finalSteps = (userPlan === 'agent') ? [...agentSteps, ...commonSteps] : commonSteps;
 
-        // Filtra elementos que não existem na tela para não quebrar o tour
-        finalSteps = finalSteps.filter(step => document.querySelector(step.element));
+    finalSteps = finalSteps.filter(step => document.querySelector(step.element));
 
-        // --- 3. EXECUÇÃO ---
-        const driverObj = driverLib({
-            showProgress: true,
-            animate: true,
-            allowClose: true,        // <--- Garante que o X funcione
-            overlayClickNext: false, // Evita pular passos ao clicar fora (opcional)
-            keyboardControl: true,   // Permite fechar com ESC
-
-            // Textos dos botões
-            nextBtnText: 'Próximo →',
-            prevBtnText: '← Voltar',
-            doneBtnText: 'Concluir 🚀',
-
-            steps: finalSteps,
-
-            // ⚠️ Removi o 'onDestroyStarted' que estava travando o fechamento
-        });
+    // --- 3. EXECUÇÃO ---
+    const driverObj = driverLib({
+        showProgress: true,
+        animate: true,
+        allowClose: true,
+        overlayClickNext: false,
+        keyboardControl: true,
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Voltar',
+        doneBtnText: 'Concluir 🚀',
+        steps: finalSteps,
+    });
 
         driverObj.drive();
     };
@@ -667,44 +655,37 @@ export default function FinancialDashboard() {
         if (data) setClients(data);
     };
 
-    // 🟢 ADICIONAR CLIENTE (SISTEMA DE CONVITE SEGURO)
-
-    // 🟢 ADICIONAR CLIENTE (MODO DETETIVE COM LOGS)
+    // ADICIONAR CLIENTE (SISTEMA DE CONVITE SEGURO)
     const handleAddClient = async () => {
         if (!newClientEmail) return toast.warning("Digite o e-mail.");
         setAddingClient(true);
         const toastId = toast.loading("Enviando convite...");
 
         try {
-            // 1. Busca o ID do cliente
             const { data: foundUserId } = await supabase.rpc('get_user_id_by_email', {
                 search_email: newClientEmail
             });
 
             if (!foundUserId) {
-                // Se não achar o usuário, só cria o registro de e-mail (fluxo normal)
                 await supabase.from('manager_clients').insert({
                     manager_id: user.id, client_email: newClientEmail, status: 'pending'
                 });
                 toast.success("E-mail convidado! Aguardando cadastro.", { id: toastId });
             } else {
-                // 🔒 SE O USUÁRIO EXISTE:
-                // 2. Primeiro tenta criar a notificação
+                // USUÁRIO EXISTE: Criar notificação
                 const { error: notifError } = await supabase.rpc('create_notification', {
                     p_user_id: foundUserId,
                     p_title: 'Convite de Consultoria',
                     p_message: `O consultor ${user.email} quer gerenciar sua conta.`,
                     p_type: 'consultant_invite',
-                    p_action_data: user.id // Certifique-se que user.id é o UUID do consultor
+                    p_action_data: user.id
                 });
 
-                // 🔍 MUDANÇA AQUI: Vamos mostrar o erro real do Supabase
                 if (notifError) {
-                    console.error("Erro detalhado do RPC:", notifError);
-                    throw new Error(`Erro na notificação: ${notifError.message || 'Falha silenciosa no banco'}`);
+                    console.error("Erro no RPC:", notifError);
+                    throw new Error(`Erro na notificação: ${notifError.message || 'Falha no banco'}`);
                 }
 
-                // 3. Só agora cria o vínculo PENDENTE
                 const { error: insertError } = await supabase
                     .from('manager_clients')
                     .insert({
@@ -728,7 +709,8 @@ export default function FinancialDashboard() {
             setAddingClient(false);
         }
     };
-    // 🟢 CLIENTE ACEITA O CONVITE DO CONSULTOR
+
+    // CLIENTE ACEITA CONVITE DO CONSULTOR
     const handleAcceptConsultant = async (notification: any) => {
         const managerId = notification.action_data; // O ID do consultor que nós guardamos
         const toastId = toast.loading("Confirmando vínculo...");
@@ -772,9 +754,7 @@ export default function FinancialDashboard() {
             await fetchWorkspaces(targetUserId, true);
         }
     };
-    // 🟢 DESVINCULAR CLIENTE E REBAIXAR PLANO
-    // 🟢 DESVINCULAR CLIENTE E REBAIXAR PLANO
-    // 🟢 DESVINCULAR CLIENTE (À prova de dados fantasmas)
+    // DESVINCULAR CLIENTE E REBAIXAR PLANO
     const handleRemoveClient = async (client: any) => {
         const confirmDelete = window.confirm(`Tem certeza que deseja remover ${client.client_email}?`);
         if (!confirmDelete) return;
@@ -782,7 +762,7 @@ export default function FinancialDashboard() {
         const toastId = toast.loading("Removendo...");
 
         try {
-            // 1. Apaga a ligação usando o EMAIL e o seu ID (assim funciona mesmo se o ID do cliente for nulo)
+            // 1. APAGA A LIGAÇÃO
             const { error: unlinkError } = await supabase
                 .from('manager_clients')
                 .delete()
@@ -791,18 +771,18 @@ export default function FinancialDashboard() {
 
             if (unlinkError) throw unlinkError;
 
-            // 2. Só tenta rebaixar o plano se o cliente TIVER um ID real (ignora os convites pendentes)
-            // No passo 2 da função handleRemoveClient, mude para:
-            if (client.client_id && client.client_id !== 'null') { // 🟢 Garante que não é a string "null"
+            // 2. REBAIXA PLANO (SE CLIENTE TIVER ID)
+            if (client.client_id && client.client_id !== 'null') {
                 const { error: downgradeError } = await supabase.rpc('downgrade_client_plan', {
                     target_client_id: client.client_id
                 });
                 if (downgradeError) console.error("Erro ao rebaixar plano:", downgradeError);
             }
-            // 3. Atualiza a tela filtrando pelo e-mail (mais seguro que ID neste caso)
+
+            // 3. ATUALIZA A TELA
             setClients(prev => prev.filter(c => c.client_email !== client.client_email));
 
-            // Volta para a tela pessoal se estiver visualizando o cliente excluído
+            // Volta para tela pessoal se visualizando cliente excluído
             if (viewingAs && viewingAs.client_email === client.client_email) {
                 switchView(null);
             }
@@ -1145,11 +1125,8 @@ export default function FinancialDashboard() {
         return acc + val;
     }, 0);
 
-    // 1. O clique no botão do reloginho
-    // 1. O clique no botão do reloginho
-    // 1. O clique no botão do reloginho
+    // 1. CLIQUE NO BOTÃO DE ATRASO
     const toggleDelay = (origin: string, item: any) => {
-        // 🟢 Lê a etiqueta se vier do Congelador, senão usa o mês atual
         const targetTag = item._targetTag || `${activeTab}/${selectedYear}`;
 
         let isStandby = false;
@@ -1167,8 +1144,7 @@ export default function FinancialDashboard() {
         }
     };
 
-    // 2. A execução da escolha
-    // 2. A execução da escolha
+    // 2. EXECUÇÃO DA ESCOLHA
     const confirmDelayChoice = async (origin: string, item: any, choice: 'restore_single' | 'restore_global' | 'single' | 'global') => {
         setStandbyModal(null);
 
