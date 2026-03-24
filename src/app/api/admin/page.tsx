@@ -98,11 +98,19 @@ export default function AdminDashboard() {
     setSettings((prev: any) => ({ ...prev, [key]: value }));
   };
 
+  // 🟢 FUNÇÃO 1: SALVAR CONFIGURAÇÕES (Com Token)
   async function saveSettings() {
     try {
+      // 1. Pega a carteirinha de identificação (Token)
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
       const res = await fetch('/api/admin/save-settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` // 🔒 O CRACHÁ!
+        },
         body: JSON.stringify(settings)
       });
       
@@ -110,22 +118,28 @@ export default function AdminDashboard() {
       
       alert("✅ Configurações de Lançamento guardadas com sucesso!");
     } catch (error) {
-      alert("❌ Erro ao guardar as configurações! Verifique o console.");
+      alert("❌ Erro ao guardar as configurações! Verifique se você tem permissão real.");
     }
   }
 
+  // 🟢 FUNÇÃO 2: ATUALIZAR PLANO DE USUÁRIO (Com Token e Sem adminId forjado)
   async function updateUserPlan(userId: string, newPlan: string) {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
     try {
+      // 1. Pega a carteirinha de identificação (Token)
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
       const res = await fetch('/api/admin/update-user', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetUserId: userId, newPlan: newPlan, adminId: user.id })
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` // 🔒 O CRACHÁ!
+        },
+        // 🔒 Retiramos o adminId daqui. O backend vai ler o Token para saber quem é o Admin.
+        body: JSON.stringify({ targetUserId: userId, newPlan: newPlan }) 
       });
 
-      if (!res.ok) throw new Error("Erro desconhecido");
+      if (!res.ok) throw new Error("Erro desconhecido ou sem permissão");
 
       alert(`✅ Plano alterado para ${newPlan.toUpperCase()} com sucesso!`);
       fetchUsers();
