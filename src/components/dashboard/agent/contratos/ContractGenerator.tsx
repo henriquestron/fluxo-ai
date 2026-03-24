@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FileSignature, Printer, ShieldCheck, X, User, FileUp, Loader2 } from 'lucide-react';
 import { supabase } from '@/supabase';
 import { toast } from 'sonner';
@@ -11,51 +11,110 @@ export default function ContractGenerator({ consultant, client, onClose, company
 
     const [contractValue, setContractValue] = useState('');
     const [contractDuration, setContractDuration] = useState('6');
-    const [city, setCity] = useState('');
     const [isUploading, setIsUploading] = useState(false);
     const [consultantName, setConsultantName] = useState(consultant?.user_metadata?.full_name || consultant?.name || '');
-    const [consultantDoc, setConsultantDoc] = useState(''); // Para você digitar seu CPF ou CNPJ
+    const [consultantDoc, setConsultantDoc] = useState(''); 
+
+    // 🟢 Novos Estados para IBGE (Estado e Cidade)
+    const [states, setStates] = useState<any[]>([]);
+    const [cities, setCities] = useState<any[]>([]);
+    const [selectedUF, setSelectedUF] = useState('');
+    const [selectedCityName, setSelectedCityName] = useState('');
+    const [city, setCity] = useState(''); // O estado final que vai pro contrato
+
+    // 🟢 Busca os Estados do IBGE ao abrir
+    useEffect(() => {
+        fetch('https://servicodados.ibge.gov.br/api/v1/localidades/estados?orderBy=nome')
+            .then(res => res.json())
+            .then(data => setStates(data))
+            .catch(() => console.error("Erro ao buscar estados"));
+    }, []);
+
+    // 🟢 Busca as cidades sempre que o Estado (UF) mudar
+    useEffect(() => {
+        if (selectedUF) {
+            fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${selectedUF}/municipios`)
+                .then(res => res.json())
+                .then(data => setCities(data))
+                .catch(() => console.error("Erro ao buscar cidades"));
+        } else {
+            setCities([]);
+        }
+    }, [selectedUF]);
+
+    // 🟢 Atualiza a cidade final no formato "Cidade - UF"
+    useEffect(() => {
+        if (selectedCityName && selectedUF) {
+            setCity(`${selectedCityName} - ${selectedUF}`);
+        } else {
+            setCity('');
+        }
+    }, [selectedCityName, selectedUF]);
+
+    // 🟢 MÁSCARA AUTOMÁTICA DE CPF/CNPJ
+    const handleDocChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        let value = e.target.value.replace(/\D/g, ''); // Tira tudo que não é número
+        
+        if (value.length <= 11) {
+            // Máscara de CPF
+            value = value.replace(/(\d{3})(\d)/, '$1.$2');
+            value = value.replace(/(\d{3})(\d)/, '$1.$2');
+            value = value.replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+        } else {
+            // Máscara de CNPJ
+            value = value.replace(/^(\d{2})(\d)/, '$1.$2');
+            value = value.replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3');
+            value = value.replace(/\.(\d{3})(\d)/, '.$1/$2');
+            value = value.replace(/(\d{4})(\d{1,2})$/, '$1-$2');
+        }
+        setConsultantDoc(value.substring(0, 18)); // Limita o tamanho máximo
+    };
 
     const handlePrint = () => {
         window.print();
     };
 
-    // 🟢 FUNÇÃO DE UPLOAD DO CONTRATO ASSINADO
+    // 🟢 FUNÇÃO DE UPLOAD DO CONTRATO ASSINADO (Atualizada para Sobrescrever)
     const handleUploadSigned = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file || !client) return;
 
         setIsUploading(true);
         try {
-            const fileName = `contrato_${client.id}_${Date.now()}.pdf`;
+            // 1. Nome FIXO para este cliente. Sem Date.now() no nome do arquivo!
+            const fileName = `contrato_${client.id}.pdf`;
 
-            // 1. Sobe para o Storage
+            // 2. Sobe para o Storage passando a opção UPSERT (Isso apaga o arquivo velho e põe o novo)
             const { error: uploadError } = await supabase.storage
                 .from('contracts')
-                .upload(fileName, file);
+                .upload(fileName, file, { upsert: true });
 
             if (uploadError) throw uploadError;
 
-            // 2. Pega a URL pública
+            // 3. Pega a URL pública
             const { data: { publicUrl } } = supabase.storage.from('contracts').getPublicUrl(fileName);
 
-            // 3. Salva o link na tabela manager_clients
+            // 4. O TRUQUE DO CACHE: Adicionamos o timestamp na URL (não no arquivo) 
+            // para forçar o navegador a baixar a versão nova em vez de usar a memória.
+            const finalUrl = `${publicUrl}?v=${Date.now()}`;
+
+            // 5. Salva o link final no banco
             const { error: dbError } = await supabase
                 .from('manager_clients')
-                .update({ contract_url: publicUrl })
+                .update({ contract_url: finalUrl })
                 .eq('id', client.id);
 
             if (dbError) throw dbError;
             
             await supabase.from('notifications').insert({
-                user_id: client.client_id, // ID do cliente
-                title: 'Contrato Disponível 📝',
-                message: `${consultantName || 'Seu consultor'} assinou o contrato. Baixe, assine no Gov.br e nos envie a versão final!`,
+                user_id: client.client_id,
+                title: 'Contrato Atualizado 📝',
+                message: `Uma nova versão do contrato foi anexada. Confira!`,
                 type: 'info',
-                action_data: publicUrl
+                action_data: finalUrl
             });
 
-            toast.success("Contrato salvo e cliente notificado com sucesso! 🚀");
+            toast.success("Contrato atualizado com sucesso! 🚀");
             onClose();
         } catch (error: any) {
             toast.error("Erro no upload: " + error.message);
@@ -63,6 +122,9 @@ export default function ContractGenerator({ consultant, client, onClose, company
             setIsUploading(false);
         }
     };
+
+    // Validação para habilitar o botão de imprimir
+    const isFormValid = client && contractValue && city && (consultantDoc.length === 14 || consultantDoc.length === 18);
 
     return (
         <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-sm overflow-y-auto p-4 sm:p-8 font-sans">
@@ -133,13 +195,16 @@ export default function ContractGenerator({ consultant, client, onClose, company
                                 />
                             </div>
                             <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase">Seu CPF / CNPJ</label>
+                                <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-2">
+                                    Seu CPF / CNPJ 
+                                    {consultantDoc.length > 0 && consultantDoc.length < 14 && <span className="text-red-500 text-[10px]">Documento incompleto</span>}
+                                </label>
                                 <input
                                     type="text"
-                                    placeholder="00.000.000/0001-00"
+                                    placeholder="000.000.000-00 ou 00.000.000/0001-00"
                                     value={consultantDoc}
-                                    onChange={(e) => setConsultantDoc(e.target.value)}
-                                    className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none"
+                                    onChange={handleDocChange}
+                                    className={`w-full mt-1 bg-gray-900 border rounded-xl p-3 text-white outline-none transition ${consultantDoc.length > 0 && consultantDoc.length < 14 ? 'border-red-500/50 focus:border-red-500' : 'border-gray-700 focus:border-cyan-500'}`}
                                 />
                             </div>
 
@@ -162,23 +227,45 @@ export default function ContractGenerator({ consultant, client, onClose, company
                                     className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none"
                                 />
                             </div>
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase">Cidade de Foro</label>
-                                <input
-                                    type="text"
-                                    placeholder="Ex: Goiânia - GO"
-                                    value={city}
-                                    onChange={(e) => setCity(e.target.value)}
-                                    className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none"
-                                />
+                            
+                            {/* 🟢 SELEÇÃO DE ESTADO E CIDADE VIA IBGE */}
+                            <div className="md:col-span-2">
+                                <label className="text-xs font-bold text-gray-500 uppercase">Estado e Cidade de Foro</label>
+                                <div className="flex gap-2 mt-1">
+                                    <select
+                                        value={selectedUF}
+                                        onChange={(e) => {
+                                            setSelectedUF(e.target.value);
+                                            setSelectedCityName(''); // Reseta a cidade ao mudar o estado
+                                        }}
+                                        className="bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none w-1/3 cursor-pointer"
+                                    >
+                                        <option value="">UF</option>
+                                        {states.map(s => (
+                                            <option key={s.sigla} value={s.sigla}>{s.nome}</option>
+                                        ))}
+                                    </select>
+                                    
+                                    <select
+                                        value={selectedCityName}
+                                        onChange={(e) => setSelectedCityName(e.target.value)}
+                                        disabled={!selectedUF}
+                                        className={`w-2/3 bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none ${!selectedUF ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                                    >
+                                        <option value="">Selecione a cidade</option>
+                                        {cities.map(c => (
+                                            <option key={c.id} value={c.nome}>{c.nome}</option>
+                                        ))}
+                                    </select>
+                                </div>
                             </div>
                         </div>
 
                         <div className="mt-6 flex justify-end">
                             <button
                                 onClick={handlePrint}
-                                disabled={!client || !contractValue || !city}
-                                className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 px-6 rounded-xl transition flex items-center gap-2 disabled:opacity-50"
+                                disabled={!isFormValid}
+                                className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 px-6 rounded-xl transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <Printer size={18} /> Salvar PDF para Assinar
                             </button>
@@ -207,8 +294,8 @@ export default function ContractGenerator({ consultant, client, onClose, company
                 )}
             </div>
 
-            {/* A FOLHA DO CONTRATO (Visível na tela e na impressão) */}
-            <div className="max-w-[210mm] mx-auto bg-white text-black p-[20mm] shadow-2xl min-h-[297mm] print:shadow-none print:p-0">
+            {/* A FOLHA DO CONTRATO */}
+            <div id="print-area" className="max-w-[210mm] mx-auto bg-white text-black p-[20mm] shadow-2xl min-h-[297mm] print:shadow-none print:p-0 print:min-h-0 print:m-0 relative">
                 
                 {/* 🟢 CABEÇALHO ORIGINAL PRESERVADO (Com a Logo adicionada) */}
                 <div className="flex justify-between items-center border-b-2 border-gray-200 pb-6 mb-8">
@@ -283,15 +370,44 @@ export default function ContractGenerator({ consultant, client, onClose, company
                 </div>
             </div>
 
+            {/* 🟢 CSS BLINDADO PARA MATAR A 2ª PÁGINA */}
             <style>{`
                 @media print {
+                    /* Zera margens do navegador e fixa tamanho A4 */
+                    @page { 
+                        size: A4; 
+                        margin: 0; 
+                    }
+                    
+                    /* Oculta scrollbar e define limites firmes no body */
+                    html, body {
+                        width: 210mm;
+                        height: 297mm;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        overflow: hidden !important; 
+                    }
+                    
                     body * { visibility: hidden; }
-                    .print\\:shadow-none { box-shadow: none !important; }
-                    .print\\:p-0 { padding: 0 !important; }
-                    .max-w-\\[210mm\\] { max-width: none; width: 100%; margin: 0; }
-                    .max-w-\\[210mm\\], .max-w-\\[210mm\\] * { visibility: visible; }
-                    .max-w-\\[210mm\\] { position: absolute; left: 0; top: 0; }
-                    .print\\:hidden { display: none !important; }
+                    
+                    body { 
+                        -webkit-print-color-adjust: exact; 
+                        print-color-adjust: exact; 
+                    }
+                    
+                    /* Traz o contrato para frente e obriga a caber na tela */
+                    #print-area, #print-area * { visibility: visible; }
+                    #print-area { 
+                        position: absolute; 
+                        left: 0; 
+                        top: 0; 
+                        width: 210mm;
+                        height: 297mm;
+                        margin: 0 !important;
+                        padding: 15mm !important; /* Margem interna simulando a borda da página */
+                        box-sizing: border-box;
+                        box-shadow: none !important;
+                    }
                 }
             `}</style>
         </div>
