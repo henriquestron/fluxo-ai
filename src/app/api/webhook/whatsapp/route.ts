@@ -142,9 +142,7 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
 
 // --- ROTA PRINCIPAL CORRIGIDA ---
 export async function POST(req: Request) {
-    console.log("Headers recebidos:", JSON.stringify(Object.fromEntries(req.headers.entries())));
-    console.log("Secret esperado:", process.env.EVOLUTION_WEBHOOK_SECRET);
-    
+
     try {
         // 🔴 3. PROTEÇÃO DO WEBHOOK (Obrigatória: Falha Segura)
         const EVOLUTION_WEBHOOK_SECRET = process.env.EVOLUTION_WEBHOOK_SECRET;
@@ -159,8 +157,8 @@ export async function POST(req: Request) {
         const urlToken = searchParams.get('token');
 
         // O código tenta achar no Header (apikey/authorization). Se não achar, ele pega o urlToken!
-        const webhookToken = req.headers.get('apikey') 
-            ?? req.headers.get('authorization')?.replace('Bearer ', '') 
+        const webhookToken = req.headers.get('apikey')
+            ?? req.headers.get('authorization')?.replace('Bearer ', '')
             ?? urlToken;
 
         if (webhookToken !== EVOLUTION_WEBHOOK_SECRET) {
@@ -322,11 +320,11 @@ export async function POST(req: Request) {
 
         let contextInfo = { saldo: "0", entradas: "0", saidas: "0", resumo_texto: "Sem dados", estado_conta: "Indefinido" };
         if (workspace) contextInfo = await getFinancialContext(supabase, userSettings.user_id, workspace.id);
-
+        const dataHojeBR = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
         const systemPrompt = `
             IDENTIDADE: Você é "Meu Aliado", assistente financeiro pessoal via WhatsApp.
             Tom: amigável, direto, humano. Nunca robótico.
-            DATA DE HOJE: ${new Date().toLocaleDateString('pt-BR')}.
+            DATA DE HOJE: ${dataHojeBR}.
 
             ━━━ SITUAÇÃO FINANCEIRA DO MÊS ━━━
             💰 Receitas:  R$ ${contextInfo.entradas}

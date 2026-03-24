@@ -1,32 +1,91 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { Ratelimit } from '@upstash/ratelimit';
+import { Redis } from '@upstash/redis';
 
-const EVOLUTION_URL = process.env.EVOLUTION_URL || "http://163.176.217.228:8080";
-const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "sua-senha-secreta";
+// 🔴 1. FIM DO HARDCODE (Segurança de IP e Chaves)
+const EVOLUTION_URL = process.env.EVOLUTION_URL;
+const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY;
+
+// Falha Segura
+if (!EVOLUTION_URL || !EVOLUTION_API_KEY) {
+    throw new Error('🔥 Variáveis de ambiente da Evolution ausentes no .env');
+}
+
 const INSTANCE_NAME = "MEO_ALIADO_INSTANCE";
+
+// 🔴 2. UPSTASH INICIALIZADO (Rate Limit)
+// Impede que um usuário mal-intencionado (mesmo logado) dispare a notificação 500 vezes seguidas.
+const redis = Redis.fromEnv();
+const ratelimit = new Ratelimit({
+    redis: redis,
+    limiter: Ratelimit.slidingWindow(3, '1 m'), // Limite bem estrito: max 3 cliques no botão por minuto
+});
+
+// Array auxiliar para o nome do mês
+const MONTHS_BR = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
 export async function POST(req: Request) {
     console.log("📨 API Check-Notifications iniciada...");
 
     try {
-        const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-        const { userId, bills, forceSend } = await req.json();
+        // 🔴 3. AUTENTICAÇÃO REAL (O Crachá)
+        const authHeader = req.headers.get('Authorization');
+        const token = authHeader?.replace('Bearer ', '');
 
-        if (!userId || !bills || bills.length === 0) {
-            return NextResponse.json({ error: "Dados inválidos ou lista vazia" });
+        if (!token) {
+            return NextResponse.json({ error: 'Acesso negado. Token ausente.' }, { status: 401 });
         }
 
+        const supabase = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY! 
+        );
+
+        const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+
+        if (authError || !user) {
+            return NextResponse.json({ error: 'Sessão inválida ou expirada.' }, { status: 401 });
+        }
+
+        const activeUserId = user.id;
+
+        // 🔴 4. BLINDAGEM DE RATE LIMIT (Anti-Flood)
+        const { success: rateLimitSuccess } = await ratelimit.limit(activeUserId);
+        if (!rateLimitSuccess) {
+            console.warn(`⏳ Rate Limit atingido para notificações do usuário: ${activeUserId}`);
+            return NextResponse.json({ error: 'Muitas requisições. Aguarde um minuto antes de tentar novamente.' }, { status: 429 });
+        }
+
+        const body = await req.json().catch(() => ({}));
+        const forceSend = body.forceSend === true;
+
+        // 🔴 5. TRAVA DO FORCESEND (Evita Spam)
+        if (forceSend) {
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('plan_tier')
+                .eq('id', activeUserId)
+                .single();
+
+            if (profile?.plan_tier !== 'admin') {
+                console.warn(`Tentativa de forceSend bloqueada para usuário não admin: ${activeUserId}`);
+                return NextResponse.json({ error: 'Sem permissão para forçar envio.' }, { status: 403 });
+            }
+        }
+
+        // 🔴 6. SELECT RESTRITO
         const { data: settings } = await supabase
             .from('user_settings')
-            .select('*')
-            .eq('user_id', userId)
+            .select('notify_whatsapp, whatsapp_phone, last_whatsapp_notification')
+            .eq('user_id', activeUserId)
             .single();
 
         if (!settings) return NextResponse.json({ error: "Configuração não encontrada" });
         if (!settings.notify_whatsapp) return NextResponse.json({ status: "skipped", reason: "User disabled notifications" });
         if (!settings.whatsapp_phone) return NextResponse.json({ status: "skipped", reason: "No phone number" });
 
-        // 2. Trava de Data
+        // Trava de Data
         if (settings.last_whatsapp_notification && !forceSend) {
             const lastDate = new Date(settings.last_whatsapp_notification).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
             const todayDate = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
@@ -37,52 +96,79 @@ export async function POST(req: Request) {
             }
         }
 
-        // 3. Monta a mensagem
-        const totalValue = bills.reduce((acc: number, item: any) => {
-            const val = item.amount || item.value || item.value_per_month || 0;
-            return acc + Number(val);
-        }, 0);
-        
+        // 🔴 7. O BACKEND BUSCA AS CONTAS
+        const hojeLocal = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+        const diaHoje = hojeLocal.getDate();
+        const anoAtual = hojeLocal.getFullYear();
+        const tagMes = `${MONTHS_BR[hojeLocal.getMonth()]}/${anoAtual}`; 
+
+        const { data: recurringBills } = await supabase
+            .from('recurring')
+            .select('title, value, paid_months')
+            .eq('user_id', activeUserId)
+            .eq('due_day', diaHoje)
+            .in('status', ['active', 'delayed']);
+
+        const unpdRecurring = (recurringBills || []).filter(r => {
+            const paid = r.paid_months || [];
+            return !paid.includes(tagMes) && !paid.includes(tagMes.split('/')[0]);
+        }).map(r => ({ title: r.title, amount: Number(r.value) }));
+
+        const { data: installmentBills } = await supabase
+            .from('installments')
+            .select('title, value_per_month, paid_months')
+            .eq('user_id', activeUserId)
+            .eq('due_day', diaHoje)
+            .in('status', ['active', 'delayed']);
+
+        const unpdInstallments = (installmentBills || []).filter(i => {
+            const paid = i.paid_months || [];
+            return !paid.includes(tagMes) && !paid.includes(tagMes.split('/')[0]);
+        }).map(i => ({ title: i.title, amount: Number(i.value_per_month) }));
+
+        const finalBills = [...unpdRecurring, ...unpdInstallments];
+
+        if (finalBills.length === 0) {
+            console.log("Nada vencendo hoje (ou tudo pago).");
+            return NextResponse.json({ status: "skipped", reason: "Nenhuma conta pendente para hoje." });
+        }
+
+        const totalValue = finalBills.reduce((acc: number, item: any) => acc + item.amount, 0);
         const totalFmt = totalValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-        const billsList = bills.map((b: any) => `• *${b.title}*`).join('\n');
+        const billsList = finalBills.map((b: any) => `• *${b.title}*`).join('\n');
 
-        const message = `🔔 *Lembrete: Contas de Hoje* 🔔\n\nOlá! Você tem *${bills.length} contas* para pagar hoje, totalizando *${totalFmt}*.\n\n${billsList}\n\nAcesse o sistema para marcar como pago! 🚀`;
+        const message = `🔔 *Lembrete: Contas de Hoje* 🔔\n\nOlá! Você tem *${finalBills.length} contas* pendentes para hoje, totalizando *${totalFmt}*.\n\n${billsList}\n\nAcesse o sistema para marcar como pago! 🚀`;
 
-        // 4. Envio Evolution (FORMATO CORRIGIDO PARA V1.8.2)
+        // 🔴 8. ENVIO EVOLUTION COM FALLBACK
         const cleanPhone = settings.whatsapp_phone.replace(/\D/g, '');
-        const finalJid = `${cleanPhone}@s.whatsapp.net`;
+        const finalPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+        const finalJid = `${finalPhone}@s.whatsapp.net`;
 
         const evoResponse = await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE_NAME}`, {
             method: 'POST',
             headers: { 
-                'apikey': EVOLUTION_API_KEY, 
+                'apikey': EVOLUTION_API_KEY as string, 
                 'Content-Type': 'application/json' 
             },
             body: JSON.stringify({ 
                 number: finalJid,
-                options: {
-                    delay: 1200,
-                    presence: "composing"
-                },
-                textMessage: {
-                    text: message
-                }
+                options: { delay: 1200, presence: "composing" },
+                textMessage: { text: message }
             })
         });
 
         if (evoResponse.ok) {
-            // 5. Atualiza o banco APENAS se o envio deu certo
-            await supabase.from('user_settings').update({ last_whatsapp_notification: new Date() }).eq('user_id', userId);
-            return NextResponse.json({ success: true });
+            await supabase.from('user_settings').update({ last_whatsapp_notification: new Date() }).eq('user_id', activeUserId);
+            return NextResponse.json({ success: true, contasAvisadas: finalBills.length });
         } else {
-            const errData = await evoResponse.json();
-            // Tenta pegar a mensagem de erro detalhada da Evolution
-            const detailedError = errData.message || errData.error || "Erro desconhecido na Evolution";
-            throw new Error(detailedError);
+            // Se a Evolution cair, nós capturamos o erro e o servidor não quebra
+            console.warn(`⚠️ Evolution API recusou a requisição para o número ${finalPhone}.`);
+            throw new Error("Falha na API da Evolution");
         }
 
     } catch (error: any) {
-        console.error("❌ Erro no envio da notificação:", error.message);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        // 🔴 9. ERRO SILENCIOSO
+        console.error("❌ Erro notificação:", error.message || error);
+        return NextResponse.json({ error: 'Ocorreu um erro interno no servidor ao enviar a notificação.' }, { status: 500 });
     }
 }
