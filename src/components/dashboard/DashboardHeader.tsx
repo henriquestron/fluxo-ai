@@ -64,7 +64,7 @@ export default function DashboardHeader({
                 </h1>
 
                 <div id="menu-clientes" className="w-full mt-2 flex justify-center xl:justify-start">
-                    {(userPlan === 'agent' || userPlan === 'admin') && (
+                    {(userPlan === 'agent') && (
                         <div id="agent-bar" className="w-full max-w-md xl:max-w-none bg-purple-950/20 border border-purple-500/20 rounded-lg p-1.5 overflow-x-auto scrollbar-hide backdrop-blur-sm">
                             <div className="flex items-center gap-3 px-1 min-w-max">
                                 <div className="flex items-center gap-1.5 text-purple-400 font-bold uppercase text-[10px] tracking-wider whitespace-nowrap">
@@ -162,7 +162,7 @@ export default function DashboardHeader({
                     </div>
 
                     {/* BOTÕES EXCLUSIVOS DO CONSULTOR E ADMIN */}
-                    {(userPlan === 'agent' || userPlan === 'admin') && (
+                    {(userPlan === 'agent') && (
                         <div className="flex items-center gap-2">
                             {/* BOTÃO DE VER CONTRATO (PARA O CONSULTOR VENDO A CARTEIRA) */}
                             {viewingAs?.contract_url && (
