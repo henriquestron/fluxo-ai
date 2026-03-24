@@ -436,59 +436,59 @@ export default function FinancialDashboard() {
     };
 
     const handleCreateProfile = async () => {
-    if (!user) { 
-        setIsNewProfileModalOpen(false); 
-        // setIsAuthModalOpen(true); // Descomente se usar modal de auth no dashboard
-        return; 
-    }
+        if (!user) {
+            setIsNewProfileModalOpen(false);
+            // setIsAuthModalOpen(true); // Descomente se usar modal de auth no dashboard
+            return;
+        }
 
-    // 🔒 TRAVA BLINDADA: Free e Start não passam daqui!
-    if ((userPlan === 'free' || userPlan === 'start') && workspaces.length >= 1) {
-        toast.error("Limite de Perfis", {
-            description: "Para gerenciar múltiplas contas/perfis, faça o upgrade para o Premium ou Pro."
-        });
-        setIsNewProfileModalOpen(false); // Fecha o modal de criar perfil
-        openPricingModal(); // Abre a vitrine para o cara comprar!
-        return;
-    }
+        // 🔒 TRAVA BLINDADA: Free e Start não passam daqui!
+        if ((userPlan === 'free' || userPlan === 'start') && workspaces.length >= 1) {
+            toast.error("Limite de Perfis", {
+                description: "Para gerenciar múltiplas contas/perfis, faça o upgrade para o Premium ou Pro."
+            });
+            setIsNewProfileModalOpen(false); // Fecha o modal de criar perfil
+            openPricingModal(); // Abre a vitrine para o cara comprar!
+            return;
+        }
 
-    if (!newWorkspaceName.trim()) {
-        toast.error("Digite um nome para o perfil.");
-        return;
-    }
+        if (!newWorkspaceName.trim()) {
+            toast.error("Digite um nome para o perfil.");
+            return;
+        }
 
-    setIsSavingWorkspace(true);
-    try {
-        const userId = getActiveUserId(); 
-        
-        // Salva no banco
-        const { data, error } = await supabase
-            .from('workspaces')
-            .insert([{ user_id: userId, title: newWorkspaceName }])
-            .select()
-            .single();
+        setIsSavingWorkspace(true);
+        try {
+            const userId = getActiveUserId();
 
-        if (error) throw error;
+            // Salva no banco
+            const { data, error } = await supabase
+                .from('workspaces')
+                .insert([{ user_id: userId, title: newWorkspaceName }])
+                .select()
+                .single();
 
-        // Sucesso!
-        toast.success("Novo perfil criado com sucesso!");
-        setWorkspaces([...workspaces, data]);
-        setCurrentWorkspace(data);
-        setNewWorkspaceName('');
-        setIsNewProfileModalOpen(false);
-        
-        // Limpa a tela para o novo perfil aparecer vazio
-        setTransactions([]); 
-        setInstallments([]); 
-        setRecurring([]);
-        
-    } catch (error: any) {
-        console.error(error);
-        toast.error("Erro ao criar perfil: " + error.message);
-    } finally {
-        setIsSavingWorkspace(false);
-    }
-};
+            if (error) throw error;
+
+            // Sucesso!
+            toast.success("Novo perfil criado com sucesso!");
+            setWorkspaces([...workspaces, data]);
+            setCurrentWorkspace(data);
+            setNewWorkspaceName('');
+            setIsNewProfileModalOpen(false);
+
+            // Limpa a tela para o novo perfil aparecer vazio
+            setTransactions([]);
+            setInstallments([]);
+            setRecurring([]);
+
+        } catch (error: any) {
+            console.error(error);
+            toast.error("Erro ao criar perfil: " + error.message);
+        } finally {
+            setIsSavingWorkspace(false);
+        }
+    };
     const toggleSimulationMode = () => {
         if (isSimulationMode) {
             // SAIR DA SIMULAÇÃO: Recarrega os dados reais do banco
@@ -1845,13 +1845,21 @@ export default function FinancialDashboard() {
                     parts: [{ text: msg.content }]
                 }));
 
+            // 🔴 1. PEGA O TOKEN DA SESSÃO ATUAL
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+
             const response = await fetch('/api/chat', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    // 🔴 2. ENVIA O CRACHÁ PARA O BACKEND
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({
                     prompt: text,
                     contextData,
-                    userPlan,
+                    // 🟢 3. REMOVIDO: userPlan não vai mais no body, o backend busca direto do banco
                     images,
                     history: historyForAi,
                     selectedYear
@@ -1872,14 +1880,22 @@ export default function FinancialDashboard() {
                     let cleanJson = jsonMatch[0].replace(/```json/g, '').replace(/```/g, '').trim();
                     const commands = JSON.parse(cleanJson);
                     console.log("🕵️‍♂️ COMANDO DA IA:", commands);
+
                     if (Array.isArray(commands)) {
                         let actionsPerformed = 0;
                         let lastSavedItemName = "";
                         const activeId = getActiveUserId();
-                        let analysisTextGenerated = ""; // 🟢 A GAVETA PARA GUARDAR O TEXTO DA ANÁLISE
+                        let analysisTextGenerated = "";
 
                         for (const cmd of commands) {
                             if (cmd.action === 'add') {
+                                // 🔴 4. WHITELIST DE TABELAS (Proteção contra Injeção SQL pela IA)
+                                const ALLOWED_TABLES = ['transactions', 'installments', 'recurring'];
+                                if (!ALLOWED_TABLES.includes(cmd.table)) {
+                                    console.warn(`🚨 Tabela bloqueada pela IA: ${cmd.table}`);
+                                    continue; // Pula esse comando, é perigoso!
+                                }
+
                                 // 1. TRATAMENTO DE DATA E MÊS (Com Tradutor de Letras)
                                 let finalDate = cmd.data.date;
                                 const mapMes: any = { 'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04', 'Mai': '05', 'Jun': '06', 'Jul': '07', 'Ago': '08', 'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12' };
@@ -1914,7 +1930,14 @@ export default function FinancialDashboard() {
                                     is_paid: cmd.data.is_paid === true
                                 };
 
-                                const extractedValue = parseFloat(cmd.data.amount) || parseFloat(cmd.data.value) || 0;
+                                // 🟢 AGORA ELE PROCURA O VALOR EM TODOS OS FORMATOS (Transação, Fixo ou Parcelado)
+                                const extractedValue = parseFloat(cmd.data.amount) || parseFloat(cmd.data.value) || parseFloat(cmd.data.value_per_month) || parseFloat(cmd.data.total_value) || 0;
+
+                                // 🔴 5. TRAVA DE VALOR ZERO (Evita criar gastos "fantasmas" de R$ 0,00)
+                                if (extractedValue <= 0) {
+                                    console.warn('⚠️ Valor inválido retornado pela IA, pulando insert.');
+                                    continue;
+                                }
 
                                 if (cmd.table === 'transactions') {
                                     safeData.amount = extractedValue;
@@ -1936,7 +1959,16 @@ export default function FinancialDashboard() {
                                     safeData.payment_method = cmd.data.payment_method || 'outros';
                                     safeData.paid_months = [];
 
-                                    delete safeData.start_date; delete safeData.amount; delete safeData.date; delete safeData.target_month; delete safeData.category; delete safeData.type;
+                                    // 🔴 A CORREÇÃO ESTÁ AQUI: Removemos o is_paid que o banco não aceita nesta tabela
+                                    delete safeData.is_paid;
+
+                                    // Mantemos as outras remoções que já existiam
+                                    delete safeData.start_date;
+                                    delete safeData.amount;
+                                    delete safeData.date;
+                                    delete safeData.target_month;
+                                    delete safeData.category;
+                                    delete safeData.type;
                                 }
 
                                 if (cmd.table === 'recurring') {
@@ -1947,6 +1979,7 @@ export default function FinancialDashboard() {
                                     delete safeData.amount; delete safeData.date;
                                 }
 
+                                // Agora o insert está seguro!
                                 const { error } = await supabase.from(cmd.table).insert([safeData]);
 
                                 if (!error) {
@@ -1957,21 +1990,18 @@ export default function FinancialDashboard() {
                                 }
                             }
 
-                            // 🟢 A MÁGICA ESTÁ AQUI: SE A AÇÃO FOR 'ANALYZE', GUARDA O TEXTO!
                             else if (cmd.action === 'analyze') {
                                 analysisTextGenerated = cmd.data.analysis_text;
                             }
                         }
 
-                        // 🟢 O CÓDIGO FINAL QUE DECIDE O QUE MOSTRAR NA TELA
                         if (actionsPerformed > 0) {
                             aiResponseText = `✅ Pronto! Lançado: **${lastSavedItemName}**. O que mais precisa?`;
                             if (user && activeId) loadData(activeId, currentWorkspace?.id);
                         } else if (analysisTextGenerated !== "") {
-                            // SE TEM ANÁLISE, MOSTRA A ANÁLISE!
                             aiResponseText = analysisTextGenerated;
                         } else {
-                            aiResponseText = `Ops, entendi o que você queria, mas deu um erro ao tentar executar a ação.`;
+                            aiResponseText = `Ops, entendi o que você queria, mas deu um erro ao tentar executar a ação ou o valor era zero.`;
                         }
                     }
                 } catch (e) {

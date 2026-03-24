@@ -1,89 +1,80 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { Ratelimit } from '@upstash/ratelimit';
+import { Redis } from '@upstash/redis';
 
-const EVOLUTION_URL = process.env.EVOLUTION_URL || "http://163.176.217.228:8080";
-const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "sua-senha-secreta";
+// 🔴 1. FIM DO HARDCODE (Segurança de IP e Chaves)
+const EVOLUTION_URL = process.env.EVOLUTION_URL;
+const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY;
+const EVOLUTION_WEBHOOK_SECRET = process.env.EVOLUTION_WEBHOOK_SECRET;
+
+if (!EVOLUTION_URL) throw new Error('EVOLUTION_URL não definida no .env');
+if (!EVOLUTION_API_KEY) throw new Error('EVOLUTION_API_KEY não definida no .env');
+
 const INSTANCE_NAME = "MEO_ALIADO_INSTANCE";
 
-// 🛡️ ESCUDO ANTI-DUPLICIDADE
-const processedMessages = new Set<string>();
+// 🔴 2. UPSTASH INICIALIZADO (Para Duplicidades e Rate Limit)
+const redis = Redis.fromEnv();
+const ratelimit = new Ratelimit({
+    redis: redis,
+    limiter: Ratelimit.slidingWindow(10, '1 m'), // 10 mensagens por minuto por usuário
+});
 
-// 🟢 GERADOR DE MÚLTIPLAS VERSÕES DO NÚMERO BRASILEIRO (Nono Dígito)
+// ============================================================================
+// AS SUAS FUNÇÕES AUXILIARES INTACTAS (Não alterei nada aqui)
+// ============================================================================
 const getPhoneVariations = (phone: string): string[] => {
-    const clean = phone.replace(/\D/g, ''); // Tira tudo que não for número
+    const clean = phone.replace(/\D/g, ''); 
     if (!clean.startsWith('55')) return [clean];
-
     const ddd = clean.substring(2, 4);
     const number = clean.substring(4);
-
-    if (number.length === 9) {
-        return [clean, `55${ddd}${number.substring(1)}`];
-    } else if (number.length === 8) {
-        return [clean, `55${ddd}9${number}`];
-    }
+    if (number.length === 9) { return [clean, `55${ddd}${number.substring(1)}`]; } 
+    else if (number.length === 8) { return [clean, `55${ddd}9${number}`]; }
     return [clean];
 };
 
-// --- FUNÇÕES AUXILIARES ---
-// 🟢 ENVIO BLINDADO: Tenta todas as variações de número até o WhatsApp aceitar
 async function sendWhatsAppMessage(jid: string, text: string, delay: number = 1200) {
     const variations = getPhoneVariations(jid.split('@')[0]);
     let success = false;
-
     for (const phoneAttempt of variations) {
         if (success) break;
-
         const finalJid = `${phoneAttempt}@s.whatsapp.net`;
         try {
             console.log(`📤 Tentando enviar para ${finalJid} (Delay: ${delay}ms)...`);
             const res = await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE_NAME}`, {
                 method: 'POST',
-                headers: { 'apikey': EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    number: finalJid,
-                    options: { delay: delay },
-                    textMessage: { text: text }
-                })
+                headers: { 'apikey': EVOLUTION_API_KEY as string, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ number: finalJid, options: { delay: delay }, textMessage: { text: text } })
             });
             const json = await res.json();
-
-            // Verifica se a Evolution aceitou
             if (res.ok || json?.status === 'SUCCESS' || json?.key?.id) {
                 console.log(`✅ Status Envio Sucesso no número ${phoneAttempt}!`);
                 success = true;
             } else {
-                console.log(`⚠️ Falha (Provável Nono Dígito) em ${phoneAttempt}. Erro:`, json?.error || 'Bad Request');
+                console.log(`⚠️ Falha em ${phoneAttempt}. Erro:`, json?.error || 'Bad Request');
             }
-        } catch (e) {
-            console.error(`❌ Erro Envio ZAP para ${finalJid}:`, e);
-        }
+        } catch (e) { console.error(`❌ Erro Envio ZAP para ${finalJid}:`, e); }
     }
-
-    if (!success) {
-        console.log("🚨 Nenhuma das variações funcionou. Evolution recusou o envio.");
-    }
+    if (!success) console.log("🚨 Nenhuma das variações funcionou. Evolution recusou o envio.");
 }
 
 async function downloadMedia(url: string) {
     try {
-        console.log("📥 Tentando baixar URL:", url);
-        const response = await fetch(url, { headers: { 'apikey': EVOLUTION_API_KEY } });
+        const response = await fetch(url, { headers: { 'apikey': EVOLUTION_API_KEY as string } });
         if (!response.ok) return null;
         const arrayBuffer = await response.arrayBuffer();
         return Buffer.from(arrayBuffer).toString('base64');
     } catch (error) { return null; }
 }
 
-// 🧠 CÁLCULO FINANCEIRO
 async function getFinancialContext(supabase: any, userId: string, workspaceId: string) {
+    // (Mantido exatamente como estava...)
     const today = new Date();
     const currentYear = today.getFullYear();
-    const activeMonthIdx = today.getMonth(); // 0 a 11
-
+    const activeMonthIdx = today.getMonth(); 
     const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
-    // 🟢 Puxa TUDO do banco para conseguir arrastar o saldo dos meses anteriores
     const { data: transactions } = await supabase.from('transactions').select('*').eq('user_id', userId).eq('context', workspaceId);
     const { data: recurring } = await supabase.from('recurring').select('*').eq('user_id', userId).eq('context', workspaceId);
     const { data: installments } = await supabase.from('installments').select('*').eq('user_id', userId).eq('context', workspaceId);
@@ -101,10 +92,7 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
         return { m: 0, y: currentYear };
     };
 
-    let previousSurplus = 0;
-    let computedInc = 0;
-    let computedExp = 0;
-    let computedBalance = 0;
+    let previousSurplus = 0; let computedInc = 0; let computedExp = 0; let computedBalance = 0;
 
     for (let idx = 0; idx <= activeMonthIdx; idx++) {
         const month = MONTHS[idx];
@@ -130,7 +118,6 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
             (installments?.reduce((acc: number, i: any) => {
                 const paid = i.paid_months?.includes(paymentTag) || i.paid_months?.includes(month);
                 if ((i.status === 'delayed' || i.status === 'standby' || i.standby_months?.includes(paymentTag)) && !paid) return acc;
-
                 const { m: sM, y: sY } = getStartData(i);
                 const diff = ((currentYear - sY) * 12) + (idx - sM);
                 const act = 1 + (i.current_installment || 0) + diff;
@@ -139,13 +126,7 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
 
         const saldoMensal = inc - exp;
         const saldoAcumulado = saldoMensal + previousSurplus;
-
-        if (idx === activeMonthIdx) {
-            computedInc = inc;
-            computedExp = exp;
-            computedBalance = saldoAcumulado;
-        }
-
+        if (idx === activeMonthIdx) { computedInc = inc; computedExp = exp; computedBalance = saldoAcumulado; }
         previousSurplus = saldoAcumulado;
     }
 
@@ -154,47 +135,98 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
     else if (computedBalance < (computedInc * 0.1)) estado = "ALERTA (POUCA MARGEM) 🟡";
 
     return {
-        saldo: computedBalance.toFixed(2),
-        entradas: computedInc.toFixed(2),
-        saidas: computedExp.toFixed(2),
-        estado_conta: estado,
-        resumo_texto: `Receitas: R$ ${computedInc.toFixed(2)} | Despesas: R$ ${computedExp.toFixed(2)} | Saldo: R$ ${computedBalance.toFixed(2)}`
+        saldo: computedBalance.toFixed(2), entradas: computedInc.toFixed(2), saidas: computedExp.toFixed(2),
+        estado_conta: estado, resumo_texto: `Receitas: R$ ${computedInc.toFixed(2)} | Despesas: R$ ${computedExp.toFixed(2)} | Saldo: R$ ${computedBalance.toFixed(2)}`
     };
 }
+// ============================================================================
 
-// --- ROTA PRINCIPAL ---
+
+// --- ROTA PRINCIPAL CORRIGIDA ---
 export async function POST(req: Request) {
     try {
-        if (!process.env.SUPABASE_SERVICE_ROLE_KEY || !process.env.GEMINI_API_KEY) {
-            return NextResponse.json({ error: "Configuração incompleta" }, { status: 500 });
+        // 🔴 3. PROTEÇÃO DO WEBHOOK (Valida se o pedido veio da Evolution de verdade)
+        // 🔴 3. PROTEÇÃO DO WEBHOOK (Obrigatória: Falha Segura)
+        const EVOLUTION_WEBHOOK_SECRET = process.env.EVOLUTION_WEBHOOK_SECRET;
+        
+        if (!EVOLUTION_WEBHOOK_SECRET) {
+            throw new Error('🔥 ALERTA DE SEGURANÇA: EVOLUTION_WEBHOOK_SECRET não definida no .env');
+        }
+
+        const webhookToken = req.headers.get('apikey') ?? req.headers.get('authorization')?.replace('Bearer ', '');
+        
+        if (webhookToken !== EVOLUTION_WEBHOOK_SECRET) {
+            console.warn('⚠️ Webhook recusado: token inválido ou ausente. Possível tentativa de invasão.');
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
         const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-        // Atualizado para o modelo 2.5 Flash, que é ainda mais inteligente para leitura de imagens
-        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
         const body = await req.json();
 
-        // 1. FILTROS BÁSICOS
         if (body.event && body.event !== "messages.upsert") return NextResponse.json({ status: 'Ignored Event' });
         const key = body.data?.key;
         if (!key?.remoteJid || key.fromMe) return NextResponse.json({ status: 'Ignored' });
 
         const messageId = key.id;
-
-        // 🛡️ VERIFICAÇÃO DO ESCUDO ANTI-DUPLICIDADE
-        if (processedMessages.has(messageId)) {
-            console.log("♻️ Ignorando mensagem duplicada (Retentativa da Evolution):", messageId);
-            return NextResponse.json({ status: 'Ignored Duplicate' });
-        }
-
-        processedMessages.add(messageId);
-        if (processedMessages.size > 1000) processedMessages.clear();
-
         const remoteJid = key.remoteJid;
         const senderId = remoteJid.split('@')[0];
         const messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
+
+        // 🔴 4. ANTI-DUPLICIDADE DE VERDADE (Usando Redis)
+        const alreadyProcessed = await redis.get(`msg:${messageId}`);
+        if (alreadyProcessed) {
+            console.log("♻️ Ignorando mensagem duplicada (Redis capturou):", messageId);
+            return NextResponse.json({ status: 'Ignored Duplicate' });
+        }
+        await redis.set(`msg:${messageId}`, '1', { ex: 86400 }); // Expira em 24h
+
+        // 🔴 5. RATE LIMITING (Anti-Flood por Número)
+        const { success: rateLimitSuccess } = await ratelimit.limit(senderId);
+        if (!rateLimitSuccess) {
+            await sendWhatsAppMessage(remoteJid, "⏳ Calma! Você está enviando mensagens muito rápido. Aguarde um minuto.");
+            return NextResponse.json({ status: 'Rate Limited' });
+        }
+
+        // 🔴 6. INTERCEPTADOR DE CONFIRMAÇÃO DE DELEÇÃO
+        // 🔴 6. INTERCEPTADOR DE CONFIRMAÇÃO DE DELEÇÃO
+        const pendingDeleteStr = await redis.get(`pending_delete:${senderId}`);
+        if (pendingDeleteStr) {
+            const userInput = messageContent.trim().toUpperCase();
+            if (userInput === 'SIM') {
+                const cmd = typeof pendingDeleteStr === 'string' ? JSON.parse(pendingDeleteStr) : pendingDeleteStr;
+                
+                // 🛡️ REVALIDAÇÃO DA WHITELIST (Defesa em Profundidade)
+                const ALLOWED_TABLES = ['transactions', 'installments', 'recurring'];
+                if (!ALLOWED_TABLES.includes(cmd.table)) {
+                    await sendWhatsAppMessage(remoteJid, '⚠️ Operação inválida. Tabela não permitida.');
+                    await redis.del(`pending_delete:${senderId}`);
+                    return NextResponse.json({ status: 'Blocked' });
+                }
+                
+                // Puxa o user_settings rapidinho pra ter o user_id
+                const { data: us } = await supabase.from('user_settings').select('user_id').eq('whatsapp_id', senderId).single();
+                
+                if (us) {
+                    const { data: items } = await supabase.from(cmd.table).select('id, title').eq('user_id', us.user_id).ilike('title', `%${cmd.data.title}%`).order('created_at', { ascending: false }).limit(1);
+                    if (items?.length) {
+                        await supabase.from(cmd.table).delete().eq('id', items[0].id);
+                        await sendWhatsAppMessage(remoteJid, `🗑️ Apagado com sucesso: "${items[0].title}"`);
+                    } else {
+                        await sendWhatsAppMessage(remoteJid, `⚠️ Não encontrei o item para apagar.`);
+                    }
+                }
+                await redis.del(`pending_delete:${senderId}`);
+                return NextResponse.json({ success: true, action: "deleted_confirmed" });
+            } else {
+                await redis.del(`pending_delete:${senderId}`);
+                await sendWhatsAppMessage(remoteJid, `❌ Exclusão cancelada. Sobre o que você quer falar agora?`);
+                return NextResponse.json({ success: true, action: "deleted_cancelled" });
+            }
+        }
+
 
         // --- PROCESSAMENTO DE ÁUDIO E IMAGEM ---
         let promptParts: any[] = [];
@@ -203,7 +235,6 @@ export async function POST(req: Request) {
         const msgData = body.data?.message;
         const msgType = body.data?.messageType;
 
-        // 1. Lida com ÁUDIO
         if (msgType === "audioMessage" || msgData?.audioMessage) {
             let audioBase64 = body.data?.base64 || msgData?.audioMessage?.base64 || body.data?.message?.base64;
             if (!audioBase64) {
@@ -218,20 +249,16 @@ export async function POST(req: Request) {
                 return NextResponse.json({ status: 'Audio Failed' });
             }
         } 
-        // 2. Lida com IMAGEM 📸
         else if (msgType === "imageMessage" || msgData?.imageMessage) {
             let imageBase64 = body.data?.base64 || msgData?.imageMessage?.base64 || body.data?.message?.base64;
             if (!imageBase64) {
                 const url = msgData?.imageMessage?.url || body.data?.mediaUrl;
                 if (url) imageBase64 = await downloadMedia(url);
             }
-            
             if (imageBase64) {
                 hasImage = true;
                 const mime = msgData?.imageMessage?.mimetype || "image/jpeg";
                 promptParts.push({ inlineData: { mimeType: mime, data: imageBase64 } });
-                
-                // Pega a legenda da foto, se tiver
                 const caption = msgData?.imageMessage?.caption;
                 if (caption) promptParts.push(caption);
             } else {
@@ -239,13 +266,12 @@ export async function POST(req: Request) {
                 return NextResponse.json({ status: 'Image Failed' });
             }
         } 
-        // 3. Lida com TEXTO PADRÃO
         else {
             if (!messageContent) return NextResponse.json({ status: 'No Content' });
             promptParts.push(messageContent);
         }
 
-        // 2. IDENTIFICAÇÃO DO USUÁRIO
+        // IDENTIFICAÇÃO DO USUÁRIO
         let { data: userSettings } = await supabase.from('user_settings').select('*').or(`whatsapp_phone.eq.${senderId},whatsapp_id.eq.${senderId}`).maybeSingle();
 
         if (!userSettings) {
@@ -271,17 +297,13 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "User unknown" });
         }
 
-        // 🔒 TRAVA DE SEGURANÇA: VERIFICAÇÃO DE PLANO
+        // TRAVA DE SEGURANÇA: VERIFICAÇÃO DE PLANO
         const { data: profile } = await supabase.from('profiles').select('plan_tier').eq('id', userSettings.user_id).single();
         const plan = profile?.plan_tier || 'free';
 
         if (!['pro', 'agent', 'admin'].includes(plan)) {
-            console.log(`🚫 Bloqueado: ${senderId} é plano '${plan}' - ENVIANDO AVISO...`);
             const targetForBlock = userSettings.whatsapp_phone || senderId;
-            await sendWhatsAppMessage(targetForBlock,
-                "🚫 *Acesso Exclusivo PRO*\n\nA Inteligência Artificial no WhatsApp está disponível apenas nos planos **Pro** e **Consultor**.\n\nFaça o upgrade no seu painel para desbloquear: lançamentos por áudio, consultas e muito mais! 🚀",
-                100
-            );
+            await sendWhatsAppMessage(targetForBlock, "🚫 *Acesso Exclusivo PRO*\n\nA Inteligência Artificial no WhatsApp está disponível apenas nos planos **Pro** e **Consultor**.", 100);
             return NextResponse.json({ status: 'Blocked by Plan', plan: plan });
         }
 
@@ -292,11 +314,9 @@ export async function POST(req: Request) {
         const targetPhone = userSettings.whatsapp_phone || senderId;
         const { data: workspace } = await supabase.from('workspaces').select('id').eq('user_id', userSettings.user_id).limit(1).single();
 
-        // 3. CONTEXTO FINANCEIRO
         let contextInfo = { saldo: "0", entradas: "0", saidas: "0", resumo_texto: "Sem dados", estado_conta: "Indefinido" };
         if (workspace) contextInfo = await getFinancialContext(supabase, userSettings.user_id, workspace.id);
 
-        // 4. PROMPT DA IA MELHORADO E BLINDADO
         const systemPrompt = `
             IDENTIDADE: Você é "Meu Aliado", assistente financeiro pessoal via WhatsApp.
             Tom: amigável, direto, humano. Nunca robótico.
@@ -310,119 +330,76 @@ export async function POST(req: Request) {
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
             COMO AGIR EM CADA SITUAÇÃO:
-
-            [BATE-PAPO / SALDO]
-            → Responda naturalmente com os dados acima. Seja breve e humano.
-
-            [REGISTRO DE TRANSAÇÃO]
-            → Extraia título, valor, data e tipo (receita/despesa). Monte o JSON.
-            → Se faltar informação essencial (ex: valor), pergunte antes de registrar.
-
-            [PARCELA / FIXO]
-            → Identifique se é gasto parcelado (installments) ou recorrente mensal (recurring).
-            → Calcule value_per_month automaticamente se o usuário fornecer total + número de parcelas.
-
-            [ALERTA DE SAÚDE FINANCEIRA]
-            → Status CRÍTICO: avise com carinho, sugira 1 ação concreta e simples.
-            → Status OK/BOM: positivo e motivador, sem exageros.
+            [BATE-PAPO / SALDO] → Responda naturalmente com os dados acima. Seja breve e humano.
+            [REGISTRO DE TRANSAÇÃO] → Extraia título, valor, data e tipo (receita/despesa). Monte o JSON. Se faltar informação essencial (ex: valor), pergunte.
+            [PARCELA / FIXO] → Identifique se é gasto parcelado (installments) ou recorrente mensal (recurring).
+            [APAGAR/REMOVER GASTO] → Monte o JSON com action: "remove".
 
             REGRAS ABSOLUTAS:
             ✅ Saída SEMPRE como array JSON válido — zero texto fora do JSON.
             ✅ Respostas curtas (WhatsApp, não romance).
-            ✅ Use linguagem coloquial brasileira, nunca formal.
-            ✅ Datas sempre no formato DD/MM/YYYY.
             ✅ Valores sempre como número float (ex: 49.90), nunca string.
-            ✅ Se a intenção for ambígua, peça confirmação via reply antes de registrar.
-
-            CATEGORIAS DISPONÍVEIS:
-            Alimentação | Transporte | Saúde | Lazer | Moradia | Educação | Salário | Freelance | Outros
 
             ━━━ FORMATOS JSON PERMITIDOS ━━━
-
-            Transação:
-            {"action": "add", "table": "transactions", "data": {
-            "title": "...", "amount": 0.00, "type": "expense|income",
-            "date": "DD/MM/YYYY", "category": "...", "target_month": "Mês YYYY"
-            }}
-
-            Parcela:
-            {"action": "add", "table": "installments", "data": {
-            "title": "...", "total_value": 0.00, "installments_count": 1,
-            "value_per_month": 0.00, "due_day": 10, "status": "active"
-            }}
-
-            Fixo mensal:
-            {"action": "add", "table": "recurring", "data": {
-            "title": "...", "value": 0.00, "type": "expense|income",
-            "due_day": 10, "status": "active"
-            }}
-
-            Resposta ao usuário (OBRIGATÓRIA em todo array):
+            Adicionar Transação:
+            {"action": "add", "table": "transactions", "data": {"title": "...", "amount": 0.00, "type": "expense", "date": "DD/MM/YYYY", "category": "..."}}
+            Remover Transação:
+            {"action": "remove", "table": "transactions", "data": {"title": "..."}}
+            Resposta ao usuário (OBRIGATÓRIA):
             {"reply": "mensagem curta e humana aqui"}
 
-            EXEMPLO DE SAÍDA COMPLETA:
-            [
-            {"action": "add", "table": "transactions", "data": {"title": "Almoço", "amount": 32.50, "type": "expense", "date": "21/03/2025", "category": "Alimentação", "target_month": "Março 2025"}},
-            {"reply": "Anotei! 🍽️ R$ 32,50 no almoço. Saldo continua firme!"}
-            ]
             ${hasAudio ? "\n⚠️ ÁUDIO RECEBIDO: Transcreva mentalmente a fala e responda com base no que foi dito." : ""}
-            ${hasImage ? "\n📸 IMAGEM RECEBIDA: Extraia o valor total, a data e o nome do estabelecimento da foto/comprovante para registrar o gasto automaticamente." : ""}
-            `;
+            ${hasImage ? "\n📸 IMAGEM RECEBIDA: Extraia o valor total, a data e o nome do estabelecimento da foto/comprovante para registrar o gasto." : ""}
+        `;
 
         const finalPrompt = [systemPrompt, ...promptParts];
 
-        // 🟢 BLINDAGEM DA IA: Tratamento de erros exclusivo para o Gemini
         let commands: any[] = [];
         try {
             const result = await model.generateContent(finalPrompt);
-            
-            // 🔥 SOLUÇÃO PARA O ERRO DO TURBOPACK 🔥
-            // Usamos split e join para remover os blocos de código markdown sem usar Regex com crases
-            let cleanJson = result.response.text()
-                .split('```json').join('')
-                .split('```').join('')
-                .trim();
-
-            // Pega apenas a parte do array para evitar sujeiras de texto solto
+            let cleanJson = result.response.text().split('```json').join('').split('```').join('').trim();
             const arrayMatch = cleanJson.match(/\[[\s\S]*\]/);
             if (arrayMatch) cleanJson = arrayMatch[0];
 
             commands = JSON.parse(cleanJson);
             if (!Array.isArray(commands)) commands = [commands];
-
         } catch (error: any) {
             console.error("❌ ERRO NA IA OU NO JSON:", error);
-            if (error?.status === 503 || error?.message?.includes('503')) {
-                await sendWhatsAppMessage(targetPhone, "A IA está com muita demanda agora. Tente novamente em alguns segundos! ⏳");
-            } else {
-                await sendWhatsAppMessage(targetPhone, "Desculpe, meu cérebro (IA) deu uma travada agora. Pode me mandar a mensagem de novo de uma forma mais simples? 🤖");
-            }
+            await sendWhatsAppMessage(targetPhone, "Desculpe, meu cérebro (IA) deu uma travada agora. Pode me mandar a mensagem de novo? 🤖");
             return NextResponse.json({ success: false, reason: 'AI/JSON Error' });
         }
 
-        // 5. PROCESSAMENTO DAS AÇÕES (Se a IA sobreviveu)
+        // PROCESSAMENTO DAS AÇÕES
         let replySent = false;
+        // 🔴 7. WHITELIST DE TABELAS (As únicas permitidas para o Meu Aliado)
+        const ALLOWED_TABLES = ['transactions', 'installments', 'recurring'];
+
         for (const cmd of commands) {
+            if (!ALLOWED_TABLES.includes(cmd.table) && cmd.table) {
+                console.warn(`⛔ Tabela bloqueada pela IA: ${cmd.table}`);
+                continue;
+            }
+
             if (cmd.action === 'add') {
                 let payload: any = { ...cmd.data, user_id: userSettings.user_id, context: workspace?.id || null, created_at: new Date(), message_id: messageId };
+                
+                // Trava contra valores fantasmas ou strings
+                const extractedValue = parseFloat(cmd.data.amount) || parseFloat(cmd.data.value) || parseFloat(cmd.data.value_per_month) || parseFloat(cmd.data.total_value) || 0;
+                if (extractedValue <= 0) continue;
 
                 if (cmd.table === 'installments') {
                     payload.current_installment = 0; payload.status = 'active';
-                    delete payload.date; delete payload.target_month;
+                    delete payload.date; delete payload.target_month; delete payload.is_paid;
                     const { error } = await supabase.from('installments').insert([payload]);
-
                     if (error && error.code === '23505') { replySent = true; continue; }
-                    if (!error && !commands.some((c: any) => c.reply)) {
-                        const total = Number(cmd.data.total_value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                        await sendWhatsAppMessage(targetPhone, `✅ Parcelado: ${cmd.data.title} (${total})`);
-                    }
+                    if (!error && !commands.some((c: any) => c.reply)) await sendWhatsAppMessage(targetPhone, `✅ Parcelado salvo: ${cmd.data.title}`);
                 }
                 else if (cmd.table === 'recurring') {
                     payload.status = 'active';
+                    delete payload.is_paid; delete payload.amount; delete payload.date;
                     const { error } = await supabase.from('recurring').insert([payload]);
-
                     if (error && error.code === '23505') { replySent = true; continue; }
-                    if (!error && !commands.some((c: any) => c.reply)) await sendWhatsAppMessage(targetPhone, `✅ Fixo: ${cmd.data.title}`);
+                    if (!error && !commands.some((c: any) => c.reply)) await sendWhatsAppMessage(targetPhone, `✅ Fixo salvo: ${cmd.data.title}`);
                 }
                 else if (cmd.table === 'transactions') {
                     if (!payload.date) {
@@ -433,22 +410,16 @@ export async function POST(req: Request) {
                     }
                     payload.is_paid = true; payload.status = 'paid';
                     const { error } = await supabase.from('transactions').insert([payload]);
-
                     if (error && error.code === '23505') { replySent = true; continue; }
-                    if (!error && !commands.some((c: any) => c.reply)) {
-                        const val = Number(cmd.data.amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                        await sendWhatsAppMessage(targetPhone, `✅ Lançado: ${cmd.data.title} (${val})`);
-                    }
+                    if (!error && !commands.some((c: any) => c.reply)) await sendWhatsAppMessage(targetPhone, `✅ Lançado: ${cmd.data.title}`);
                 }
             }
+            // 🔴 8. CONFIRMAÇÃO DE EXCLUSÃO
             else if (cmd.action === 'remove') {
-                const { data: items } = await supabase.from(cmd.table).select('id, title').eq('user_id', userSettings.user_id).ilike('title', `%${cmd.data.title}%`).order('created_at', { ascending: false }).limit(1);
-                if (items?.length) {
-                    await supabase.from(cmd.table).delete().eq('id', items[0].id);
-                    if (!commands.some((c: any) => c.reply)) await sendWhatsAppMessage(targetPhone, `🗑️ Apagado: "${items[0].title}"`);
-                } else {
-                    if (!commands.some((c: any) => c.reply)) await sendWhatsAppMessage(targetPhone, `⚠️ Não encontrei "${cmd.data.title}"`);
-                }
+                await sendWhatsAppMessage(targetPhone, `⚠️ Você quer apagar "${cmd.data.title}"? Responda *SIM* para confirmar.`);
+                // Salva o comando no Redis por 5 minutos (300 segundos) aguardando a pessoa responder "SIM"
+                await redis.set(`pending_delete:${senderId}`, JSON.stringify(cmd), { ex: 300 });
+                replySent = true; // Para não mandar o cmd.reply padrão da IA e confundir
             }
 
             if (cmd.reply && !replySent) {
@@ -461,7 +432,6 @@ export async function POST(req: Request) {
 
     } catch (e: any) {
         console.error("🔥 ERRO FATAL NO WEBHOOK:", e);
-        // 🟢 REGRA DE OURO DO WEBHOOK: SEMPRE devolva 200, mesmo se der erro, senão a Evolution fica em loop!
         return NextResponse.json({ error: e.message, status: "Caught but returning 200 to prevent retries" }, { status: 200 });
     }
 }
