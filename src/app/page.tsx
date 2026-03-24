@@ -2380,6 +2380,7 @@ export default function FinancialDashboard() {
                 isLoading={isAiLoading}
                 onSendMessage={askGemini}
                 userPlan={userPlan}
+                onOpenUpgrade={openPricingModal}
             />
             <AuthModals
                 isAuthModalOpen={isAuthModalOpen} setIsAuthModalOpen={setIsAuthModalOpen}

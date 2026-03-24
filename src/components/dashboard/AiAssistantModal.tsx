@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Sparkles, Loader2, Send, FileText, Paperclip, CheckCircle2 } from 'lucide-react';
+import { X, Sparkles, Loader2, Send, FileText, Paperclip, CheckCircle2, Crown,Lock, AlertTriangle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { toast } from 'sonner'; // Não esqueça de importar o toast se não tiver!
 
 interface AiAssistantModalProps {
     isOpen: boolean;
@@ -9,34 +10,53 @@ interface AiAssistantModalProps {
     isLoading: boolean;
     onSendMessage: (text: string, fileBase64: string | null) => void;
     userPlan: string;
+    onOpenUpgrade: () => void;
 }
 
-export default function AiAssistantModal({ isOpen, onClose, chatHistory, isLoading, onSendMessage, userPlan }: AiAssistantModalProps) {
+// 🟢 AS SUGESTÕES ESTÃO DE VOLTA!
+const SUGGESTIONS = [
+    "Resuma meus gastos deste mês.",
+    "Como posso economizar com alimentação?",
+    "Quais contas vencem hoje?",
+    "Crie uma meta para eu poupar 10% da renda."
+];
+
+export default function AiAssistantModal({ isOpen, onClose, chatHistory, isLoading, onSendMessage, userPlan, onOpenUpgrade }: AiAssistantModalProps) {
     const [aiInput, setAiInput] = useState('');
-    const [attachment, setAttachment] = useState<{ base64: string, type: 'image' | 'pdf' } | null>(null);
+    const [attachment, setAttachment] = useState<{ base64: string, type: 'image' } | null>(null);
     const chatEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Scroll automático quando chega mensagem nova
+    // 🟢 VERIFICA SE O USUÁRIO PODE MANDAR FOTOS (Planos Pagos)
+    const canAttach = ['premium', 'pro', 'agent', 'admin'].includes(userPlan?.toLowerCase());
+    const isFree = !userPlan || userPlan.toLowerCase() === 'free';
+
     useEffect(() => {
         if (isOpen) {
             chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
         }
-    }, [chatHistory, isOpen]);
+    }, [chatHistory, isOpen, isLoading]);
 
-    // Lógica de Arquivo (Imagem/PDF)
+    // 🟢 LÓGICA DE ARQUIVO BLINDADA (Fim da vulnerabilidade de 5MB e PDF)
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        if (file.type === 'application/pdf') {
-            const reader = new FileReader();
-            reader.onload = (event) => setAttachment({ base64: event.target?.result as string, type: 'pdf' });
-            reader.readAsDataURL(file);
+        // Trava 1: Limite de Tamanho (5MB max para não travar o navegador nem o servidor)
+        const MAX_SIZE_MB = 5;
+        if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+            toast.error(`A imagem é muito grande. O limite máximo é de ${MAX_SIZE_MB}MB.`);
+            if (fileInputRef.current) fileInputRef.current.value = '';
             return;
         }
 
-        // Se for imagem, comprime
+        // Trava 2: Apenas Imagens (O backend ainda não suporta PDF no chat)
+        if (!file.type.startsWith('image/')) {
+            toast.error("Por enquanto, o assistente só consegue ler imagens (JPG, PNG, WEBP).");
+            if (fileInputRef.current) fileInputRef.current.value = '';
+            return;
+        }
+
         const reader = new FileReader();
         reader.onload = (event) => {
             const img = new Image();
@@ -61,6 +81,17 @@ export default function AiAssistantModal({ isOpen, onClose, chatHistory, isLoadi
         reader.readAsDataURL(file);
     };
 
+    const handleAttachmentClick = () => {
+        if (!canAttach) {
+            toast("Recurso Premium", {
+                description: "O envio de fotos de recibos para a IA analisar é exclusivo de planos pagos.",
+                icon: <Crown className="text-amber-500" />,
+            });
+            return;
+        }
+        fileInputRef.current?.click();
+    };
+
     const handleSend = () => {
         if (!aiInput.trim() && !attachment) return;
         onSendMessage(aiInput, attachment?.base64 || null);
@@ -73,29 +104,60 @@ export default function AiAssistantModal({ isOpen, onClose, chatHistory, isLoadi
 
     return (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[200] p-4 animate-in fade-in duration-300">
-            <div className="bg-[#0f0f13] border border-gray-700 w-full max-w-2xl h-[600px] rounded-3xl shadow-2xl flex flex-col relative overflow-hidden">
+            <div className="bg-[#0f0f13] border border-gray-700 w-full max-w-2xl h-[650px] rounded-3xl shadow-2xl flex flex-col relative overflow-hidden">
                 
-                {/* HEADER */}
-                <div className="p-6 border-b border-gray-800 bg-[#111] flex justify-between items-center z-10 shrink-0">
+                {/* HEADER COM BOTÃO DE UPGRADE PARA FREE */}
+                <div className="p-4 border-b border-gray-800 bg-[#111] flex justify-between items-center z-10 shrink-0">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-purple-900/30 rounded-lg">
                             <Sparkles size={20} className="text-purple-400" />
                         </div>
                         <div>
-                            <h2 className="text-xl font-bold text-white">Consultor IA</h2>
-                            <p className="text-xs text-gray-400">Powered by Gemini 1.5 Flash</p>
+                            <h2 className="text-lg font-bold text-white leading-tight">Consultor IA</h2>
+                            <p className="text-[10px] text-gray-400">Powered by Gemini Flash</p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="text-gray-500 hover:text-white p-2 hover:bg-white/10 rounded-full transition"><X size={20} /></button>
+                    
+                    <div className="flex items-center gap-4">
+                        {isFree && (
+                            <button  onClick={() => { onClose(); onOpenUpgrade();/* Adicione aqui a função que abre o modal de planos */ }} className="hidden sm:flex items-center gap-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition shadow-lg shadow-orange-900/20">
+                                <Crown size={14} /> Fazer Upgrade
+                            </button>
+                        )}
+                        <button onClick={onClose} className="text-gray-500 hover:text-white p-2 hover:bg-white/10 rounded-full transition"><X size={20} /></button>
+                    </div>
                 </div>
+
+                {/* AVISO PARA FREE NO MOBILE (Opcional) */}
+                {isFree && (
+                    <div className="sm:hidden bg-gradient-to-r from-amber-900/20 to-orange-900/20 border-b border-amber-900/30 p-2 flex justify-center items-center gap-2 shrink-0">
+                        <Crown size={12} className="text-amber-500" />
+                        <span className="text-[10px] text-amber-200">Plano Free: Envio de imagens bloqueado.</span>
+                    </div>
+                )}
 
                 {/* CHAT AREA */}
                 <div className="flex-1 p-6 overflow-y-auto space-y-6 scrollbar-thin scrollbar-thumb-gray-800 bg-[#0f0f13]">
                     {chatHistory.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center text-center opacity-50 p-8">
-                            <Sparkles size={48} className="text-purple-500 mb-4" />
-                            <h3 className="text-white font-bold mb-2">Como posso ajudar?</h3>
-                            <p className="text-sm text-gray-400">Envie um comprovante, pergunte sobre seus gastos ou peça dicas.</p>
+                        <div className="h-full flex flex-col items-center justify-center text-center opacity-80 p-4">
+                            <div className="w-16 h-16 bg-purple-900/20 border border-purple-500/20 rounded-2xl flex items-center justify-center mb-6">
+                                <Sparkles size={32} className="text-purple-400" />
+                            </div>
+                            <h3 className="text-xl text-white font-bold mb-2">Como posso ajudar hoje?</h3>
+                            <p className="text-sm text-gray-400 max-w-sm mb-8">Posso analisar seus gastos, encontrar padrões de consumo ou ajudar a planejar o seu próximo mês.</p>
+                            
+                            {/* CAIXAS DE SUGESTÃO DE PERGUNTAS */}
+                            <div className="flex flex-wrap justify-center gap-2 max-w-lg">
+                                {SUGGESTIONS.map((sug, idx) => (
+                                    <button 
+                                        key={idx} 
+                                        onClick={() => setAiInput(sug)}
+                                        className="bg-gray-800/50 hover:bg-purple-900/40 border border-gray-700 hover:border-purple-500/40 text-xs text-gray-300 hover:text-white px-4 py-2.5 rounded-xl transition text-left"
+                                    >
+                                        {sug}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     ) : (
                         chatHistory.map((msg, idx) => (
@@ -122,7 +184,7 @@ export default function AiAssistantModal({ isOpen, onClose, chatHistory, isLoadi
                             <div className="w-8 h-8 rounded-full bg-purple-900/50 flex items-center justify-center mr-3"><Sparkles size={14} className="text-purple-400 animate-pulse" /></div>
                             <div className="bg-gray-800 text-gray-200 rounded-2xl p-4 flex items-center gap-3 border border-gray-700 rounded-tl-none">
                                 <Loader2 size={18} className="animate-spin text-purple-500" />
-                                <span className="text-xs font-bold animate-pulse text-purple-300">Escrevendo...</span>
+                                <span className="text-xs font-bold animate-pulse text-purple-300">Analisando dados...</span>
                             </div>
                         </div>
                     )}
@@ -134,17 +196,39 @@ export default function AiAssistantModal({ isOpen, onClose, chatHistory, isLoadi
                     {attachment && (
                         <div className="mb-3 flex items-start animate-in slide-in-from-bottom-2">
                             <div className="relative group">
-                                {attachment.type === 'image' ? <img src={attachment.base64} className="h-16 w-16 object-cover rounded-xl border border-gray-700" /> : <div className="h-16 w-16 bg-gray-800 rounded-xl border border-gray-700 flex items-center justify-center text-red-400"><FileText size={24} /></div>}
+                                <img src={attachment.base64} className="h-16 w-16 object-cover rounded-xl border border-gray-700" alt="Anexo" />
                                 <button onClick={() => { setAttachment(null); if (fileInputRef.current) fileInputRef.current.value = ''; }} className="absolute -top-2 -right-2 bg-gray-900 border border-gray-600 text-gray-400 hover:text-white rounded-full p-1"><X size={12} /></button>
                             </div>
-                            <div className="ml-3 mt-1"><p className="text-xs text-emerald-500 font-bold flex items-center gap-1"><CheckCircle2 size={12} /> Arquivo pronto</p></div>
+                            <div className="ml-3 mt-1"><p className="text-xs text-emerald-500 font-bold flex items-center gap-1"><CheckCircle2 size={12} /> Imagem pronta para análise</p></div>
                         </div>
                     )}
                     <div className="flex gap-2 items-end">
-                        <input type="file" ref={fileInputRef} className="hidden" accept="image/*,application/pdf" onChange={handleFileSelect} />
-                        <button onClick={() => fileInputRef.current?.click()} className={`p-3 rounded-xl border transition mb-[2px] ${attachment ? 'bg-emerald-900/20 text-emerald-500 border-emerald-500/50' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'}`}><Paperclip size={20} /></button>
-                        <textarea value={aiInput} onChange={(e) => setAiInput(e.target.value)} placeholder={attachment ? "Descreva..." : "Digite ou envie comprovante..."} className="flex-1 bg-gray-900 text-white border border-gray-800 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500/50 resize-none h-12 max-h-32 scrollbar-hide" style={{ minHeight: '48px' }} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} />
-                        <button onClick={handleSend} disabled={isLoading || (!aiInput.trim() && !attachment)} className="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white p-3 rounded-xl transition mb-[2px]">{isLoading ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}</button>
+                        <input type="file" ref={fileInputRef} className="hidden" accept="image/jpeg,image/png,image/webp" onChange={handleFileSelect} />
+                        
+                        {/* Botão de Anexo inteligente (Bloqueia free) */}
+                        <button 
+                            onClick={handleAttachmentClick} 
+                            className={`p-3 rounded-xl border transition mb-[2px] relative ${attachment ? 'bg-emerald-900/20 text-emerald-500 border-emerald-500/50' : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'}`}
+                        >
+                            <Paperclip size={20} />
+                            {!canAttach && <Lock size={10} className="absolute bottom-1.5 right-1.5 text-amber-500" />}
+                        </button>
+                        
+                        <textarea 
+                            value={aiInput} 
+                            onChange={(e) => setAiInput(e.target.value)} 
+                            placeholder={attachment ? "O que quer saber sobre esta imagem?" : "Pergunte ao seu Aliado..."} 
+                            className="flex-1 bg-gray-900 text-white border border-gray-800 rounded-xl px-4 py-3 focus:outline-none focus:border-purple-500/50 resize-none h-12 max-h-32 scrollbar-hide" 
+                            style={{ minHeight: '48px' }} 
+                            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }} 
+                        />
+                        <button 
+                            onClick={handleSend} 
+                            disabled={isLoading || (!aiInput.trim() && !attachment)} 
+                            className="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:bg-gray-800 text-white p-3 rounded-xl transition mb-[2px]"
+                        >
+                            {isLoading ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
+                        </button>
                     </div>
                 </div>
             </div>
