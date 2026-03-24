@@ -27,9 +27,22 @@ export default function ImportModal({ isOpen, onClose, userId, workspaceId, onSu
     const callAI = async (payload: any) => {
         setIsProcessing(true);
         try {
+            // 🔴 1. PEGA O CRACHÁ (TOKEN) DO USUÁRIO LOGADO
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+
+            if (!token) {
+                toast.error("Sua sessão expirou. Recarregue a página e tente novamente.");
+                return;
+            }
+
+            // 🔴 2. ENVIA O ARQUIVO JUNTO COM O CRACHÁ DE SEGURANÇA
             const response = await fetch('/api/import-spreadsheet', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}` // ✅ A MÁGICA ACONTECE AQUI!
+                },
                 body: JSON.stringify(payload)
             });
 
@@ -39,11 +52,12 @@ export default function ImportModal({ isOpen, onClose, userId, workspaceId, onSu
                 setStatusText("Pronto!");
                 setReviewData(result.data);
             } else {
-                throw new Error(result.error);
+                throw new Error(result.error || "Erro desconhecido ao processar.");
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error("Erro na importação:", error);
-            toast.error("Erro ao ler os dados. Verifique a qualidade do arquivo/texto e tente novamente.");
+            // Mostra o erro exato que o backend retornou (ex: "Imagem muito grande", "Apenas plano Pro", etc)
+            toast.error(error.message || "Erro ao ler os dados. Verifique o arquivo e tente novamente.");
             setStatusText("Houve um erro na leitura.");
         } finally {
             setIsProcessing(false);
