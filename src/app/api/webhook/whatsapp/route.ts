@@ -25,11 +25,11 @@ const ratelimit = new Ratelimit({
 // AS SUAS FUNÇÕES AUXILIARES INTACTAS (Não alterei nada aqui)
 // ============================================================================
 const getPhoneVariations = (phone: string): string[] => {
-    const clean = phone.replace(/\D/g, ''); 
+    const clean = phone.replace(/\D/g, '');
     if (!clean.startsWith('55')) return [clean];
     const ddd = clean.substring(2, 4);
     const number = clean.substring(4);
-    if (number.length === 9) { return [clean, `55${ddd}${number.substring(1)}`]; } 
+    if (number.length === 9) { return [clean, `55${ddd}${number.substring(1)}`]; }
     else if (number.length === 8) { return [clean, `55${ddd}9${number}`]; }
     return [clean];
 };
@@ -72,7 +72,7 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
     // (Mantido exatamente como estava...)
     const today = new Date();
     const currentYear = today.getFullYear();
-    const activeMonthIdx = today.getMonth(); 
+    const activeMonthIdx = today.getMonth();
     const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
     const { data: transactions } = await supabase.from('transactions').select('*').eq('user_id', userId).eq('context', workspaceId);
@@ -144,17 +144,19 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
 
 // --- ROTA PRINCIPAL CORRIGIDA ---
 export async function POST(req: Request) {
+    console.log("Headers recebidos:", JSON.stringify(Object.fromEntries(req.headers.entries())));
+    console.log("Secret esperado:", process.env.EVOLUTION_WEBHOOK_SECRET);
     try {
         // 🔴 3. PROTEÇÃO DO WEBHOOK (Valida se o pedido veio da Evolution de verdade)
         // 🔴 3. PROTEÇÃO DO WEBHOOK (Obrigatória: Falha Segura)
         const EVOLUTION_WEBHOOK_SECRET = process.env.EVOLUTION_WEBHOOK_SECRET;
-        
+
         if (!EVOLUTION_WEBHOOK_SECRET) {
             throw new Error('🔥 ALERTA DE SEGURANÇA: EVOLUTION_WEBHOOK_SECRET não definida no .env');
         }
 
         const webhookToken = req.headers.get('apikey') ?? req.headers.get('authorization')?.replace('Bearer ', '');
-        
+
         if (webhookToken !== EVOLUTION_WEBHOOK_SECRET) {
             console.warn('⚠️ Webhook recusado: token inválido ou ausente. Possível tentativa de invasão.');
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -197,7 +199,7 @@ export async function POST(req: Request) {
             const userInput = messageContent.trim().toUpperCase();
             if (userInput === 'SIM') {
                 const cmd = typeof pendingDeleteStr === 'string' ? JSON.parse(pendingDeleteStr) : pendingDeleteStr;
-                
+
                 // 🛡️ REVALIDAÇÃO DA WHITELIST (Defesa em Profundidade)
                 const ALLOWED_TABLES = ['transactions', 'installments', 'recurring'];
                 if (!ALLOWED_TABLES.includes(cmd.table)) {
@@ -205,10 +207,10 @@ export async function POST(req: Request) {
                     await redis.del(`pending_delete:${senderId}`);
                     return NextResponse.json({ status: 'Blocked' });
                 }
-                
+
                 // Puxa o user_settings rapidinho pra ter o user_id
                 const { data: us } = await supabase.from('user_settings').select('user_id').eq('whatsapp_id', senderId).single();
-                
+
                 if (us) {
                     const { data: items } = await supabase.from(cmd.table).select('id, title').eq('user_id', us.user_id).ilike('title', `%${cmd.data.title}%`).order('created_at', { ascending: false }).limit(1);
                     if (items?.length) {
@@ -248,7 +250,7 @@ export async function POST(req: Request) {
                 await sendWhatsAppMessage(remoteJid, "⚠️ Ocorreu um erro ao processar o seu áudio. Pode me mandar em texto?");
                 return NextResponse.json({ status: 'Audio Failed' });
             }
-        } 
+        }
         else if (msgType === "imageMessage" || msgData?.imageMessage) {
             let imageBase64 = body.data?.base64 || msgData?.imageMessage?.base64 || body.data?.message?.base64;
             if (!imageBase64) {
@@ -265,7 +267,7 @@ export async function POST(req: Request) {
                 await sendWhatsAppMessage(remoteJid, "⚠️ Não consegui ler a imagem. Pode tentar enviar de novo?");
                 return NextResponse.json({ status: 'Image Failed' });
             }
-        } 
+        }
         else {
             if (!messageContent) return NextResponse.json({ status: 'No Content' });
             promptParts.push(messageContent);
@@ -382,7 +384,7 @@ export async function POST(req: Request) {
 
             if (cmd.action === 'add') {
                 let payload: any = { ...cmd.data, user_id: userSettings.user_id, context: workspace?.id || null, created_at: new Date(), message_id: messageId };
-                
+
                 // Trava contra valores fantasmas ou strings
                 const extractedValue = parseFloat(cmd.data.amount) || parseFloat(cmd.data.value) || parseFloat(cmd.data.value_per_month) || parseFloat(cmd.data.total_value) || 0;
                 if (extractedValue <= 0) continue;
