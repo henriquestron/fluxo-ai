@@ -22,25 +22,32 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Sessão inválida ou expirada.' }, { status: 401 });
     }
 
-    // Perceba que removemos o "adminId" do body. O frontend não manda mais isso.
     const { targetUserId, newPlan } = await req.json();
 
     if (!targetUserId || !newPlan) {
       return NextResponse.json({ error: 'Dados incompletos' }, { status: 400 });
     }
 
-    // 🔴 3. Verifica se o DONO do token é Admin
+    // 🔴 3. WHITELIST DE PLANOS (A Trava Final)
+    // Impede que qualquer string maluca seja salva no banco, mesmo que enviada por um Admin
+    const VALID_PLANS = ['free', 'start', 'premium', 'pro', 'agent', 'admin'];
+    if (!VALID_PLANS.includes(newPlan)) {
+      console.warn(`Tentativa de aplicar plano inválido: ${newPlan} pelo Admin: ${user.id}`);
+      return NextResponse.json({ error: 'Plano inválido ou inexistente no sistema.' }, { status: 400 });
+    }
+
+    // 🔴 4. Verifica se o DONO do token é Admin
     const { data: adminProfile } = await supabaseAdmin
       .from('profiles')
       .select('plan_tier')
-      .eq('id', user.id) // Usamos a ID validada do token, não a do Body!
+      .eq('id', user.id)
       .single();
 
     if (adminProfile?.plan_tier !== 'admin') {
       return NextResponse.json({ error: 'Acesso negado: Você não é admin.' }, { status: 403 });
     }
 
-    // 4. Executa a mudança no banco de dados
+    // 5. Executa a mudança no banco de dados
     const { error: updateError } = await supabaseAdmin
       .from('profiles')
       .update({ plan_tier: newPlan })
@@ -51,7 +58,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true });
 
   } catch (error: any) {
-    // 🔴 5. Oculta vazamento de erros
+    // 6. Oculta vazamento de erros
     console.error('🔥 Erro na Rota Admin:', error);
     return NextResponse.json({ error: 'Erro interno no servidor.' }, { status: 500 });
   }

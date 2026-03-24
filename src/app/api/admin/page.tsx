@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { ArrowLeft, Rocket, Users, Settings, Save, ShieldCheck, Tag, Ticket } from "lucide-react";
+import { toast } from "sonner";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -16,10 +17,10 @@ const PlanConfigCard = ({ title, prefix, dbPrefix, settings, onChange }: any) =>
   return (
     <div className="bg-gray-50 dark:bg-[#151515] p-6 rounded-2xl border border-gray-200 dark:border-gray-800 space-y-4">
       <h3 className="font-bold text-lg border-b border-gray-200 dark:border-gray-700 pb-2 mb-4">{title}</h3>
-      
+
       <div>
         <label className="text-xs font-bold text-gray-500 uppercase">Descrição (Texto de Venda)</label>
-        <textarea 
+        <textarea
           className="w-full mt-1 p-3 border rounded-lg bg-white dark:bg-[#1a1a1a] text-sm focus:border-cyan-500 outline-none"
           rows={2}
           value={settings[`desc_${prefix}`] || ''}
@@ -30,8 +31,8 @@ const PlanConfigCard = ({ title, prefix, dbPrefix, settings, onChange }: any) =>
       <div className="grid grid-cols-2 gap-4 pt-2">
         <div>
           <label className="text-xs font-bold text-gray-500 uppercase">Stripe ID (Preço)</label>
-          <input 
-            type="text" 
+          <input
+            type="text"
             className="w-full mt-1 p-2 border rounded-lg bg-white dark:bg-[#1a1a1a] text-xs font-mono outline-none"
             value={settings[stripeNormalKey] || ''}
             onChange={(e) => onChange(stripeNormalKey, e.target.value)}
@@ -39,8 +40,8 @@ const PlanConfigCard = ({ title, prefix, dbPrefix, settings, onChange }: any) =>
         </div>
         <div>
           <label className="text-xs font-bold text-emerald-600 uppercase">Cupom Stripe (Opcional)</label>
-          <input 
-            type="text" 
+          <input
+            type="text"
             placeholder="Ex: PROMO_PRO"
             className="w-full mt-1 p-2 border-2 border-emerald-100 dark:border-emerald-900/30 rounded-lg bg-white dark:bg-[#1a1a1a] text-xs font-mono outline-none"
             value={settings[couponKey] || ''}
@@ -65,16 +66,16 @@ export default function AdminDashboard() {
   async function checkAdminAndFetchData() {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
-    
+
     if (!user) {
-      window.location.href = "/"; 
+      window.location.href = "/";
       return;
     }
 
     const { data: profile } = await supabase.from("profiles").select("plan_tier").eq("id", user.id).single();
 
     if (profile?.plan_tier !== "admin") {
-      window.location.href = "/"; 
+      window.location.href = "/";
       return;
     }
 
@@ -90,7 +91,12 @@ export default function AdminDashboard() {
   }
 
   async function fetchUsers() {
-    const { data } = await supabase.from("profiles").select("*").order("created_at", { ascending: false });
+    // 🟢 Busca apenas o que importa para a tela, ignorando dados sensíveis
+    const { data } = await supabase
+      .from("profiles")
+      .select("id, email, plan_tier, created_at")
+      .order("created_at", { ascending: false });
+
     if (data) setUsers(data);
   }
 
@@ -100,51 +106,59 @@ export default function AdminDashboard() {
 
   // 🟢 FUNÇÃO 1: SALVAR CONFIGURAÇÕES (Com Token)
   async function saveSettings() {
+    const toastId = toast.loading("Salvando configurações do sistema...");
     try {
-      // 1. Pega a carteirinha de identificação (Token)
+      // 🟢 getUser() obriga o Supabase a checar com o servidor se o usuário ainda é válido
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) throw new Error("Sessão inválida. Recarregue a página.");
+
+      // Pegamos o token fresco
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
 
       const res = await fetch('/api/admin/save-settings', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` // 🔒 O CRACHÁ!
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(settings)
       });
-      
-      if (!res.ok) throw new Error("Falha ao salvar");
-      
-      alert("✅ Configurações de Lançamento guardadas com sucesso!");
-    } catch (error) {
-      alert("❌ Erro ao guardar as configurações! Verifique se você tem permissão real.");
+
+      if (!res.ok) throw new Error("Falha ao salvar no backend.");
+
+      toast.success("Configurações guardadas com sucesso!", { id: toastId });
+    } catch (error: any) {
+      toast.error("Erro ao guardar as configurações: " + error.message, { id: toastId });
     }
   }
 
   // 🟢 FUNÇÃO 2: ATUALIZAR PLANO DE USUÁRIO (Com Token e Sem adminId forjado)
   async function updateUserPlan(userId: string, newPlan: string) {
+    const toastId = toast.loading(`Alterando plano para ${newPlan.toUpperCase()}...`);
     try {
-      // 1. Pega a carteirinha de identificação (Token)
+      // 🟢 Verificação de segurança profunda antes de chamar a API
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) throw new Error("Sessão inválida. Recarregue a página.");
+
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
 
       const res = await fetch('/api/admin/update-user', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` // 🔒 O CRACHÁ!
+          'Authorization': `Bearer ${token}`
         },
-        // 🔒 Retiramos o adminId daqui. O backend vai ler o Token para saber quem é o Admin.
-        body: JSON.stringify({ targetUserId: userId, newPlan: newPlan }) 
+        body: JSON.stringify({ targetUserId: userId, newPlan: newPlan })
       });
 
-      if (!res.ok) throw new Error("Erro desconhecido ou sem permissão");
+      if (!res.ok) throw new Error("Acesso negado ou erro no servidor.");
 
-      alert(`✅ Plano alterado para ${newPlan.toUpperCase()} com sucesso!`);
-      fetchUsers();
+      toast.success(`Plano alterado para ${newPlan.toUpperCase()} com sucesso!`, { id: toastId });
+      fetchUsers(); // Recarrega a lista para mostrar o novo plano
     } catch (error: any) {
-      alert("❌ Erro ao mudar o plano: " + error.message);
+      toast.error("Erro ao mudar o plano: " + error.message, { id: toastId });
     }
   }
 
@@ -154,12 +168,12 @@ export default function AdminDashboard() {
       <div className="text-xl font-medium text-gray-500 dark:text-gray-400">Verificando credenciais do CEO...</div>
     </div>
   );
-  
+
   if (!isAdmin) return null;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0a] text-gray-900 dark:text-gray-100 pb-20">
-      
+
       <div className="bg-white dark:bg-[#111111] border-b border-gray-200 dark:border-gray-800 sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -171,7 +185,7 @@ export default function AdminDashboard() {
               <p className="text-xs font-medium text-gray-500 uppercase tracking-widest">Controle Absoluto</p>
             </div>
           </div>
-          
+
           <button onClick={saveSettings} className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-bold py-2.5 px-6 rounded-xl transition-all shadow-lg hover:shadow-cyan-500/50 active:scale-95">
             <Save size={18} />
             <span className="hidden sm:inline">Guardar Modificações</span>
@@ -180,7 +194,7 @@ export default function AdminDashboard() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-10 space-y-10">
-        
+
         <section className="bg-white dark:bg-[#111111] p-8 rounded-3xl shadow-xl border border-gray-100 dark:border-gray-800 relative">
           <div className="flex items-center gap-3 mb-8 border-b border-gray-200 dark:border-gray-800 pb-6">
             <div className="p-3 bg-cyan-500/10 rounded-xl text-cyan-500"><Settings size={24} /></div>
@@ -189,16 +203,16 @@ export default function AdminDashboard() {
               <p className="text-sm text-gray-500">Controle a promoção global via Cupom</p>
             </div>
           </div>
-          
+
           {settings && (
             <div className="space-y-8">
               {/* BLOCO DA PROMOÇÃO (AGORA COM O CAMPO DO CUPOM) */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-cyan-50 dark:bg-cyan-950/20 p-6 rounded-2xl border border-cyan-100 dark:border-cyan-900/30">
                 <div>
                   <label className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2 mb-2">
-                    <Rocket size={16} className="text-cyan-500"/> Promoção
+                    <Rocket size={16} className="text-cyan-500" /> Promoção
                   </label>
-                  <select 
+                  <select
                     className={`w-full p-4 border-2 rounded-xl bg-white dark:bg-[#1a1a1a] font-bold transition-all outline-none ${settings.is_promo_active ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400' : 'border-gray-200 dark:border-gray-700'}`}
                     value={settings.is_promo_active ? "true" : "false"}
                     onChange={(e) => handleSettingChange("is_promo_active", e.target.value === "true")}
@@ -210,10 +224,10 @@ export default function AdminDashboard() {
 
                 <div>
                   <label className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2 mb-2">
-                    <Ticket size={16} className="text-cyan-500"/> ID do Cupom Stripe
+                    <Ticket size={16} className="text-cyan-500" /> ID do Cupom Stripe
                   </label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     placeholder="Ex: PROMO50"
                     className="w-full p-4 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-[#1a1a1a] outline-none focus:border-cyan-500 font-mono"
                     value={settings.stripe_coupon_id || ''}
@@ -223,10 +237,10 @@ export default function AdminDashboard() {
 
                 <div>
                   <label className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide flex items-center gap-2 mb-2">
-                    <Tag size={16} className="text-cyan-500"/> Frase no Site
+                    <Tag size={16} className="text-cyan-500" /> Frase no Site
                   </label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     placeholder="Ex: Oferta de Lançamento!"
                     className="w-full p-4 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-[#1a1a1a] outline-none focus:border-cyan-500 font-medium"
                     value={settings.promo_text || ''}
@@ -257,7 +271,7 @@ export default function AdminDashboard() {
               </div>
             </div>
           </div>
-          
+
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -277,7 +291,7 @@ export default function AdminDashboard() {
                       </span>
                     </td>
                     <td className="p-5 text-right">
-                      <select 
+                      <select
                         className="text-sm p-2.5 border border-gray-200 rounded-lg outline-none cursor-pointer"
                         value={u.plan_tier || 'free'}
                         onChange={(e) => updateUserPlan(u.id, e.target.value)}

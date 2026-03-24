@@ -11,7 +11,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Acesso negado. Token ausente.' }, { status: 401 });
     }
 
-    // 🟢 Usa a chave mestre (SERVICE_ROLE) APENAS porque validamos a identidade depois
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -35,12 +34,34 @@ export async function POST(req: Request) {
     }
 
     const settingsData = await req.json();
-    const { id, ...updateData } = settingsData; // Separa o ID do resto por segurança
+    const id = settingsData.id;
 
     if (!id) {
       return NextResponse.json({ error: 'ID de configuração ausente.' }, { status: 400 });
     }
 
+    // 🔴 4. WHITELIST DE COLUNAS (Proteção contra Mass Assignment)
+    // Apenas estes campos podem ser alterados na tabela app_settings
+    const EDITABLE_FIELDS = [
+      'is_promo_active', 'promo_text', 'stripe_coupon_id',
+      'stripe_start_normal', 'coupon_start',
+      'stripe_premium_normal', 'coupon_premium',
+      'stripe_price_pro', 'coupon_pro',
+      'stripe_agent_normal', 'coupon_agent',
+      'desc_start', 'desc_premium', 'desc_pro', 'desc_agent',
+    ];
+
+    // O código varre o que veio do frontend e joga fora qualquer coisa que não esteja na lista acima
+    const updateData = Object.fromEntries(
+      Object.entries(settingsData).filter(([key]) => EDITABLE_FIELDS.includes(key))
+    );
+
+    // Se depois do filtro não sobrar nada, não tem por que ir no banco
+    if (Object.keys(updateData).length === 0) {
+       return NextResponse.json({ error: 'Nenhum campo válido para atualizar fornecido.' }, { status: 400 });
+    }
+
+    // 5. Executa o update seguro
     const { error } = await supabaseAdmin
       .from("app_settings")
       .update(updateData)
@@ -51,7 +72,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true });
 
   } catch (error: any) {
-    // 🔴 4. Oculta vazamento de erros
     console.error('🔥 Erro ao salvar configurações:', error);
     return NextResponse.json({ error: 'Erro interno no servidor.' }, { status: 500 });
   }
