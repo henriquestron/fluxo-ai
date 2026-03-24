@@ -3,8 +3,7 @@ import {
     ShieldCheck, Briefcase, User, UserPlus, BarChart3, FileSpreadsheet,
     Lock, HelpCircle, ChevronDown, CreditCard, Smartphone, Palette,
     LogOut, Sparkles, Plus, Search, Calculator, Trash2, FileUp,
-    Link,
-    FileSignature
+    Link, FileSignature, FileText // 🟢 FileText adicionado aqui!
 } from 'lucide-react';
 import NotificationBell from '@/components/dashboard/NotificationBell';
 
@@ -36,9 +35,10 @@ interface DashboardHeaderProps {
     handleClientContractUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
     isManagedClient: boolean;
     clientContractUrl?: string;
-    onOpenContract: () => void;
-    client: any;
     clientStatus?: string;
+    onOpenContract: () => void;
+    onOpenReport: () => void; // 🟢 NOVA PROP DO RELATÓRIO AQUI
+    client: any;
     setIsImportOpen: (v: boolean) => void;
 }
 
@@ -48,7 +48,7 @@ export default function DashboardHeader({
     setIsProfileModalOpen, handleManageSubscription, whatsappEnabled, toggleWhatsappNotification,
     setIsCustomizationOpen, handleCheckout, handleLogout,
     setIsAIOpen, setIsCreditCardModalOpen, openNewTransactionModal, setIsCalculatorOpen, handleRemoveClient, client,
-    setIsImportOpen, setIsTutorialOpen, setIsContractOpen, handleClientContractUpload, isManagedClient, clientContractUrl, onOpenContract, clientStatus
+    setIsImportOpen, setIsTutorialOpen, setIsContractOpen, handleClientContractUpload, isManagedClient, clientContractUrl, clientStatus, onOpenContract, onOpenReport // 🟢 RECEBENDO AQUI
 }: DashboardHeaderProps) {
 
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -64,7 +64,7 @@ export default function DashboardHeader({
                 </h1>
 
                 <div id="menu-clientes" className="w-full mt-2 flex justify-center xl:justify-start">
-                    {(userPlan === 'agent') && (
+                    {(userPlan === 'agent' || userPlan === 'admin') && (
                         <div id="agent-bar" className="w-full max-w-md xl:max-w-none bg-purple-950/20 border border-purple-500/20 rounded-lg p-1.5 overflow-x-auto scrollbar-hide backdrop-blur-sm">
                             <div className="flex items-center gap-3 px-1 min-w-max">
                                 <div className="flex items-center gap-1.5 text-purple-400 font-bold uppercase text-[10px] tracking-wider whitespace-nowrap">
@@ -107,21 +107,20 @@ export default function DashboardHeader({
                             <FileSpreadsheet size={20} />
                             {userPlan === 'free' && <Lock size={10} className="absolute top-2 right-2 text-amber-500" />}
                         </button>
-
-                        {/* 🟢 BOTÃO DE UPLOAD (EXCLUSIVO PARA QUEM TEM CONSULTOR E O CONTRATO JÁ FOI GERADO) */}
-                        {/* 🟢 BOTÃO DE VER CONTRATO (PARA O CLIENTE) */}
+                        
+                        {/* BOTÃO DE VER CONTRATO (PARA O CLIENTE) */}
                         {(isManagedClient && clientContractUrl) && (
-                            <a
-                                href={clientContractUrl}
-                                target="_blank"
+                            <a 
+                                href={clientContractUrl} 
+                                target="_blank" 
                                 className="h-10 px-3 flex items-center justify-center rounded-lg text-emerald-400 bg-gray-800 hover:bg-gray-700 transition gap-2 text-sm font-bold border border-emerald-500/20"
                                 title="Visualizar Meu Contrato"
                             >
-                                <FileSignature size={18} /> <span className="hidden "></span>
+                                <FileSignature size={18} /> <span className="hidden sm:inline">Ver Contrato</span>
                             </a>
                         )}
 
-                        {/* 🟢 BOTÃO DE UPLOAD DO CLIENTE (SÓ APARECE SE NÃO ESTIVER ASSINADO AINDA) */}
+                        {/* BOTÃO DE UPLOAD DO CLIENTE (SOME SE JÁ ESTIVER ASSINADO) */}
                         {(isManagedClient && clientContractUrl && clientStatus !== 'contract_signed') && (
                             <label
                                 className="relative h-10 w-10 flex items-center justify-center rounded-lg text-emerald-500 hover:text-white hover:bg-emerald-900/30 transition border border-emerald-500/20 bg-emerald-500/10 cursor-pointer"
@@ -132,19 +131,7 @@ export default function DashboardHeader({
                                 <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse border-2 border-gray-900"></span>
                             </label>
                         )}
-
-                        {/* 🟢 BOTÃO DE VER CONTRATO (PARA O CONSULTOR VENDO A CARTEIRA) */}
-                        {(userPlan === 'agent') && viewingAs?.contract_url && (
-                            <a
-                                href={viewingAs.contract_url}
-                                target="_blank"
-                                className="h-10 px-3 flex items-center justify-center rounded-lg text-emerald-400 bg-emerald-900/20 hover:bg-emerald-900/40 transition gap-2 text-sm font-bold border border-emerald-500/20"
-                                title="Visualizar Contrato do Cliente"
-                            >
-                                <FileSignature size={18} />
-                            </a>
-                        )}
-
+                        
                         {/* BOTÃO DE IMPORTAR */}
                         <button
                             id="btn-import"
@@ -174,15 +161,39 @@ export default function DashboardHeader({
                         </button>
                     </div>
 
-                    {/* 🟢 BOTÃO DE GERAR CONTRATO DO CONSULTOR CORRIGIDO */}
-                    {(userPlan === 'agent') && (
-                        <button
-                            onClick={onOpenContract}
-                            className="h-10 w-10 flex items-center justify-center rounded-lg text-cyan-500 hover:text-white hover:bg-cyan-900/30 transition border border-cyan-500/20 bg-cyan-500/10"
-                            title="Gerar Contrato de Consultoria"
-                        >
-                            <FileSignature size={20} />
-                        </button>
+                    {/* BOTÕES EXCLUSIVOS DO CONSULTOR E ADMIN */}
+                    {(userPlan === 'agent' || userPlan === 'admin') && (
+                        <div className="flex items-center gap-2">
+                            {/* BOTÃO DE VER CONTRATO (PARA O CONSULTOR VENDO A CARTEIRA) */}
+                            {viewingAs?.contract_url && (
+                                <a 
+                                    href={viewingAs.contract_url} 
+                                    target="_blank" 
+                                    className="h-10 px-3 flex items-center justify-center rounded-lg text-emerald-400 bg-emerald-900/20 hover:bg-emerald-900/40 transition gap-2 text-sm font-bold border border-emerald-500/20"
+                                    title="Visualizar Contrato do Cliente"
+                                >
+                                    <FileSignature size={18} />
+                                </a>
+                            )}
+
+                            {/* 🟢 O BOTÃO DE GERAR CONTRATO FICA AQUI */}
+                            <button
+                                onClick={onOpenContract}
+                                className="h-10 w-10 flex items-center justify-center rounded-lg text-cyan-500 hover:text-white hover:bg-cyan-900/30 transition border border-cyan-500/20 bg-cyan-500/10"
+                                title="Gerar Contrato de Consultoria"
+                            >
+                                <FileSignature size={20} />
+                            </button>
+
+                            {/* 🟢 O NOVO BOTÃO DE GERAR RELATÓRIO COM IA FICA AQUI */}
+                            <button
+                                onClick={onOpenReport}
+                                className="h-10 w-10 flex items-center justify-center rounded-lg text-indigo-400 hover:text-white hover:bg-indigo-900/30 transition border border-indigo-500/20 bg-indigo-500/10"
+                                title="Gerar Relatório de Análise"
+                            >
+                                <FileText size={20} />
+                            </button>
+                        </div>
                     )}
 
                     <div className="hidden xl:block w-px h-8 bg-gray-800 mx-1"></div>

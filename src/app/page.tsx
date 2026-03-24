@@ -44,6 +44,7 @@ import GoalModal from '@/components/dashboard/GoalModal';
 
 import { Transaction, Installment, Recurring, Goal, ClientUser } from '@/types';
 import ContractGenerator from '@/components/dashboard/agent/contratos/ContractGenerator';
+import ReportGenerator from '@/components/dashboard/agent/contratos/ReportGenerator';
 
 
 
@@ -101,6 +102,7 @@ export default function FinancialDashboard() {
     const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
     const [isContractOpen, setIsContractOpen] = useState(false);
     const [myConsultantLink, setMyConsultantLink] = useState<any>(null);
+    const [isReportOpen, setIsReportOpen] = useState(false);
 
     // --- AUTH & USER DATA ---
     const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
@@ -381,32 +383,30 @@ export default function FinancialDashboard() {
                 const currentUser = data.session?.user || null;
 
                 setUser(currentUser);
+                
                 if (currentUser) {
                     fetchUserProfile(currentUser.id);
-                    fetchWorkspaces(currentUser.id);
+                    
+                    // 🟢 A MÁGICA ACONTECE AQUI:
+                    // Verifica se já tem um cliente na tela. Se tiver, busca os dados dele. Se não, busca os do consultor.
+                    const targetId = viewingAs ? (viewingAs.client_id || viewingAs.id) : currentUser.id;
+                    fetchWorkspaces(targetId);
+                    
                     fetchUserSettings(currentUser.id);
                 }
-            } catch (e) { setUser(null); }
-            finally {
+            } catch (e) { 
+                setUser(null); 
+            } finally {
                 // 👇 O SEGREDO: Avisa que terminou de carregar
                 setIsSessionLoading(false);
             }
         };
+        
         checkUser();
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-            if (event === 'PASSWORD_RECOVERY') { setIsChangePasswordOpen(true); }
-            else if (event === 'SIGNED_OUT' || (event as string) === 'USER_DELETED') {
-                setUser(null); setTransactions([]); setInstallments([]); setRecurring([]); setWorkspaces([]); setCurrentWorkspace(null);
-            }
-            else if (session?.user) {
-                setUser(session.user);
-                fetchUserProfile(session.user.id);
-                fetchWorkspaces(session.user.id);
-            }
-        });
-        return () => subscription.unsubscribe();
-    }, []);
+    // 🟢 ADICIONAMOS O viewingAs AQUI NOS COLCHETES PARA O REACT FICAR ESPERTO!
+    // (Se no seu código original os colchetes estiverem vazios [], substitua por isso):
+    }, [viewingAs]);
 
     const fetchWorkspaces = async (userId: string, forceSelectFirst = false) => {
         const { data } = await supabase.from('workspaces').select('*').eq('user_id', userId).order('created_at', { ascending: true });
@@ -569,7 +569,7 @@ export default function FinancialDashboard() {
         }
     };
     const handleOpenContract = async () => {
-        
+
 
         if (!viewingAs) {
             toast.error("⚠️ Você precisa clicar no nome de um cliente na barra roxa primeiro!");
@@ -587,18 +587,18 @@ export default function FinancialDashboard() {
                 .single();
 
             if (data) {
-                
+
                 // Se o banco trouxe o dado fresco, a gente atualiza a "visão" atual pra não ir com dado velho pro contrato
-                setViewingAs(data); 
+                setViewingAs(data);
             } else {
-                
+
             }
         } catch (err) {
-            
+
         } finally {
             // Essa é a linha que manda o modal abrir, não importa o que aconteça!
             toast.dismiss(toastId);
-            setIsContractOpen(true); 
+            setIsContractOpen(true);
         }
     };
 
@@ -2254,6 +2254,7 @@ export default function FinancialDashboard() {
                 clientContractUrl={myConsultantLink?.contract_url}
                 onOpenContract={handleOpenContract}
                 clientStatus={myConsultantLink?.status}
+                onOpenReport={() => setIsReportOpen(true)}
             />
             <TabNavigation
                 activeSection={activeSection}
@@ -2595,6 +2596,14 @@ export default function FinancialDashboard() {
                         🧪 Entrar no Laboratório (Simular Saldo)
                     </button>
                 </div>
+            )}
+
+            {isReportOpen && (
+                <ReportGenerator
+                    consultant={user}
+                    client={viewingAs}
+                    onClose={() => setIsReportOpen(false)}
+                />
             )}
 
             {/* MODAL DE PREÇOS (O QUE TINHA SUMIDO!) */}
