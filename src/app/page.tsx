@@ -103,6 +103,7 @@ export default function FinancialDashboard() {
     const [isContractOpen, setIsContractOpen] = useState(false);
     const [myConsultantLink, setMyConsultantLink] = useState<any>(null);
     const [isReportOpen, setIsReportOpen] = useState(false);
+    const [consultantLogo, setConsultantLogo] = useState<string | null>(null);
 
     // --- AUTH & USER DATA ---
     const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
@@ -385,6 +386,15 @@ export default function FinancialDashboard() {
                 setUser(currentUser);
                 
                 if (currentUser) {
+                    const { data: profile } = await supabase
+                        .from('profiles')
+                        .select('company_logo')
+                        .eq('id', currentUser.id)
+                        .maybeSingle();
+                        
+                    if (profile?.company_logo) {
+                        setConsultantLogo(profile.company_logo);
+                    }
                     fetchUserProfile(currentUser.id);
                     
                     // 🟢 A MÁGICA ACONTECE AQUI:
@@ -2313,6 +2323,8 @@ export default function FinancialDashboard() {
                     clients={clients}                // Passa a lista de clientes
                     onClose={() => setIsContractOpen(false)}
                     client={viewingAs}
+                    companyLogoUrl={consultantLogo}
+                    consultantName={user?.user_metadata?.full_name}
                 />
             )}
 
