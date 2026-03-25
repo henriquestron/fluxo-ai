@@ -54,125 +54,120 @@ export default function DashboardHeader({
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
     return (
-        <header className="flex flex-col xl:flex-row gap-4 xl:gap-6 justify-between xl:items-center mb-6 xl:mb-10 relative z-30">
+        <header className="flex flex-col xl:flex-row gap-6 justify-between xl:items-center mb-6 xl:mb-10 relative z-30">
 
             {/* LADO ESQUERDO: Logo + Consultor */}
-            <div id="logo-area" className="w-full xl:w-auto text-center md:text-left flex flex-col items-center xl:items-start gap-3">
-                
-                {/* LOGO */}
-                <h1 className="text-3xl sm:text-4xl font-extrabold text-white flex items-center justify-center md:justify-start gap-2 tracking-tighter">
+            <div id="logo-area" className="w-full xl:w-auto text-center md:text-left flex flex-col items-center xl:items-start">
+                <h1 className="text-4xl font-extrabold text-white flex items-center justify-center md:justify-start gap-2 tracking-tighter">
                     <ShieldCheck className="text-cyan-500" size={32} />
                     Meu<span className="text-cyan-500">Aliado.</span>
                 </h1>
 
-                {/* 🟢 BARRA ROXA DO CONSULTOR (AGORA 100% RESPONSIVA) */}
-                {(userPlan === 'agent') && (
-                    <div id="menu-clientes" className="w-full">
-                        <div id="agent-bar" className="w-full bg-purple-950/20 border border-purple-500/20 rounded-lg p-2 backdrop-blur-sm">
-                            <div className="flex flex-wrap items-center justify-center xl:justify-start gap-2 sm:gap-3">
-                                
+                <div id="menu-clientes" className="w-full mt-2 flex justify-center xl:justify-start">
+                    {(userPlan === 'agent') && (
+                        /* 🟢 Barra do Consultor: Flex-wrap apenas no mobile, Min-w-max original no PC */
+                        <div id="agent-bar" className="w-full max-w-md xl:max-w-none bg-purple-950/20 border border-purple-500/20 rounded-lg p-1.5 overflow-x-auto scrollbar-hide backdrop-blur-sm">
+                            <div className="flex flex-wrap xl:flex-nowrap items-center justify-center xl:justify-start gap-2 xl:gap-3 px-1 xl:min-w-max">
                                 <div className="hidden sm:flex items-center gap-1.5 text-purple-400 font-bold uppercase text-[10px] tracking-wider whitespace-nowrap">
                                     <Briefcase size={14} /> Painel
                                 </div>
                                 <div className="hidden sm:block h-4 w-px bg-purple-500/20"></div>
-                                
-                                {/* Lista de Clientes com Quebra Automática (Flex Wrap) */}
-                                <div id="client-selector" className="flex flex-wrap items-center justify-center gap-2 flex-1">
-                                    <button onClick={() => switchView(null)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition whitespace-nowrap ${!viewingAs ? 'bg-purple-600 text-white shadow-md' : 'text-purple-300 hover:bg-purple-500/10'}`}>
-                                        <User size={12} /> Minha Conta
+                                <div id="client-selector" className="flex flex-wrap xl:flex-nowrap items-center justify-center gap-2 flex-1">
+                                    <button onClick={() => switchView(null)} className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs transition whitespace-nowrap ${!viewingAs ? 'bg-purple-600 text-white shadow-md' : 'text-purple-300 hover:bg-purple-500/10'}`}>
+                                        <User size={12} /> Carteira
                                     </button>
-                                    
                                     {clients.map(c => (
-                                        <button key={c.id} onClick={() => switchView(c)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition whitespace-nowrap ${viewingAs?.id === c.id ? 'bg-purple-600 text-white shadow-md' : 'text-purple-300 hover:bg-purple-500/10'}`}>
+                                        <button key={c.id} onClick={() => switchView(c)} className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs transition whitespace-nowrap ${viewingAs?.id === c.id ? 'bg-purple-600 text-white shadow-md' : 'text-purple-300 hover:bg-purple-500/10'}`}>
                                             <div className={`w-1.5 h-1.5 rounded-full ${c.client_id ? 'bg-emerald-400' : 'bg-orange-500'}`}></div>
                                             {c.client_email.split('@')[0]}
                                         </button>
                                     ))}
-                                    
-                                    <button id="btn-add-client" onClick={() => setIsClientModalOpen(true)} className="flex items-center gap-1 text-[10px] bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white px-3 py-1.5 rounded border border-purple-500/30 transition whitespace-nowrap">
+                                    <button id="btn-add-client" onClick={() => setIsClientModalOpen(true)} className="ml-0 xl:ml-auto flex items-center gap-1 text-[10px] bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white px-2 py-1 rounded border border-purple-500/30 transition whitespace-nowrap">
                                         <UserPlus size={10} /> Add
                                     </button>
-
                                     {viewingAs && (
-                                        <button onClick={() => handleRemoveClient(viewingAs)} className="text-red-500 hover:text-red-400 p-1"><Trash2 size={16} /></button>
+                                        <button onClick={() => handleRemoveClient(viewingAs)} className="text-red-500 hover:text-red-400"><Trash2 size={18} /></button>
                                     )}
                                 </div>
                             </div>
                         </div>
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
 
             {/* LADO DIREITO: Ações */}
-            <div className="flex flex-col gap-3 w-full xl:w-auto">
+            <div className="flex flex-col xl:flex-row gap-3 w-full xl:w-auto">
 
-                {/* 🟢 GRUPO 1: Ferramentas do Cliente & Menu (Responsivo) */}
-                <div className="flex flex-wrap items-center justify-center xl:justify-end gap-2 w-full order-2 xl:order-1">
+                {/* GRUPO 1: Utilitários e Menu */}
+                {/* 🟢 Mobile inverte a ordem (order-2) para botões principais ficarem acima, PC mantém (xl:order-none) */}
+                <div className="flex flex-wrap xl:flex-nowrap items-center justify-center xl:justify-start gap-2 w-full xl:w-auto order-2 xl:order-none">
                     
-                    <div className="flex items-center gap-1 sm:gap-2 bg-gray-900/50 p-1 rounded-xl border border-gray-800 overflow-x-auto scrollbar-hide">
-                        <button id="btn-history" onClick={() => setIsHistoryOpen(true)} className="h-9 w-9 sm:h-10 sm:w-10 flex-shrink-0 flex items-center justify-center rounded-lg text-gray-400 hover:text-cyan-400 hover:bg-gray-800 transition" title="Ver Gráfico Anual">
-                            <BarChart3 size={18} />
+                    {/* 🟢 Ícones com tamanho original size={20} e h-10 w-10 no PC */}
+                    <div className="flex items-center gap-1 xl:gap-2 bg-gray-900/50 p-1 rounded-xl border border-gray-800 overflow-x-auto scrollbar-hide max-w-full">
+                        <button id="btn-history" onClick={() => setIsHistoryOpen(true)} className="h-9 w-9 xl:h-10 xl:w-10 shrink-0 flex items-center justify-center rounded-lg text-gray-400 hover:text-cyan-400 hover:bg-gray-800 transition" title="Ver Gráfico Anual">
+                            <BarChart3 size={20} />
                         </button>
-                        <button id="btn-export" onClick={() => { if (userPlan === 'free') { openPricingModal(); return; } setIsExportModalOpen(true); }} className={`h-9 w-9 sm:h-10 sm:w-10 flex-shrink-0 flex items-center justify-center rounded-lg transition relative ${userPlan === 'free' ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-emerald-400 hover:bg-gray-800'}`}>
-                            <FileSpreadsheet size={18} />
+                        <button id="btn-export" onClick={() => { if (userPlan === 'free') { openPricingModal(); return; } setIsExportModalOpen(true); }} className={`h-9 w-9 xl:h-10 xl:w-10 shrink-0 flex items-center justify-center rounded-lg transition relative ${userPlan === 'free' ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-emerald-400 hover:bg-gray-800'}`}>
+                            <FileSpreadsheet size={20} />
                             {userPlan === 'free' && <Lock size={10} className="absolute top-1.5 right-1.5 text-amber-500" />}
                         </button>
                         
-                        {/* BOTÃO DE VER CONTRATO (VISÃO CLIENTE) */}
                         {(isManagedClient && clientContractUrl) && (
-                            <a href={clientContractUrl} target="_blank" className="h-9 sm:h-10 px-3 flex-shrink-0 flex items-center justify-center rounded-lg text-emerald-400 bg-gray-800 hover:bg-gray-700 transition gap-2 text-xs sm:text-sm font-bold border border-emerald-500/20" title="Visualizar Meu Contrato">
-                                <FileSignature size={16} /> <span className="hidden sm:inline">Ver Contrato</span>
+                            <a href={clientContractUrl} target="_blank" className="h-9 xl:h-10 shrink-0 px-3 flex items-center justify-center rounded-lg text-emerald-400 bg-gray-800 hover:bg-gray-700 transition gap-2 text-xs xl:text-sm font-bold border border-emerald-500/20" title="Visualizar Meu Contrato">
+                                <FileSignature size={18} /> <span className="hidden"></span>
                             </a>
                         )}
 
-                        {/* BOTÃO UPLOAD DO CLIENTE */}
                         {(isManagedClient && clientContractUrl && clientStatus !== 'contract_signed') && (
-                            <label className="relative h-9 w-9 sm:h-10 sm:w-10 flex-shrink-0 flex items-center justify-center rounded-lg text-emerald-500 hover:text-white hover:bg-emerald-900/30 transition border border-emerald-500/20 bg-emerald-500/10 cursor-pointer" title="Enviar Contrato Assinado">
+                            <label className="relative h-9 w-9 xl:h-10 xl:w-10 shrink-0 flex items-center justify-center rounded-lg text-emerald-500 hover:text-white hover:bg-emerald-900/30 transition border border-emerald-500/20 bg-emerald-500/10 cursor-pointer" title="Enviar Contrato Assinado">
                                 <input type="file" accept=".pdf" className="hidden" onChange={handleClientContractUpload} />
-                                <FileUp size={18} />
-                                <span className="absolute top-0 right-0 w-2 h-2 sm:w-2.5 sm:h-2.5 bg-red-500 rounded-full animate-pulse border-2 border-gray-900"></span>
+                                <FileUp size={20} />
+                                <span className="absolute top-0 right-0 w-2 h-2 xl:w-2.5 xl:h-2.5 bg-red-500 rounded-full animate-pulse border-2 border-gray-900"></span>
                             </label>
                         )}
                         
-                        {/* BOTÃO IMPORTAR BETA */}
-                        <button id="btn-import" onClick={() => setIsImportOpen(true)} className="relative h-9 w-9 sm:h-10 sm:w-10 flex-shrink-0 flex items-center justify-center rounded-lg text-gray-400 hover:text-emerald-400 hover:bg-gray-800 transition" title="Importar Contas Mágica">
-                            <FileUp size={18} />
-                            <span className="absolute -top-1 -right-1 bg-gradient-to-r from-emerald-500 to-cyan-500 text-black text-[6px] sm:text-[7px] font-black px-1 py-px rounded uppercase tracking-tighter shadow-lg border border-emerald-400">BETA</span>
+                        <button id="btn-import" onClick={() => setIsImportOpen(true)} className="relative h-9 w-9 xl:h-10 xl:w-10 shrink-0 flex items-center justify-center rounded-lg text-gray-400 hover:text-emerald-400 hover:bg-gray-800 transition" title="Importar Contas Mágica">
+                            <FileUp size={20} />
+                            <span className="absolute -top-1.5 -right-1 bg-gradient-to-r from-emerald-500 to-cyan-500 text-black text-[7px] font-black px-1 py-px rounded uppercase tracking-tighter shadow-lg border border-emerald-400">
+                                BETA
+                            </span>
                         </button>
 
-                        <button onClick={() => setIsTutorialOpen(true)} className="h-9 w-9 sm:h-10 sm:w-10 flex-shrink-0 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition" title="Ver Tutorial em Vídeo">
-                            <HelpCircle size={18} />
+                        <button onClick={() => setIsTutorialOpen(true)} className="h-9 w-9 xl:h-10 xl:w-10 shrink-0 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition" title="Ver Tutorial em Vídeo">
+                            <HelpCircle size={20} />
                         </button>
-                        <button onClick={() => setIsCalculatorOpen(true)} className="h-9 w-9 sm:h-10 sm:w-10 flex-shrink-0 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition" title="Abrir Calculadora">
-                            <Calculator size={18} />
+                        <button onClick={() => setIsCalculatorOpen(true)} className="h-9 w-9 xl:h-10 xl:w-10 shrink-0 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition" title="Abrir Calculadora">
+                            <Calculator size={20} />
                         </button>
                     </div>
 
-                    {/* 🟢 FERRAMENTAS DO CONSULTOR (Compactas no Mobile) */}
+                    {/* BOTÕES EXCLUSIVOS DO CONSULTOR E ADMIN */}
                     {(userPlan === 'agent') && (
-                        <div className="flex items-center gap-1 sm:gap-2">
+                        <div className="flex items-center gap-1 xl:gap-2">
                             {viewingAs?.contract_url && (
-                                <a href={viewingAs.contract_url} target="_blank" className="h-9 w-9 sm:h-10 sm:w-10 flex-shrink-0 flex items-center justify-center rounded-lg text-emerald-400 bg-emerald-900/20 hover:bg-emerald-900/40 transition border border-emerald-500/20" title="Visualizar Contrato do Cliente">
-                                    <FileSignature size={18} />
+                                <a href={viewingAs.contract_url} target="_blank" className="h-9 w-9 xl:h-10 xl:w-10 shrink-0 flex items-center justify-center rounded-lg text-emerald-400 bg-emerald-900/20 hover:bg-emerald-900/40 transition gap-2 text-sm font-bold border border-emerald-500/20" title="Visualizar Contrato do Cliente">
+                                    <FileSignature size={20} />
                                 </a>
                             )}
-                            <button onClick={onOpenContract} className="h-9 w-9 sm:h-10 sm:w-10 flex-shrink-0 flex items-center justify-center rounded-lg text-cyan-500 hover:text-white hover:bg-cyan-900/30 transition border border-cyan-500/20 bg-cyan-500/10" title="Gerar Contrato de Consultoria">
-                                <FileSignature size={18} />
+
+                            <button onClick={onOpenContract} className="h-9 w-9 xl:h-10 xl:w-10 shrink-0 flex items-center justify-center rounded-lg text-cyan-500 hover:text-white hover:bg-cyan-900/30 transition border border-cyan-500/20 bg-cyan-500/10" title="Gerar Contrato de Consultoria">
+                                <FileSignature size={20} />
                             </button>
-                            <button onClick={onOpenReport} className="h-9 w-9 sm:h-10 sm:w-10 flex-shrink-0 flex items-center justify-center rounded-lg text-indigo-400 hover:text-white hover:bg-indigo-900/30 transition border border-indigo-500/20 bg-indigo-500/10" title="Gerar Relatório de Análise">
-                                <FileText size={18} />
+
+                            <button onClick={onOpenReport} className="h-9 w-9 xl:h-10 xl:w-10 shrink-0 flex items-center justify-center rounded-lg text-indigo-400 hover:text-white hover:bg-indigo-900/30 transition border border-indigo-500/20 bg-indigo-500/10" title="Gerar Relatório de Análise">
+                                <FileText size={20} />
                             </button>
                         </div>
                     )}
 
                     <div className="hidden xl:block w-px h-8 bg-gray-800 mx-1"></div>
 
-                    {/* SININHO E PERFIL (Menu) */}
-                    <div className="flex items-center justify-center w-full md:w-auto gap-2 pl-0 xl:pl-2 mt-2 xl:mt-0">
+                    {/* 🟢 O Perfil/Sininho centraliza no mobile e fica à direita no PC */}
+                    <div className="flex items-center justify-center w-full xl:w-auto gap-2 pl-0 xl:pl-2 mt-2 xl:mt-0 xl:border-none">
                         <NotificationBell userId={user.id} />
 
                         <div id="btn-menu" className="relative z-50">
-                            <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className={`h-9 sm:h-11 px-2 sm:px-3 xl:px-4 bg-gray-900 border border-gray-800 rounded-xl hover:bg-gray-800 flex items-center justify-center gap-2 transition ${isUserMenuOpen ? 'ring-2 ring-cyan-500/50 border-cyan-500/50' : ''}`}>
+                            <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className={`h-11 px-3 xl:px-4 bg-gray-900 border border-gray-800 rounded-xl hover:bg-gray-800 flex items-center justify-center gap-2 transition ${isUserMenuOpen ? 'ring-2 ring-cyan-500/50 border-cyan-500/50' : ''}`}>
                                 {user.user_metadata?.avatar_url
                                     ? (<img src={user.user_metadata.avatar_url} className="w-6 h-6 rounded-full object-cover ring-2 ring-gray-700" alt="Avatar" />)
                                     : (<div className="w-6 h-6 rounded-full bg-gray-700 flex items-center justify-center text-gray-300"><User size={14} /></div>)
@@ -181,11 +176,10 @@ export default function DashboardHeader({
                                 <ChevronDown size={14} className="text-gray-500 hidden md:block" />
                             </button>
 
-                            {/* O MENU DROPDOWN PERMANECEU INTACTO */}
                             {isUserMenuOpen && (
                                 <>
                                     <div className="fixed inset-0 z-40" onClick={() => setIsUserMenuOpen(false)}></div>
-                                    <div className="absolute top-full right-[-50px] sm:right-0 mt-2 w-64 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <div className="absolute top-full right-[-50px] sm:right-0 xl:right-0 mt-2 w-64 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                                         <div className="bg-[#0f0f0f] border border-gray-800 rounded-2xl shadow-2xl overflow-hidden ring-1 ring-white/10">
                                             <div className="p-4 border-b border-gray-800 bg-gray-900/50">
                                                 <div className="flex items-center gap-3">
@@ -234,8 +228,9 @@ export default function DashboardHeader({
                     </div>
                 </div>
 
-                {/* 🟢 GRUPO 2: Ações Principais (Novo, Fatura, IA) */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 xl:flex gap-2 xl:gap-3 w-full xl:w-auto order-1 xl:order-2">
+                {/* GRUPO 2: Ações Principais */}
+                {/* 🟢 Mobile inverte a ordem (order-1) para botões principais ficarem acima, PC mantém (xl:order-none) */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 xl:flex gap-2 xl:gap-3 w-full xl:w-auto order-1 xl:order-none">
 
                     <button id="btn-ai" onClick={() => setIsAIOpen(true)} className={`h-11 px-3 xl:px-5 rounded-xl font-bold transition flex items-center justify-center gap-2 text-sm shadow-lg border border-white/5 whitespace-nowrap ${['premium', 'pro', 'agent', 'admin'].includes(userPlan) ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white hover:brightness-110' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
                         <Sparkles size={16} className={['premium', 'pro', 'agent', 'admin'].includes(userPlan) ? "text-cyan-200 fill-cyan-200" : ""} />

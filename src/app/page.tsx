@@ -2283,6 +2283,7 @@ export default function FinancialDashboard() {
             <OnboardingTutorial
                 isOpen={isTutorialOpen}
                 onClose={() => setIsTutorialOpen(false)}
+                userPlan={userPlan}
             />
 
 
