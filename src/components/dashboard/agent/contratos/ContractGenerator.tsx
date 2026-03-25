@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { FileSignature, Printer, ShieldCheck, X, User, FileUp, Loader2 } from 'lucide-react';
+import { FileSignature, Printer, ShieldCheck, X, User, FileUp, Loader2, Pencil } from 'lucide-react';
 import { supabase } from '@/supabase';
 import { toast } from 'sonner';
 
 export default function ContractGenerator({ consultant, client, onClose, companyLogoUrl }: any) {
 
-    // Puxa os dados direto do cliente atual de forma automática
     const clientName = client?.full_name || client?.client_email?.split('@')[0] || '';
     const clientCPF = client?.cpf || '';
 
@@ -15,14 +14,19 @@ export default function ContractGenerator({ consultant, client, onClose, company
     const [consultantName, setConsultantName] = useState(consultant?.user_metadata?.full_name || consultant?.name || '');
     const [consultantDoc, setConsultantDoc] = useState(''); 
 
-    // 🟢 Novos Estados para IBGE (Estado e Cidade)
+    // 🟢 Agora começam vazios e são opcionais!
+    const [paymentMethod, setPaymentMethod] = useState('a_vista');
+    const [installments, setInstallments] = useState('');
+    const [penaltyFee, setPenaltyFee] = useState(''); 
+    const [interestRate, setInterestRate] = useState(''); 
+    const [noticePeriod, setNoticePeriod] = useState('30'); 
+
     const [states, setStates] = useState<any[]>([]);
     const [cities, setCities] = useState<any[]>([]);
     const [selectedUF, setSelectedUF] = useState('');
     const [selectedCityName, setSelectedCityName] = useState('');
-    const [city, setCity] = useState(''); // O estado final que vai pro contrato
+    const [city, setCity] = useState('');
 
-    // 🟢 Busca os Estados do IBGE ao abrir
     useEffect(() => {
         fetch('https://servicodados.ibge.gov.br/api/v1/localidades/estados?orderBy=nome')
             .then(res => res.json())
@@ -30,7 +34,6 @@ export default function ContractGenerator({ consultant, client, onClose, company
             .catch(() => console.error("Erro ao buscar estados"));
     }, []);
 
-    // 🟢 Busca as cidades sempre que o Estado (UF) mudar
     useEffect(() => {
         if (selectedUF) {
             fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${selectedUF}/municipios`)
@@ -42,7 +45,6 @@ export default function ContractGenerator({ consultant, client, onClose, company
         }
     }, [selectedUF]);
 
-    // 🟢 Atualiza a cidade final no formato "Cidade - UF"
     useEffect(() => {
         if (selectedCityName && selectedUF) {
             setCity(`${selectedCityName} - ${selectedUF}`);
@@ -51,54 +53,43 @@ export default function ContractGenerator({ consultant, client, onClose, company
         }
     }, [selectedCityName, selectedUF]);
 
-    // 🟢 MÁSCARA AUTOMÁTICA DE CPF/CNPJ
     const handleDocChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        let value = e.target.value.replace(/\D/g, ''); // Tira tudo que não é número
+        let value = e.target.value.replace(/\D/g, ''); 
         
         if (value.length <= 11) {
-            // Máscara de CPF
             value = value.replace(/(\d{3})(\d)/, '$1.$2');
             value = value.replace(/(\d{3})(\d)/, '$1.$2');
             value = value.replace(/(\d{3})(\d{1,2})$/, '$1-$2');
         } else {
-            // Máscara de CNPJ
             value = value.replace(/^(\d{2})(\d)/, '$1.$2');
             value = value.replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3');
             value = value.replace(/\.(\d{3})(\d)/, '.$1/$2');
             value = value.replace(/(\d{4})(\d{1,2})$/, '$1-$2');
         }
-        setConsultantDoc(value.substring(0, 18)); // Limita o tamanho máximo
+        setConsultantDoc(value.substring(0, 18));
     };
 
     const handlePrint = () => {
         window.print();
     };
 
-    // 🟢 FUNÇÃO DE UPLOAD DO CONTRATO ASSINADO (Atualizada para Sobrescrever)
     const handleUploadSigned = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file || !client) return;
 
         setIsUploading(true);
         try {
-            // 1. Nome FIXO para este cliente. Sem Date.now() no nome do arquivo!
             const fileName = `contrato_${client.id}.pdf`;
 
-            // 2. Sobe para o Storage passando a opção UPSERT (Isso apaga o arquivo velho e põe o novo)
             const { error: uploadError } = await supabase.storage
                 .from('contracts')
                 .upload(fileName, file, { upsert: true });
 
             if (uploadError) throw uploadError;
 
-            // 3. Pega a URL pública
             const { data: { publicUrl } } = supabase.storage.from('contracts').getPublicUrl(fileName);
-
-            // 4. O TRUQUE DO CACHE: Adicionamos o timestamp na URL (não no arquivo) 
-            // para forçar o navegador a baixar a versão nova em vez de usar a memória.
             const finalUrl = `${publicUrl}?v=${Date.now()}`;
 
-            // 5. Salva o link final no banco
             const { error: dbError } = await supabase
                 .from('manager_clients')
                 .update({ contract_url: finalUrl })
@@ -123,18 +114,18 @@ export default function ContractGenerator({ consultant, client, onClose, company
         }
     };
 
-    // Validação para habilitar o botão de imprimir
-    const isFormValid = client && contractValue && city && (consultantDoc.length === 14 || consultantDoc.length === 18);
+    // 🟢 Validação relaxada: Exige apenas Nome do Consultor, Valor e Cidade.
+    const isFormValid = client && consultantName && contractValue && city;
 
     return (
-        <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-sm overflow-y-auto p-4 sm:p-8 font-sans">
-            <div className="max-w-4xl mx-auto mb-8 bg-[#111] p-6 rounded-2xl border border-gray-800 print:hidden relative mt-10 shadow-2xl">
+        <div id="modal-wrapper" className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-sm overflow-y-auto p-4 sm:p-8 font-sans print:absolute print:top-0 print:left-0 print:w-full print:h-auto print:bg-white print:p-0 print:m-0 print:overflow-visible">
+            
+            <div className="max-w-5xl mx-auto mb-8 bg-[#111] p-6 rounded-2xl border border-gray-800 print:hidden relative mt-10 shadow-2xl">
                 
                 <button onClick={onClose} className="absolute top-6 right-6 text-gray-500 hover:text-white transition z-10">
                     <X size={24} />
                 </button>
 
-                {/* 🟢 TELA DE BLOQUEIO SE O CONTRATO JÁ EXISTIR */}
                 {client?.contract_url ? (
                     <div className="text-center py-10">
                         <div className="bg-emerald-500/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -153,259 +144,300 @@ export default function ContractGenerator({ consultant, client, onClose, company
                             >
                                 <FileSignature size={18} /> Ver Contrato Enviado
                             </a>
-                            <button
-                                onClick={onClose}
-                                className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 px-6 rounded-xl transition"
-                            >
+                            <button onClick={onClose} className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 px-6 rounded-xl transition">
                                 Voltar ao Painel
                             </button>
                         </div>
                     </div>
                 ) : (
-                    /* 🟢 SE NÃO TIVER CONTRATO, MOSTRA O FORMULÁRIO NORMAL */
                     <>
-                        <div className="flex items-center gap-4 mb-6">
+                        <div className="flex items-center gap-4 mb-6 border-b border-gray-800 pb-4">
                             <h2 className="text-2xl font-bold flex items-center gap-2 text-white">
-                                <FileSignature className="text-cyan-500" /> Gerador de Contrato
+                                <FileSignature className="text-cyan-500" /> Gerador de Contrato Premium
                             </h2>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {/* EXIBIÇÃO DO CLIENTE ATUAL */}
-                            <div className="md:col-span-2">
-                                <label className="text-xs font-bold text-gray-500 uppercase">Cliente em Atendimento</label>
-                                <div className="mt-1 bg-gray-900/50 border border-gray-800 rounded-xl p-4 text-cyan-400 font-bold flex items-center gap-3">
-                                    <div className="bg-cyan-500/10 p-2 rounded-lg"><User size={20} /></div>
-                                    <div>
-                                        <p className="text-sm text-white">{clientName}</p>
-                                        <p className="text-xs text-gray-400">CPF: {clientCPF || 'Não informado'}</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            
+                            <div className="space-y-4">
+                                <h3 className="text-cyan-400 font-bold text-sm border-b border-gray-800 pb-1">1. Partes Envolvidas</h3>
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 uppercase">Cliente Atual</label>
+                                    <div className="mt-1 bg-gray-900/50 border border-gray-800 rounded-xl p-3 text-white flex items-center gap-3">
+                                        <User size={16} className="text-cyan-500" />
+                                        <div className="flex-1 truncate">
+                                            <p className="text-sm font-bold truncate">{clientName}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 uppercase">Seu Nome / Empresa</label>
+                                    <input type="text" value={consultantName} onChange={(e) => setConsultantName(e.target.value)} className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none" />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 uppercase">Seu CPF / CNPJ</label>
+                                    <input type="text" value={consultantDoc} onChange={handleDocChange} placeholder="000.000.000-00" className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none" />
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <h3 className="text-cyan-400 font-bold text-sm border-b border-gray-800 pb-1">2. Valores e Condições</h3>
+                                <div className="flex gap-2">
+                                    <div className="w-1/2">
+                                        <label className="text-xs font-bold text-gray-500 uppercase">Valor (R$)</label>
+                                        <input type="text" placeholder="1500,00" value={contractValue} onChange={(e) => setContractValue(e.target.value)} className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none" />
+                                    </div>
+                                    <div className="w-1/2">
+                                        <label className="text-xs font-bold text-gray-500 uppercase">Meses</label>
+                                        <input type="number" value={contractDuration} onChange={(e) => setContractDuration(e.target.value)} className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none" />
+                                    </div>
+                                </div>
+                                
+                                <div className="flex gap-2">
+                                    <div className={paymentMethod === 'parcelado' ? 'w-1/2' : 'w-full'}>
+                                        <label className="text-xs font-bold text-gray-500 uppercase">Pagamento</label>
+                                        <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none cursor-pointer">
+                                            <option value="a_vista">À Vista</option>
+                                            <option value="parcelado">Parcelado</option>
+                                        </select>
+                                    </div>
+                                    {paymentMethod === 'parcelado' && (
+                                        <div className="w-1/2 animate-in fade-in">
+                                            <label className="text-xs font-bold text-gray-500 uppercase">Parcelas</label>
+                                            <input type="number" placeholder="Ex: 3" value={installments} onChange={(e) => setInstallments(e.target.value)} className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none" />
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="flex gap-2">
+                                    <div className="w-1/2">
+                                        <label className="text-xs font-bold text-gray-500 uppercase">Multa Atraso (%)</label>
+                                        <input type="number" placeholder="Opcional" value={penaltyFee} onChange={(e) => setPenaltyFee(e.target.value)} className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none" />
+                                    </div>
+                                    <div className="w-1/2">
+                                        <label className="text-xs font-bold text-gray-500 uppercase">Juros ao Mês (%)</label>
+                                        <input type="number" placeholder="Opcional" value={interestRate} onChange={(e) => setInterestRate(e.target.value)} className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none" />
                                     </div>
                                 </div>
                             </div>
-                            
-                            {/* DADOS DA CONTRATADA (O CONSULTOR) */}
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase">Seu Nome / Razão Social</label>
-                                <input
-                                    type="text"
-                                    placeholder="Nome da sua empresa ou seu nome..."
-                                    value={consultantName}
-                                    onChange={(e) => setConsultantName(e.target.value)}
-                                    className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none"
-                                />
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-2">
-                                    Seu CPF / CNPJ 
-                                    {consultantDoc.length > 0 && consultantDoc.length < 14 && <span className="text-red-500 text-[10px]">Documento incompleto</span>}
-                                </label>
-                                <input
-                                    type="text"
-                                    placeholder="000.000.000-00 ou 00.000.000/0001-00"
-                                    value={consultantDoc}
-                                    onChange={handleDocChange}
-                                    className={`w-full mt-1 bg-gray-900 border rounded-xl p-3 text-white outline-none transition ${consultantDoc.length > 0 && consultantDoc.length < 14 ? 'border-red-500/50 focus:border-red-500' : 'border-gray-700 focus:border-cyan-500'}`}
-                                />
-                            </div>
 
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase">Valor da Consultoria (R$)</label>
-                                <input
-                                    type="text"
-                                    placeholder="Ex: 1500,00"
-                                    value={contractValue}
-                                    onChange={(e) => setContractValue(e.target.value)}
-                                    className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none"
-                                />
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase">Duração (Meses)</label>
-                                <input
-                                    type="number"
-                                    value={contractDuration}
-                                    onChange={(e) => setContractDuration(e.target.value)}
-                                    className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none"
-                                />
-                            </div>
-                            
-                            {/* 🟢 SELEÇÃO DE ESTADO E CIDADE VIA IBGE */}
-                            <div className="md:col-span-2">
-                                <label className="text-xs font-bold text-gray-500 uppercase">Estado e Cidade de Foro</label>
-                                <div className="flex gap-2 mt-1">
-                                    <select
-                                        value={selectedUF}
-                                        onChange={(e) => {
-                                            setSelectedUF(e.target.value);
-                                            setSelectedCityName(''); // Reseta a cidade ao mudar o estado
-                                        }}
-                                        className="bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none w-1/3 cursor-pointer"
-                                    >
-                                        <option value="">UF</option>
-                                        {states.map(s => (
-                                            <option key={s.sigla} value={s.sigla}>{s.nome}</option>
-                                        ))}
-                                    </select>
-                                    
-                                    <select
-                                        value={selectedCityName}
-                                        onChange={(e) => setSelectedCityName(e.target.value)}
-                                        disabled={!selectedUF}
-                                        className={`w-2/3 bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none ${!selectedUF ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                                    >
-                                        <option value="">Selecione a cidade</option>
-                                        {cities.map(c => (
-                                            <option key={c.id} value={c.nome}>{c.nome}</option>
-                                        ))}
-                                    </select>
+                            <div className="space-y-4">
+                                <h3 className="text-cyan-400 font-bold text-sm border-b border-gray-800 pb-1">3. Regras e Assinatura</h3>
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 uppercase">Aviso Prévio Cancelamento (Dias)</label>
+                                    <input type="number" value={noticePeriod} onChange={(e) => setNoticePeriod(e.target.value)} className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none" />
+                                </div>
+
+                                <div>
+                                    <label className="text-xs font-bold text-gray-500 uppercase">Estado e Cidade de Foro</label>
+                                    <div className="flex gap-2 mt-1">
+                                        <select value={selectedUF} onChange={(e) => { setSelectedUF(e.target.value); setSelectedCityName(''); }} className="bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none w-1/3 cursor-pointer">
+                                            <option value="">UF</option>
+                                            {states.map(s => (<option key={s.sigla} value={s.sigla}>{s.nome}</option>))}
+                                        </select>
+                                        <select value={selectedCityName} onChange={(e) => setSelectedCityName(e.target.value)} disabled={!selectedUF} className={`w-2/3 bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none ${!selectedUF ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                                            <option value="">Selecione a cidade</option>
+                                            {cities.map(c => (<option key={c.id} value={c.nome}>{c.nome}</option>))}
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="mt-6 flex justify-end">
-                            <button
-                                onClick={handlePrint}
-                                disabled={!isFormValid}
-                                className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 px-6 rounded-xl transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                <Printer size={18} /> Salvar PDF para Assinar
+                        {/* 🟢 AVISO DO MODO "WORD" */}
+                        <div className="mt-8 mb-2 bg-cyan-900/20 border border-cyan-500/30 p-4 rounded-xl flex items-start sm:items-center gap-3 text-cyan-400 text-sm">
+                            <Pencil className="shrink-0 mt-0.5 sm:mt-0" size={20} />
+                            <p><strong>Truque do Consultor:</strong> O contrato abaixo funciona como o Word! Preencha os dados acima e, se precisar de regras específicas, <strong>clique no texto branco abaixo para reescrever, adicionar ou apagar cláusulas livremente</strong> antes de salvar o PDF.</p>
+                        </div>
+
+                        <div className="mt-4 flex justify-end">
+                            <button onClick={handlePrint} disabled={!isFormValid} className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 px-8 rounded-xl transition flex items-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
+                                <Printer size={20} /> Salvar PDF para Assinar
                             </button>
                         </div>
 
-                        {/* 🟢 ÁREA DE UPLOAD DO CONTRATO ASSINADO */}
                         <div className="mt-8 pt-6 border-t border-gray-800">
                             <label className="text-sm font-bold text-gray-400 block mb-3">Já assinou no Gov.br? Envie o arquivo final para o cliente:</label>
-                            <div className="flex items-center gap-3">
-                                <label className="flex-1 bg-gray-900 border-2 border-dashed border-gray-700 hover:border-cyan-500/50 rounded-xl p-4 transition cursor-pointer text-center group">
-                                    <input type="file" accept=".pdf" className="hidden" onChange={handleUploadSigned} disabled={isUploading} />
-                                    <div className="flex flex-col items-center gap-2">
-                                        {isUploading ? (
-                                            <Loader2 className="animate-spin text-cyan-500" size={24} />
-                                        ) : (
-                                            <FileUp className="text-gray-500 group-hover:text-cyan-400 transition" size={24} />
-                                        )}
-                                        <span className="text-xs text-gray-400 font-medium">
-                                            {isUploading ? 'Enviando documento...' : 'Clique para selecionar o contrato assinado (.pdf)'}
-                                        </span>
-                                    </div>
-                                </label>
-                            </div>
+                            <label className="flex-1 bg-gray-900 border-2 border-dashed border-gray-700 hover:border-cyan-500/50 rounded-xl p-4 transition cursor-pointer text-center group block">
+                                <input type="file" accept=".pdf" className="hidden" onChange={handleUploadSigned} disabled={isUploading} />
+                                <div className="flex flex-col items-center gap-2">
+                                    {isUploading ? (<Loader2 className="animate-spin text-cyan-500" size={24} />) : (<FileUp className="text-gray-500 group-hover:text-cyan-400 transition" size={24} />)}
+                                    <span className="text-xs text-gray-400 font-medium">{isUploading ? 'Enviando documento...' : 'Clique para selecionar o contrato assinado (.pdf)'}</span>
+                                </div>
+                            </label>
                         </div>
                     </>
                 )}
             </div>
 
-            {/* A FOLHA DO CONTRATO */}
-            {/* A FOLHA DO CONTRATO */}
-            {/* 🟢 AJUSTE MOBILE: Adicionado w-full, p-6 para celular e md:p-[20mm] para PC, e overflow-hidden para o texto não estourar a caixa */}
-            <div id="print-area" className="w-full max-w-[210mm] mx-auto bg-white text-black p-6 sm:p-10 md:p-[20mm] shadow-2xl min-h-max md:min-h-[297mm] print:shadow-none print:p-0 print:min-h-0 print:m-0 relative overflow-hidden break-words">
+            <div id="print-area" className="w-full max-w-[210mm] mx-auto bg-white text-black p-6 sm:p-10 md:p-[20mm] shadow-2xl min-h-max md:min-h-[297mm] print:shadow-none print:p-0 print:m-0 relative break-words group">
                 
-                {/* 🟢 CABEÇALHO RESPONSIVO: No celular ele empilha (flex-col), no PC fica lado a lado (md:flex-row) */}
-                <div className="flex flex-col md:flex-row justify-between items-center md:items-start border-b-2 border-gray-200 pb-6 mb-8 gap-4 text-center md:text-left">
-                    <div className="flex flex-col md:flex-row items-center gap-4">
+                <div id="print-header" className="flex flex-col md:flex-row justify-between items-center md:items-start border-b-2 border-gray-200 pb-4 mb-6 gap-4 text-center md:text-left">
+                    <div id="print-header-left" className="flex flex-col md:flex-row items-center gap-4">
                         {companyLogoUrl && (
                             <img src={companyLogoUrl} alt="Logo" className="max-w-[120px] max-h-[60px] object-contain" />
                         )}
                         <div>
-                            <h1 className="text-xl md:text-2xl font-black uppercase tracking-wider">{consultantName || consultant?.user_metadata?.full_name || consultant?.name || "Nome do Consultor"}</h1>
-                            <p className="text-xs md:text-sm text-gray-500 font-bold uppercase tracking-widest">Consultoria Financeira</p>
+                            <h1 className="text-xl font-black uppercase tracking-wider">{consultantName || consultant?.user_metadata?.full_name || consultant?.name || "Nome do Consultor"}</h1>
+                            <p className="text-xs text-gray-500 font-bold uppercase tracking-widest">Consultoria Financeira Estratégica</p>
                         </div>
                     </div>
                     
-                   
-                    
-                    {/* Selo do Meu Aliado (Intacto!) */}
-                    <div className="text-right">
-                        <div className="flex items-center gap-1 text-cyan-600 font-black text-xl justify-end">
-                            <ShieldCheck size={24} /> Meu Aliado.
+                    <div id="print-header-right" className="text-center md:text-right mt-2 md:mt-0">
+                        <div className="flex items-center justify-center md:justify-end gap-1 text-cyan-600 font-black text-lg">
+                            <ShieldCheck size={20} /> Meu Aliado.
                         </div>
                         <p className="text-[10px] text-gray-400 uppercase mt-1">Plataforma Oficial</p>
                     </div>
                 </div>
 
-                {/* 🟢 O SEU TEXTO ORIGINAL INTACTO */}
-                <h2 className="text-center text-lg font-bold underline uppercase mb-8">Contrato de Prestação de Serviços de Consultoria Financeira</h2>
-
-                <div className="text-sm leading-relaxed space-y-6 text-justify">
+                {/* 🟢 O CORPO DO CONTRATO AGORA É 100% EDITÁVEL! */}
+                <div 
+                    contentEditable={true}
+                    suppressContentEditableWarning={true}
+                    className="text-[12px] md:text-[13px] leading-snug space-y-4 text-justify outline-none hover:bg-gray-100 focus:bg-white p-2 -mx-2 rounded-lg transition"
+                >
+                    <h2 className="text-center text-sm md:text-base font-bold underline uppercase mb-6">CONTRATO DE PRESTAÇÃO DE SERVIÇOS DE CONSULTORIA FINANCEIRA</h2>
 
                     <p>
-                        Pelo presente instrumento particular, de um lado <strong>{consultantName || "[SEU NOME OU EMPRESA]"}</strong>, portador(a) do CPF/CNPJ nº {consultantDoc || "[SEU CPF/CNPJ]"}, doravante denominado(a) <strong>CONTRATADA</strong>, e de outro lado <strong>{clientName || "[NOME DO CLIENTE]"}</strong>, portador(a) do CPF nº {clientCPF || "[CPF DO CLIENTE]"}, doravante denominado(a) <strong>CONTRATANTE</strong>, celebram o presente contrato mediante as cláusulas a seguir:
+                        Pelo presente instrumento particular, de um lado <strong>{consultantName || "[SEU NOME OU EMPRESA]"}</strong>, inscrito(a) no CPF/CNPJ nº {consultantDoc || "[SEU CPF/CNPJ]"}, doravante denominado(a) <strong>CONTRATADA</strong>, e de outro lado <strong>{clientName || "[NOME DO CLIENTE]"}</strong>, inscrito(a) no CPF nº {clientCPF || "[CPF DO CLIENTE]"}, doravante denominado(a) <strong>CONTRATANTE</strong>, têm entre si justo e contratado o seguinte:
                     </p>
 
                     <div>
-                        <h3 className="font-bold mb-1">Cláusula 1ª - Do Objeto</h3>
-                        <p>O presente contrato tem como objeto a prestação de serviços de Consultoria Financeira Pessoal, englobando análise de fluxo de caixa, mapeamento de dívidas e planejamento estratégico financeiro através da plataforma "Meu Aliado". <strong>A CONTRATADA não atua como corretora, gestora de fundos ou analista de valores mobiliários (CVM), não realizando recomendação direta de compra ou venda de ativos financeiros.</strong></p>
+                        <h3 className="font-bold mb-1">CLÁUSULA 1ª – DO OBJETO</h3>
+                        <p>O presente contrato tem como objeto a prestação de serviços de Consultoria Financeira Pessoal, incluindo:</p>
+                        <ul className="list-disc pl-5 mt-1 space-y-0.5">
+                            <li>Análise de fluxo de caixa</li>
+                            <li>Mapeamento de receitas, despesas e dívidas</li>
+                            <li>Planejamento financeiro estratégico</li>
+                            <li>Acompanhamento financeiro</li>
+                        </ul>
+                        <p className="mt-1">Os serviços serão realizados com o apoio da plataforma digital "Meu Aliado".</p>
+                        <p className="mt-1"><strong>Parágrafo único:</strong> A CONTRATADA não atua como corretora, gestora de investimentos ou analista de valores mobiliários, não realizando recomendações diretas de compra ou venda de ativos financeiros.</p>
                     </div>
 
                     <div>
-                        <h3 className="font-bold mb-1">Cláusula 2ª - Dos Honorários e Condições</h3>
-                        <p>Pelos serviços prestados, o CONTRATANTE pagará à CONTRATADA o valor total de <strong>R$ {contractValue || "______,__"}</strong>. O acompanhamento terá a duração de <strong>{contractDuration} meses</strong> a partir da data de assinatura deste termo.</p>
+                        <h3 className="font-bold mb-1">CLÁUSULA 2ª – DO USO DA PLATAFORMA</h3>
+                        <p>O CONTRATANTE declara estar ciente de que:</p>
+                        <ul className="list-disc pl-5 mt-1 space-y-0.5">
+                            <li>A plataforma Meu Aliado será utilizada para registro e análise das informações financeiras;</li>
+                            <li>É de sua responsabilidade manter os dados atualizados e corretos;</li>
+                            <li>O acesso à conta é pessoal e intransferível.</li>
+                        </ul>
                     </div>
 
                     <div>
-                        <h3 className="font-bold mb-1">Cláusula 3ª - Da Confidencialidade (LGPD)</h3>
-                        <p>A CONTRATADA compromete-se a manter sigilo absoluto sobre as informações financeiras, senhas (que não devem ser compartilhadas sob nenhuma hipótese) e dados pessoais do CONTRATANTE, em estrita conformidade com a Lei Geral de Proteção de Dados (Lei nº 13.709/2018).</p>
+                        <h3 className="font-bold mb-1">CLÁUSULA 3ª – DOS HONORÁRIOS E FORMA DE PAGAMENTO</h3>
+                        <p>Pelos serviços prestados, o CONTRATANTE pagará à CONTRATADA o valor de <strong>R$ {contractValue || "______,__"}</strong>, podendo ser pago da seguinte forma:</p>
+                        <ul className="list-none pl-2 mt-1 space-y-0.5">
+                            <li>( {paymentMethod === 'a_vista' ? 'X' : ' '} ) À vista</li>
+                            <li>( {paymentMethod === 'parcelado' ? 'X' : ' '} ) Parcelado em <strong>{paymentMethod === 'parcelado' ? (installments || '___') : '___'}</strong> vezes</li>
+                        </ul>
+                        
+                        {/* 🟢 Oculta essa parte inteira se o consultor deixar Juros E Multa vazios */}
+                        {(penaltyFee || interestRate) && (
+                            <>
+                                <p className="mt-1">Em caso de atraso no pagamento, será aplicada:</p>
+                                <ul className="list-disc pl-5 mt-1 space-y-0.5">
+                                    {penaltyFee && <li>Multa de <strong>{penaltyFee}%</strong> sobre o valor devido</li>}
+                                    {interestRate && <li>Juros de <strong>{interestRate}%</strong> ao mês</li>}
+                                </ul>
+                            </>
+                        )}
                     </div>
 
-                    <p className="mt-8 text-center">
-                        E, por estarem assim justos e contratados, firmam o presente instrumento.
+                    <div>
+                        <h3 className="font-bold mb-1">CLÁUSULA 4ª – DO PRAZO</h3>
+                        <p>O presente contrato terá duração de <strong>{contractDuration} meses</strong>, iniciando-se na data de sua assinatura.</p>
+                    </div>
+
+                    <div>
+                        <h3 className="font-bold mb-1">CLÁUSULA 5ª – DO ESCOPO DO SERVIÇO</h3>
+                        <p><strong>A prestação do serviço inclui:</strong> Acompanhamento financeiro periódico, análise de dados financeiros e orientações estratégicas.</p>
+                        <p className="mt-1"><strong>Não estão inclusos:</strong> Atendimento ilimitado fora dos canais definidos, execução direta de operações financeiras e garantia de resultados financeiros específicos.</p>
+                    </div>
+
+                    <div>
+                        <h3 className="font-bold mb-1">CLÁUSULA 6ª – DAS RESPONSABILIDADES</h3>
+                        <p><strong>A CONTRATADA compromete-se a:</strong> Prestar os serviços com profissionalismo e sigilo e utilizar as informações apenas para fins de consultoria.</p>
+                        <p className="mt-1"><strong>O CONTRATANTE compromete-se a:</strong> Fornecer informações verídicas, utilizar a plataforma corretamente e tomar decisões financeiras de forma consciente.</p>
+                        <p className="mt-1"><strong>Parágrafo único:</strong> As decisões financeiras tomadas são de responsabilidade exclusiva do CONTRATANTE.</p>
+                    </div>
+
+                    <div>
+                        <h3 className="font-bold mb-1">CLÁUSULA 7ª – DA CONFIDENCIALIDADE</h3>
+                        <p>As partes comprometem-se a manter sigilo absoluto sobre todas as informações compartilhadas, em conformidade com a Lei Geral de Proteção de Dados (LGPD).</p>
+                    </div>
+
+                    <div>
+                        <h3 className="font-bold mb-1">CLÁUSULA 8ª – DA RESCISÃO</h3>
+                        <p>O presente contrato poderá ser rescindido por qualquer das partes mediante aviso prévio de <strong>{noticePeriod} dias</strong>.</p>
+                        <p className="mt-1">Em caso de cancelamento antecipado: Não haverá devolução de valores já pagos (salvo acordo entre as partes).</p>
+                    </div>
+
+                    <div>
+                        <h3 className="font-bold mb-1">CLÁUSULA 9ª – DAS DISPOSIÇÕES GERAIS</h3>
+                        <p>Este contrato não estabelece vínculo empregatício entre as partes. O serviço prestado é de natureza consultiva. A CONTRATADA não garante resultados financeiros específicos.</p>
+                    </div>
+
+                    <div>
+                        <h3 className="font-bold mb-1">CLÁUSULA 10ª – DA ASSINATURA DIGITAL</h3>
+                        <p>As partes concordam que este contrato poderá ser assinado eletronicamente, tendo validade jurídica, podendo incluir: Registro de data e hora, Endereço de IP e Identificação do dispositivo.</p>
+                    </div>
+
+                    <p className="mt-6 text-center italic">
+                        E, por estarem de acordo, firmam o presente instrumento.
                     </p>
 
-                    <p className="text-right mt-8">
+                    <p className="text-right mt-6">
                         {city || "[Cidade]"}, {new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}.
                     </p>
 
-                    <div className="flex justify-between mt-24 px-8">
-                        <div className="text-center w-64">
+                    <div className="flex justify-between mt-16 px-8">
+                        <div className="text-center w-56">
                             <div className="border-t border-black mb-2"></div>
                             <p className="font-bold">{consultantName || "Nome do Consultor"}</p>
-                            <p className="text-xs text-gray-500">CONTRATADA</p>
+                            <p className="text-[10px] text-gray-500">CONTRATADA</p>
                         </div>
-                        <div className="text-center w-64">
+                        <div className="text-center w-56">
                             <div className="border-t border-black mb-2"></div>
                             <p className="font-bold">{clientName || "Nome do Cliente"}</p>
-                            <p className="text-xs text-gray-500">CONTRATANTE</p>
+                            <p className="text-[10px] text-gray-500">CONTRATANTE</p>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* 🟢 CSS BLINDADO PARA MATAR A 2ª PÁGINA */}
             <style>{`
                 @media print {
-                    /* Zera margens do navegador e fixa tamanho A4 */
                     @page { 
                         size: A4; 
-                        margin: 0; 
+                        margin: 15mm; 
                     }
-                    
-                    /* Oculta scrollbar e define limites firmes no body */
-                    html, body {
-                        width: 210mm;
-                        height: 297mm;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        overflow: hidden !important; 
+                    body {
+                        visibility: hidden !important;
+                        background-color: white !important;
                     }
-                    
-                    body * { visibility: hidden; }
-                    
-                    body { 
-                        -webkit-print-color-adjust: exact; 
-                        print-color-adjust: exact; 
+                    #modal-wrapper {
+                        visibility: visible !important;
                     }
-                    
-                    /* Traz o contrato para frente e obriga a caber na tela */
-                    #print-area, #print-area * { visibility: visible; }
-                    #print-area { 
-                        position: absolute; 
-                        left: 0; 
-                        top: 0; 
-                        width: 210mm;
-                        height: 297mm;
-                        margin: 0 !important;
-                        padding: 15mm !important; /* Margem interna simulando a borda da página */
-                        box-sizing: border-box;
-                        box-shadow: none !important;
+                    #print-header {
+                        display: flex !important;
+                        flex-direction: row !important;
+                        justify-content: space-between !important;
+                        align-items: flex-start !important;
+                    }
+                    #print-header-left {
+                        display: flex !important;
+                        flex-direction: row !important;
+                        align-items: center !important;
+                        gap: 1rem !important;
+                    }
+                    #print-header-right {
+                        text-align: right !important;
+                    }
+                    h3, p, ul {
+                        page-break-inside: avoid;
                     }
                 }
             `}</style>
