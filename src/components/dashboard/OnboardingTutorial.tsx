@@ -105,7 +105,7 @@ const CONSULTANT_TUTORIAL_STEPS = [
                 Como consultor, você possui a barra roxa no topo da tela. Clique em <span className="inline-flex items-center gap-1 bg-purple-600/20 text-purple-300 px-2 py-0.5 rounded-md text-[11px] font-bold mx-1 whitespace-nowrap"><UserPlus size={10} /> Add</span> para enviar um convite por e-mail para seu cliente. Assim que ele aceitar, o nome dele aparecerá na barra. Basta clicar no nome para entrar na conta dele e gerenciar todas as finanças!
             </>
         ),
-        media: "" // 🔴 COLOQUE AQUI O LINK DO VÍDEO NO CLOUDINARY
+        media: "https://res.cloudinary.com/ddkbqzobz/video/upload/v1774399083/Video_1_Consultoria_goe35b.mp4" // 🔴 COLOQUE AQUI O LINK DO VÍDEO NO CLOUDINARY
     },
     {
         id: 2,
