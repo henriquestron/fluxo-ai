@@ -29,6 +29,7 @@ export default function CustomizationModal({
 
     const layouts = [
         { id: 'standard', name: 'Padrão (Aliado)', desc: 'Equilíbrio entre lista e gráficos.' },
+        { id: 'modern', name: 'Moderno (Glass)', desc: 'Design moderno com cards em vidro e layout otimizado.' },
         { id: 'trader', name: 'Trader / Ads', desc: 'Foco total em números e densidade.' },
         { id: 'calendar', name: 'Calendário', desc: 'Visualização por data de vencimento.' },
         { id: 'zen', name: 'Zen Minimalista', desc: 'Apenas o essencial. Sem estresse.' },

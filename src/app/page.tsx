@@ -41,6 +41,7 @@ import CustomizationModal from '@/components/dashboard/CustomizationModal';
 import ZenView from '@/components/dashboard/ZenView';
 import CalendarView from '@/components/dashboard/CalendarView';
 import GoalModal from '@/components/dashboard/GoalModal';
+import ModernView from '@/components/dashboard/ModernView';
 
 import { Transaction, Installment, Recurring, Goal, ClientUser } from '@/types';
 import ContractGenerator from '@/components/dashboard/agent/contratos/ContractGenerator';
@@ -58,7 +59,7 @@ export default function FinancialDashboard() {
     // --- ESTADOS GLOBAIS ---
     const [activeTab, setActiveTab] = useState(currentSystemMonthName);
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-    const [currentLayout, setCurrentLayout] = useState<'standard' | 'trader' | 'zen' | 'calendar' | 'timeline' | 'bento'>('standard');
+    const [currentLayout, setCurrentLayout] = useState<'standard' |'modern'| 'trader' | 'zen' | 'calendar' | 'timeline' | 'bento'>('standard');
     const [currentTheme, setCurrentTheme] = useState('default');
     const [activeSection, setActiveSection] = useState<'dashboard' | 'goals'>('dashboard');
     // --- WORKSPACES (PERFIS DE DADOS) ---
@@ -384,38 +385,38 @@ export default function FinancialDashboard() {
                 const currentUser = data.session?.user || null;
 
                 setUser(currentUser);
-                
+
                 if (currentUser) {
                     const { data: profile } = await supabase
                         .from('profiles')
                         .select('company_logo')
                         .eq('id', currentUser.id)
                         .maybeSingle();
-                        
+
                     if (profile?.company_logo) {
                         setConsultantLogo(profile.company_logo);
                     }
                     fetchUserProfile(currentUser.id);
-                    
+
                     // 🟢 A MÁGICA ACONTECE AQUI:
                     // Verifica se já tem um cliente na tela. Se tiver, busca os dados dele. Se não, busca os do consultor.
                     const targetId = viewingAs ? (viewingAs.client_id || viewingAs.id) : currentUser.id;
                     fetchWorkspaces(targetId);
-                    
+
                     fetchUserSettings(currentUser.id);
                 }
-            } catch (e) { 
-                setUser(null); 
+            } catch (e) {
+                setUser(null);
             } finally {
                 // 👇 O SEGREDO: Avisa que terminou de carregar
                 setIsSessionLoading(false);
             }
         };
-        
+
         checkUser();
 
-    // 🟢 ADICIONAMOS O viewingAs AQUI NOS COLCHETES PARA O REACT FICAR ESPERTO!
-    // (Se no seu código original os colchetes estiverem vazios [], substitua por isso):
+        // 🟢 ADICIONAMOS O viewingAs AQUI NOS COLCHETES PARA O REACT FICAR ESPERTO!
+        // (Se no seu código original os colchetes estiverem vazios [], substitua por isso):
     }, [viewingAs]);
 
     const fetchWorkspaces = async (userId: string, forceSelectFirst = false) => {
@@ -2370,20 +2371,41 @@ export default function FinancialDashboard() {
                             getReceipt={getReceiptForMonth}
                         />
                     )}
-
-                    {(currentLayout === 'trader') && (
-                        <TraderView
-                            selectedYear={selectedYear} // <--- ADICIONE ISSO
-                            transactions={transactions} // Sem filtro, o componente filtra
+                    {(currentLayout === 'modern') && (
+                        <ModernView
+                            selectedYear={selectedYear}
+                            transactions={transactions.filter(t => t.date && t.date.endsWith(`/${selectedYear}`))}
                             installments={installments}
                             recurring={recurring}
-                            activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab}
-                            currentMonthData={currentMonthData} previousSurplus={previousSurplus}
+                            activeTab={activeTab}
+                            months={MONTHS}
+                            setActiveTab={setActiveTab}
+                            currentMonthData={currentMonthData}
+                            previousSurplus={previousSurplus}
                             displayBalance={displayBalance}
-                            onTogglePaid={togglePaid} onTogglePaidMonth={togglePaidMonth}
-                            onToggleDelay={toggleDelay} onDelete={handleDelete}
+                            viewingAs={viewingAs}
+                            onTogglePaid={togglePaid}
+                            onToggleSkip={toggleSkipMonth}
+                            onToggleDelay={toggleDelay}
+                            onDelete={handleDelete}
+                            onEdit={handleEdit}
+                            onTogglePaidMonth={togglePaidMonth}
+                            getReceipt={getReceiptForMonth}
                         />
                     )}
+                        {(currentLayout === 'trader') && (
+                            <TraderView
+                                selectedYear={selectedYear} // <--- ADICIONE ISSO
+                                transactions={transactions} // Sem filtro, o componente filtra
+                                installments={installments}
+                                recurring={recurring}
+                                activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab}
+                                currentMonthData={currentMonthData} previousSurplus={previousSurplus}
+                                displayBalance={displayBalance}
+                                onTogglePaid={togglePaid} onTogglePaidMonth={togglePaidMonth}
+                                onToggleDelay={toggleDelay} onDelete={handleDelete}
+                            />
+                        )}
 
                     {(currentLayout === 'calendar') && (
                         <CalendarView
