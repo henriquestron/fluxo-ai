@@ -149,13 +149,9 @@ export async function POST(req: Request) {
             throw new Error('ALERTA: EVOLUTION_WEBHOOK_SECRET não definida no .env');
         }
 
-        // LEITURA DE PARÂMETROS DA URL
         const { searchParams } = new URL(req.url);
         const urlToken = searchParams.get('token');
-
-        const webhookToken = req.headers.get('apikey')
-            ?? req.headers.get('authorization')?.replace('Bearer ', '')
-            ?? urlToken;
+        const webhookToken = req.headers.get('apikey') ?? req.headers.get('authorization')?.replace('Bearer ', '') ?? urlToken;
 
         if (webhookToken !== EVOLUTION_WEBHOOK_SECRET) {
             console.warn('Webhook recusado: token inválido ou ausente.');
@@ -185,7 +181,7 @@ export async function POST(req: Request) {
         }
         await redis.set(`msg:${messageId}`, '1', { ex: 86400 });
 
-        // RATE LIMITING POR NÚMERO
+        // RATE LIMITING
         const { success: rateLimitSuccess } = await ratelimit.limit(senderId);
         if (!rateLimitSuccess) {
             await sendWhatsAppMessage(remoteJid, "⏳ Calma! Você está enviando mensagens muito rápido. Aguarde um minuto.");
@@ -199,7 +195,6 @@ export async function POST(req: Request) {
             if (userInput === 'SIM') {
                 const cmd = typeof pendingDeleteStr === 'string' ? JSON.parse(pendingDeleteStr) : pendingDeleteStr;
 
-                // VALIDAÇÃO DA WHITELIST
                 const ALLOWED_TABLES = ['transactions', 'installments', 'recurring'];
                 if (!ALLOWED_TABLES.includes(cmd.table)) {
                     await sendWhatsAppMessage(remoteJid, '⚠️ Operação inválida. Tabela não permitida.');
@@ -270,7 +265,7 @@ export async function POST(req: Request) {
             promptParts.push(messageContent);
         }
 
-        // IDENTIFICAÇÃO DO USUÁRIO
+        // IDENTIFICAÇÃO DO USUÁRIO E PLANO
         let { data: userSettings } = await supabase.from('user_settings').select('*').or(`whatsapp_phone.eq.${senderId},whatsapp_id.eq.${senderId}`).maybeSingle();
 
         if (!userSettings) {
@@ -296,7 +291,6 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "User unknown" });
         }
 
-        // TRAVA DE SEGURANÇA: VERIFICAÇÃO DE PLANO
         const { data: profile } = await supabase.from('profiles').select('plan_tier').eq('id', userSettings.user_id).single();
         const plan = profile?.plan_tier || 'free';
 
@@ -311,28 +305,56 @@ export async function POST(req: Request) {
         }
 
         const targetPhone = userSettings.whatsapp_phone || senderId;
-        const { data: workspace } = await supabase.from('workspaces').select('id').eq('user_id', userSettings.user_id).limit(1).single();
-
+        
+        // 🟢 BUSCAR TODAS AS WORKSPACES DO USUÁRIO
+        const { data: workspaces } = await supabase.from('workspaces').select('id, title, whatsapp_rule').eq('user_id', userSettings.user_id);
+        
+        let primaryWorkspace = workspaces?.[0]; // Pega a primeira por padrão
+        
         let contextInfo = { saldo: "0", entradas: "0", saidas: "0", resumo_texto: "Sem dados", estado_conta: "Indefinido" };
-        if (workspace) contextInfo = await getFinancialContext(supabase, userSettings.user_id, workspace.id);
+        if (primaryWorkspace) contextInfo = await getFinancialContext(supabase, userSettings.user_id, primaryWorkspace.id);
+
+        // 🟢 PREPARAR O ROTEAMENTO (REGRAS DA IA)
+        let workspacesContextPrompt = "";
+        if (workspaces && workspaces.length > 1) {
+            workspacesContextPrompt = `
+            ━━━ ÁREAS DE TRABALHO (WORKSPACES) ━━━
+            O usuário tem múltiplas contas (Workspaces). Você OBRIGATORIAMENTE precisa incluir o campo "context" no seu JSON raiz com o ID correto da área de trabalho onde esse gasto/ganho deve ser registrado.
+            Analise as seguintes contas e suas regras:
+            `;
+            workspaces.forEach((ws) => {
+                workspacesContextPrompt += `- ID: "${ws.id}" | Nome: "${ws.title}" | Regra do usuário: "${ws.whatsapp_rule || 'Geral'}"\n`;
+            });
+            workspacesContextPrompt += `
+            CRITÉRIOS DE ROTEAMENTO:
+            1. Se o usuário mencionou o nome de uma conta (ex: "lança na empresa"), use o ID dela.
+            2. Leia a foto ou o texto e cruze com a "Regra do usuário" para adivinhar a conta correta.
+            3. Se for IMPOSSÍVEL deduzir, envie "context": "${primaryWorkspace?.id}".
+            `;
+        } else if (primaryWorkspace) {
+            workspacesContextPrompt = `Sempre inclua "context": "${primaryWorkspace.id}" no JSON.\n`;
+        }
+
         const dataHojeBR = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
         const systemPrompt = `
             IDENTIDADE: Você é "Meu Aliado", assistente financeiro pessoal via WhatsApp.
             Tom: amigável, direto, humano. Nunca robótico.
             DATA DE HOJE: ${dataHojeBR}.
 
-            ━━━ SITUAÇÃO FINANCEIRA DO MÊS ━━━
+            ━━━ SITUAÇÃO FINANCEIRA DO MÊS (Workspace Principal) ━━━
             💰 Receitas:  R$ ${contextInfo.entradas}
             💸 Despesas:  R$ ${contextInfo.saidas}
             📊 Saldo:     R$ ${contextInfo.saldo}
             ⚠️  Status:   ${contextInfo.estado_conta}
-            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
             COMO AGIR EM CADA SITUAÇÃO:
             [BATE-PAPO / SALDO] → Responda naturalmente com os dados acima. Seja breve e humano.
-            [REGISTRO DE TRANSAÇÃO] → Extraia título, valor, data e tipo (receita/despesa). Monte o JSON. Se faltar informação essencial (ex: valor), pergunte.
+            [REGISTRO DE TRANSAÇÃO] → Extraia título, valor, data e tipo (receita/despesa). Monte o JSON. Se faltar informação essencial, pergunte.
             [PARCELA / FIXO] → Identifique se é gasto parcelado (installments) ou recorrente mensal (recurring).
             [APAGAR/REMOVER GASTO] → Monte o JSON com action: "remove".
+
+            ${workspacesContextPrompt}
 
             REGRAS ABSOLUTAS:
             ✅ Saída SEMPRE como array JSON válido — zero texto fora do JSON.
@@ -340,12 +362,12 @@ export async function POST(req: Request) {
             ✅ Valores sempre como número float (ex: 49.90), nunca string.
 
             ━━━ FORMATOS JSON PERMITIDOS ━━━
-            Adicionar Transação:
-            {"action": "add", "table": "transactions", "data": {"title": "...", "amount": 0.00, "type": "expense", "date": "DD/MM/YYYY", "category": "..."}}
+            Adicionar Transação (COM CONTEXTO):
+            {"action": "add", "table": "transactions", "context": "ID_AQUI", "data": {"title": "...", "amount": 0.00, "type": "expense", "date": "DD/MM/YYYY", "category": "..."}}
             Remover Transação:
             {"action": "remove", "table": "transactions", "data": {"title": "..."}}
-            Resposta ao usuário (OBRIGATÓRIA):
-            {"reply": "mensagem curta e humana aqui"}
+            Resposta ao usuário (OBRIGATÓRIA EM QUALQUER AÇÃO):
+            {"reply": "mensagem curta e humana aqui confirmando onde foi lançado"}
 
             ${hasAudio ? "\n⚠️ ÁUDIO RECEBIDO: Transcreva mentalmente a fala e responda com base no que foi dito." : ""}
             ${hasImage ? "\n📸 IMAGEM RECEBIDA: Extraia o valor total, a data e o nome do estabelecimento da foto/comprovante para registrar o gasto." : ""}
@@ -373,14 +395,16 @@ export async function POST(req: Request) {
         const ALLOWED_TABLES = ['transactions', 'installments', 'recurring'];
 
         for (const cmd of commands) {
-            // Trava extra para evitar que a IA mande tabelas não permitidas
             if (cmd.table && !ALLOWED_TABLES.includes(cmd.table)) {
                 console.warn(`⛔ Tabela bloqueada pela IA: ${cmd.table}`);
                 continue;
             }
 
             if (cmd.action === 'add') {
-                let payload: any = { ...cmd.data, user_id: userSettings.user_id, context: workspace?.id || null, created_at: new Date(), message_id: messageId };
+                // 🟢 USA O CONTEXTO DA IA, OU FALLBACK PARA O PRINCIPAL
+                let targetContext = cmd.context || primaryWorkspace?.id || null;
+                
+                let payload: any = { ...cmd.data, user_id: userSettings.user_id, context: targetContext, created_at: new Date(), message_id: messageId };
 
                 const extractedValue = parseFloat(cmd.data.amount) || parseFloat(cmd.data.value) || parseFloat(cmd.data.value_per_month) || parseFloat(cmd.data.total_value) || 0;
                 if (extractedValue <= 0) continue;
@@ -412,12 +436,10 @@ export async function POST(req: Request) {
                     if (!error && !commands.some((c: any) => c.reply)) await sendWhatsAppMessage(targetPhone, `✅ Lançado: ${cmd.data.title}`);
                 }
             }
-            // 🔴 8. CONFIRMAÇÃO DE EXCLUSÃO
             else if (cmd.action === 'remove') {
                 await sendWhatsAppMessage(targetPhone, `⚠️ Você quer apagar "${cmd.data.title}"? Responda *SIM* para confirmar.`);
-                // Salva o comando no Redis por 5 minutos (300 segundos) aguardando a pessoa responder "SIM"
                 await redis.set(`pending_delete:${senderId}`, JSON.stringify(cmd), { ex: 300 });
-                replySent = true; // Para não mandar o cmd.reply padrão da IA e confundir
+                replySent = true; 
             }
 
             if (cmd.reply && !replySent) {

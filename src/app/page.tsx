@@ -2463,6 +2463,7 @@ export default function FinancialDashboard() {
                         onClose={() => setIsProfileModalOpen(false)}
                         user={user}
                         userPlan={userPlan} // <--- ADICIONE ESTA LINHA
+                        
                     />
 
                     <ExportModal
