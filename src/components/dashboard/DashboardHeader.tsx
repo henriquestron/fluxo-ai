@@ -3,7 +3,7 @@ import {
     ShieldCheck, Briefcase, User, UserPlus, BarChart3, FileSpreadsheet,
     Lock, HelpCircle, ChevronDown, CreditCard, Smartphone, Palette,
     LogOut, Sparkles, Plus, Search, Calculator, Trash2, FileUp,
-    Link, FileSignature, FileText
+    Link, FileSignature, FileText, Calendar
 } from 'lucide-react';
 import NotificationBell from '@/components/dashboard/NotificationBell';
 
@@ -40,6 +40,7 @@ interface DashboardHeaderProps {
     onOpenReport: () => void;
     client: any;
     setIsImportOpen: (v: boolean) => void;
+    setIsAgendaOpen: (v: boolean) => void;
 }
 
 export default function DashboardHeader({
@@ -48,7 +49,7 @@ export default function DashboardHeader({
     setIsProfileModalOpen, handleManageSubscription, whatsappEnabled, toggleWhatsappNotification,
     setIsCustomizationOpen, handleCheckout, handleLogout,
     setIsAIOpen, setIsCreditCardModalOpen, openNewTransactionModal, setIsCalculatorOpen, handleRemoveClient, client,
-    setIsImportOpen, setIsTutorialOpen, setIsContractOpen, handleClientContractUpload, isManagedClient, clientContractUrl, clientStatus, onOpenContract, onOpenReport
+    setIsImportOpen, setIsTutorialOpen, setIsContractOpen, handleClientContractUpload, isManagedClient, clientContractUrl,setIsAgendaOpen, clientStatus, onOpenContract, onOpenReport
 }: DashboardHeaderProps) {
 
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -101,7 +102,7 @@ export default function DashboardHeader({
                 {/* GRUPO 1: Utilitários e Menu */}
                 {/* 🟢 Mobile inverte a ordem (order-2) para botões principais ficarem acima, PC mantém (xl:order-none) */}
                 <div className="flex flex-wrap xl:flex-nowrap items-center justify-center xl:justify-start gap-2 w-full xl:w-auto order-2 xl:order-none">
-                    
+
                     {/* 🟢 Ícones com tamanho original size={20} e h-10 w-10 no PC */}
                     <div className="flex items-center gap-1 xl:gap-2 bg-gray-900/50 p-1 rounded-xl border border-gray-800 overflow-x-auto scrollbar-hide max-w-full">
                         <button id="btn-history" onClick={() => setIsHistoryOpen(true)} className="h-9 w-9 xl:h-10 xl:w-10 shrink-0 flex items-center justify-center rounded-lg text-gray-400 hover:text-cyan-400 hover:bg-gray-800 transition" title="Ver Gráfico Anual">
@@ -111,7 +112,7 @@ export default function DashboardHeader({
                             <FileSpreadsheet size={20} />
                             {userPlan === 'free' && <Lock size={10} className="absolute top-1.5 right-1.5 text-amber-500" />}
                         </button>
-                        
+
                         {(isManagedClient && clientContractUrl) && (
                             <a href={clientContractUrl} target="_blank" className="h-9 xl:h-10 shrink-0 px-3 flex items-center justify-center rounded-lg text-emerald-400 bg-gray-800 hover:bg-gray-700 transition gap-2 text-xs xl:text-sm font-bold border border-emerald-500/20" title="Visualizar Meu Contrato">
                                 <FileSignature size={18} /> <span className="hidden"></span>
@@ -125,7 +126,7 @@ export default function DashboardHeader({
                                 <span className="absolute top-0 right-0 w-2 h-2 xl:w-2.5 xl:h-2.5 bg-red-500 rounded-full animate-pulse border-2 border-gray-900"></span>
                             </label>
                         )}
-                        
+
                         <button id="btn-import" onClick={() => setIsImportOpen(true)} className="relative h-9 w-9 xl:h-10 xl:w-10 shrink-0 flex items-center justify-center rounded-lg text-gray-400 hover:text-emerald-400 hover:bg-gray-800 transition" title="Importar Contas Mágica">
                             <FileUp size={20} />
                             <span className="absolute -top-1.5 -right-1 bg-gradient-to-r from-emerald-500 to-cyan-500 text-black text-[7px] font-black px-1 py-px rounded uppercase tracking-tighter shadow-lg border border-emerald-400">
@@ -152,6 +153,9 @@ export default function DashboardHeader({
 
                             <button onClick={onOpenContract} className="h-9 w-9 xl:h-10 xl:w-10 shrink-0 flex items-center justify-center rounded-lg text-cyan-500 hover:text-white hover:bg-cyan-900/30 transition border border-cyan-500/20 bg-cyan-500/10" title="Gerar Contrato de Consultoria">
                                 <FileSignature size={20} />
+                            </button>
+                            <button onClick={() => setIsAgendaOpen(true)} className="h-11 px-3 sm:px-4 flex items-center gap-2 bg-purple-500/10 border border-purple-500/20 text-purple-400 hover:bg-purple-500/20 hover:text-white rounded-xl transition text-sm font-medium">
+                                <Calendar size={16} /> <span className="hidden sm:inline">Agenda</span>
                             </button>
 
                             <button onClick={onOpenReport} className="h-9 w-9 xl:h-10 xl:w-10 shrink-0 flex items-center justify-center rounded-lg text-indigo-400 hover:text-white hover:bg-indigo-900/30 transition border border-indigo-500/20 bg-indigo-500/10" title="Gerar Relatório de Análise">

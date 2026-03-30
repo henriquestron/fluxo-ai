@@ -46,6 +46,9 @@ import ModernView from '@/components/dashboard/ModernView';
 import { Transaction, Installment, Recurring, Goal, ClientUser } from '@/types';
 import ContractGenerator from '@/components/dashboard/agent/contratos/ContractGenerator';
 import ReportGenerator from '@/components/dashboard/agent/contratos/ReportGenerator';
+import ConsultantAgendaModal from '@/components/dashboard/ConsultantAgendaModal';
+import ConsultantHeader from '@/components/dashboard/ConsultantHeader';
+
 
 
 
@@ -59,7 +62,7 @@ export default function FinancialDashboard() {
     // --- ESTADOS GLOBAIS ---
     const [activeTab, setActiveTab] = useState(currentSystemMonthName);
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-    const [currentLayout, setCurrentLayout] = useState<'standard' |'modern'| 'trader' | 'zen' | 'calendar' | 'timeline' | 'bento'>('standard');
+    const [currentLayout, setCurrentLayout] = useState<'standard' | 'modern' | 'trader' | 'zen' | 'calendar' | 'timeline' | 'bento'>('standard');
     const [currentTheme, setCurrentTheme] = useState('default');
     const [activeSection, setActiveSection] = useState<'dashboard' | 'goals'>('dashboard');
     // --- WORKSPACES (PERFIS DE DADOS) ---
@@ -105,6 +108,7 @@ export default function FinancialDashboard() {
     const [myConsultantLink, setMyConsultantLink] = useState<any>(null);
     const [isReportOpen, setIsReportOpen] = useState(false);
     const [consultantLogo, setConsultantLogo] = useState<string | null>(null);
+    const [isAgendaOpen, setIsAgendaOpen] = useState(false);
 
     // --- AUTH & USER DATA ---
     const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
@@ -2233,40 +2237,84 @@ export default function FinancialDashboard() {
                 activeTab={activeTab}
                 selectedYear={selectedYear}
             />
-            <DashboardHeader
-                user={user}
-                userPlan={userPlan}
-                viewingAs={viewingAs}
-                clients={clients}
-                switchView={switchView}
-                setIsClientModalOpen={setIsClientModalOpen}
-                setIsHistoryOpen={setIsHistoryOpen}
-                setIsExportModalOpen={setIsExportModalOpen}
-                openPricingModal={openPricingModal}
-                runTour={runTour}
-                setIsProfileModalOpen={setIsProfileModalOpen}
-                handleManageSubscription={handleManageSubscription}
-                whatsappEnabled={whatsappEnabled}
-                toggleWhatsappNotification={toggleWhatsappNotification}
-                setIsCustomizationOpen={setIsCustomizationOpen}
-                handleCheckout={handleCheckout}
-                handleLogout={handleLogout}
-                setIsAIOpen={setIsAIOpen}
-                setIsCreditCardModalOpen={setIsCreditCardModalOpen}
-                openNewTransactionModal={openNewTransactionModal}
-                setIsCalculatorOpen={setIsCalculatorOpen}
-                handleRemoveClient={handleRemoveClient}
-                client={viewingAs}
-                setIsImportOpen={setIsImportOpen}
-                setIsTutorialOpen={setIsTutorialOpen}
-                setIsContractOpen={setIsContractOpen}
-                handleClientContractUpload={handleClientContractUpload}
-                isManagedClient={!!myConsultantLink}
-                clientContractUrl={myConsultantLink?.contract_url}
-                onOpenContract={handleOpenContract}
-                clientStatus={myConsultantLink?.status}
-                onOpenReport={() => setIsReportOpen(true)}
-            />
+
+            {/* RENDERIZAÇÃO DO HEADER */}
+            {userPlan === 'agent' ? (
+                <ConsultantHeader
+                    user={user}
+                    userPlan={userPlan}
+                    viewingAs={viewingAs}
+                    clients={clients}
+                    switchView={switchView}
+                    setIsClientModalOpen={setIsClientModalOpen}
+                    setIsHistoryOpen={setIsHistoryOpen}
+                    setIsExportModalOpen={setIsExportModalOpen}
+                    openPricingModal={openPricingModal}
+                    runTour={runTour}
+                    setIsProfileModalOpen={setIsProfileModalOpen}
+                    handleManageSubscription={handleManageSubscription}
+                    whatsappEnabled={whatsappEnabled}
+                    toggleWhatsappNotification={toggleWhatsappNotification}
+                    setIsCustomizationOpen={setIsCustomizationOpen}
+                    handleCheckout={handleCheckout}
+                    handleLogout={handleLogout}
+                    setIsAIOpen={setIsAIOpen}
+                    setIsCreditCardModalOpen={setIsCreditCardModalOpen}
+                    openNewTransactionModal={openNewTransactionModal}
+                    setIsCalculatorOpen={setIsCalculatorOpen}
+                    handleRemoveClient={handleRemoveClient}
+                    client={viewingAs}
+                    setIsImportOpen={setIsImportOpen}
+                    setIsTutorialOpen={setIsTutorialOpen}
+                    setIsContractOpen={setIsContractOpen}
+                    handleClientContractUpload={handleClientContractUpload}
+                    onOpenContract={() => setIsContractOpen(true)}
+                    onOpenReport={() => setIsReportOpen(true)}
+                    setIsAgendaOpen={setIsAgendaOpen}
+
+                    // 🟢 CORREÇÃO: Passando valores fixos já que o consultor não é um cliente
+                    isManagedClient={false}
+                    clientContractUrl={undefined}
+                    clientStatus={undefined}
+                />
+            ) : (
+                <DashboardHeader
+                    user={user}
+                    userPlan={userPlan}
+                    viewingAs={viewingAs}
+                    clients={clients}
+                    switchView={switchView}
+                    setIsClientModalOpen={setIsClientModalOpen}
+                    setIsHistoryOpen={setIsHistoryOpen}
+                    setIsExportModalOpen={setIsExportModalOpen}
+                    openPricingModal={openPricingModal}
+                    runTour={runTour}
+                    setIsProfileModalOpen={setIsProfileModalOpen}
+                    handleManageSubscription={handleManageSubscription}
+                    whatsappEnabled={whatsappEnabled}
+                    toggleWhatsappNotification={toggleWhatsappNotification}
+                    setIsCustomizationOpen={setIsCustomizationOpen}
+                    handleCheckout={handleCheckout}
+                    handleLogout={handleLogout}
+                    setIsAIOpen={setIsAIOpen}
+                    setIsCreditCardModalOpen={setIsCreditCardModalOpen}
+                    openNewTransactionModal={openNewTransactionModal}
+                    setIsCalculatorOpen={setIsCalculatorOpen}
+                    handleRemoveClient={handleRemoveClient}
+                    client={viewingAs}
+                    setIsImportOpen={setIsImportOpen}
+                    setIsTutorialOpen={setIsTutorialOpen}
+                    setIsContractOpen={setIsContractOpen}
+                    handleClientContractUpload={handleClientContractUpload}
+                    isManagedClient={!!myConsultantLink}
+                    clientContractUrl={myConsultantLink?.contract_url}
+                    onOpenContract={handleOpenContract}
+                    clientStatus={myConsultantLink?.status}
+                    onOpenReport={() => setIsReportOpen(true)}
+                    setIsAgendaOpen={setIsAgendaOpen}
+                />
+            )}
+
             <TabNavigation
                 activeSection={activeSection}
                 setActiveSection={setActiveSection}
@@ -2285,6 +2333,12 @@ export default function FinancialDashboard() {
                 isOpen={isTutorialOpen}
                 onClose={() => setIsTutorialOpen(false)}
                 userPlan={userPlan}
+            />
+            <ConsultantAgendaModal
+                isOpen={isAgendaOpen}
+                onClose={() => setIsAgendaOpen(false)}
+                consultant={user}
+                clients={clients}
             />
 
 
@@ -2393,19 +2447,19 @@ export default function FinancialDashboard() {
                             getReceipt={getReceiptForMonth}
                         />
                     )}
-                        {(currentLayout === 'trader') && (
-                            <TraderView
-                                selectedYear={selectedYear} // <--- ADICIONE ISSO
-                                transactions={transactions} // Sem filtro, o componente filtra
-                                installments={installments}
-                                recurring={recurring}
-                                activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab}
-                                currentMonthData={currentMonthData} previousSurplus={previousSurplus}
-                                displayBalance={displayBalance}
-                                onTogglePaid={togglePaid} onTogglePaidMonth={togglePaidMonth}
-                                onToggleDelay={toggleDelay} onDelete={handleDelete}
-                            />
-                        )}
+                    {(currentLayout === 'trader') && (
+                        <TraderView
+                            selectedYear={selectedYear} // <--- ADICIONE ISSO
+                            transactions={transactions} // Sem filtro, o componente filtra
+                            installments={installments}
+                            recurring={recurring}
+                            activeTab={activeTab} months={MONTHS} setActiveTab={setActiveTab}
+                            currentMonthData={currentMonthData} previousSurplus={previousSurplus}
+                            displayBalance={displayBalance}
+                            onTogglePaid={togglePaid} onTogglePaidMonth={togglePaidMonth}
+                            onToggleDelay={toggleDelay} onDelete={handleDelete}
+                        />
+                    )}
 
                     {(currentLayout === 'calendar') && (
                         <CalendarView
@@ -2463,7 +2517,7 @@ export default function FinancialDashboard() {
                         onClose={() => setIsProfileModalOpen(false)}
                         user={user}
                         userPlan={userPlan} // <--- ADICIONE ESTA LINHA
-                        
+
                     />
 
                     <ExportModal
