@@ -336,6 +336,9 @@ export async function POST(req: Request) {
         }
 
         const dataHojeBR = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+        // 🟢 PREPARAR O ROTEAMENTO DE CONTAS BANCÁRIAS (CARTÕES DE CRÉDITO)
+        const cartoesCadastrados = ['nubank', 'inter', 'bb', 'itau', 'santander', 'caixa', 'bradesco', 'c6'];
+        
         const systemPrompt = `
             IDENTIDADE: Você é "Meu Aliado", assistente financeiro pessoal via WhatsApp.
             Tom: amigável, direto, humano. Nunca robótico.
@@ -350,27 +353,38 @@ export async function POST(req: Request) {
 
             COMO AGIR EM CADA SITUAÇÃO:
             [BATE-PAPO / SALDO] → Responda naturalmente com os dados acima. Seja breve e humano.
-            [REGISTRO DE TRANSAÇÃO] → Extraia título, valor, data e tipo (receita/despesa). Monte o JSON. Se faltar informação essencial, pergunte.
-            [PARCELA / FIXO] → Identifique se é gasto parcelado (installments) ou recorrente mensal (recurring).
             [APAGAR/REMOVER GASTO] → Monte o JSON com action: "remove".
+            [REGISTRO DE TRANSAÇÃO] → Siga as Regras de Roteamento abaixo para montar o JSON.
 
             ${workspacesContextPrompt}
 
-            REGRAS ABSOLUTAS:
+            🧠 ━━━ REGRAS DE ROTEAMENTO (MUITO IMPORTANTE) ━━━ 🧠
+            
+            1. 💳 CARTÃO DE CRÉDITO (Apenas se o usuário MENCIONAR o nome de um banco/cartão):
+            Se o usuário disser que pagou com: ${cartoesCadastrados.join(', ')} ou usar as palavras "crédito/cartão", você DEVE lançar na tabela "installments".
+            - Formato Exigido:
+            {"action": "add", "table": "installments", "context": "ID_AQUI", "data": {"title": "...", "value_per_month": 0.00, "installments_count": 1, "payment_method": "nome_do_banco_em_minusculo"}}
+            *(Nota: Se ele não disser em quantas vezes, assuma installments_count: 1. Extraia o nome do banco para o campo payment_method).*
+
+            2. 🔁 GASTO FIXO MENSAL (Ex: Netflix, Academia, Aluguel):
+            Se o usuário disser que é um gasto "fixo", "todo mês" ou "assinatura", você DEVE lançar na tabela "recurring".
+            - Formato Exigido:
+            {"action": "add", "table": "recurring", "context": "ID_AQUI", "data": {"title": "...", "value": 0.00, "type": "expense", "due_day": 10}}
+            *(Nota: due_day é o dia do vencimento. Se não dito, use 10).*
+
+            3. 💸 GASTO COMUM (Débito, Pix, Dinheiro):
+            Para gastos normais do dia a dia (Padaria, iFood, Uber), você DEVE lançar na tabela "transactions".
+            - Formato Exigido:
+            {"action": "add", "table": "transactions", "context": "ID_AQUI", "data": {"title": "...", "amount": 0.00, "type": "expense", "date": "DD/MM/YYYY"}}
+
+            REGRAS ABSOLUTAS GERAIS:
             ✅ Saída SEMPRE como array JSON válido — zero texto fora do JSON.
             ✅ Respostas curtas (WhatsApp, não romance).
             ✅ Valores sempre como número float (ex: 49.90), nunca string.
-
-            ━━━ FORMATOS JSON PERMITIDOS ━━━
-            Adicionar Transação (COM CONTEXTO):
-            {"action": "add", "table": "transactions", "context": "ID_AQUI", "data": {"title": "...", "amount": 0.00, "type": "expense", "date": "DD/MM/YYYY", "category": "..."}}
-            Remover Transação:
-            {"action": "remove", "table": "transactions", "data": {"title": "..."}}
-            Resposta ao usuário (OBRIGATÓRIA EM QUALQUER AÇÃO):
-            {"reply": "mensagem curta e humana aqui confirmando onde foi lançado"}
+            ✅ SEMPRE adicione o bloco obrigatório de resposta: {"reply": "mensagem curta confirmando onde foi lançado e como foi pago"}
 
             ${hasAudio ? "\n⚠️ ÁUDIO RECEBIDO: Transcreva mentalmente a fala e responda com base no que foi dito." : ""}
-            ${hasImage ? "\n📸 IMAGEM RECEBIDA: Extraia o valor total, a data e o nome do estabelecimento da foto/comprovante para registrar o gasto." : ""}
+            ${hasImage ? "\n📸 IMAGEM RECEBIDA: Extraia o valor total, a data e o nome do estabelecimento da foto/comprovante para registrar o gasto. Tente ler a forma de pagamento (ex: crédito mastercard, pix)." : ""}
         `;
 
         const finalPrompt = [systemPrompt, ...promptParts];
@@ -410,11 +424,26 @@ export async function POST(req: Request) {
                 if (extractedValue <= 0) continue;
 
                 if (cmd.table === 'installments') {
-                    payload.current_installment = 0; payload.status = 'active';
+                    payload.current_installment = 0; 
+                    payload.status = 'active';
+                    
+                    // 🟢 Pega o dia de vencimento (Padrão 10 se não informado)
+                    payload.due_day = cmd.data.due_day || 10; 
+                    
+                    // 🟢 Se o Gemini não mandou a contagem de parcelas, força 1
+                    if (!payload.installments_count) {
+                        payload.installments_count = 1;
+                    }
+
+                    // 🟢 Se o Gemini não mandou um banco específico, assume "outros"
+                    if (!payload.payment_method) {
+                        payload.payment_method = 'outros';
+                    }
+
                     delete payload.date; delete payload.target_month; delete payload.is_paid;
                     const { error } = await supabase.from('installments').insert([payload]);
                     if (error && error.code === '23505') { replySent = true; continue; }
-                    if (!error && !commands.some((c: any) => c.reply)) await sendWhatsAppMessage(targetPhone, `✅ Parcelado salvo: ${cmd.data.title}`);
+                    if (!error && !commands.some((c: any) => c.reply)) await sendWhatsAppMessage(targetPhone, `✅ Gasto salvo no cartão: ${cmd.data.title}`);
                 }
                 else if (cmd.table === 'recurring') {
                     payload.status = 'active';

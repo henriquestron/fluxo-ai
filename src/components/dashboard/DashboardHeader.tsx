@@ -213,7 +213,7 @@ export default function DashboardHeader({
                                                 {userPlan !== 'free' && (<button onClick={() => { setIsUserMenuOpen(false); handleManageSubscription(); }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition"><CreditCard size={16} className="text-emerald-500" /> Assinatura</button>)}
 
                                                 <div className="px-3 py-2.5 flex items-center justify-between group cursor-pointer hover:bg-gray-800 rounded-lg transition" onClick={(e) => { e.stopPropagation(); toggleWhatsappNotification(); }}>
-                                                    <div className="flex items-center gap-3 text-sm text-gray-300 group-hover:text-white"><Smartphone size={16} className="text-emerald-500" /> Notificações Zap {(userPlan !== 'pro' && userPlan !== 'agent' && userPlan !== 'admin') && <Lock size={12} className="text-amber-500" />}</div>
+                                                    <div className="flex items-center gap-3 text-sm text-gray-300 group-hover:text-white"><Smartphone size={16} className="text-emerald-500" /> Notificações Whatsapp {(userPlan !== 'pro' && userPlan !== 'agent' && userPlan !== 'admin') && <Lock size={12} className="text-amber-500" />}</div>
                                                     <div className={`w-9 h-5 rounded-full transition-colors relative ${whatsappEnabled ? 'bg-emerald-600' : 'bg-gray-700'}`}><div className={`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform ${whatsappEnabled ? 'translate-x-4' : 'translate-x-0'}`}></div></div>
                                                 </div>
 
