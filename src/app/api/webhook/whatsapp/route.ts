@@ -176,7 +176,7 @@ export async function POST(req: Request) {
 
         const messageId = key.id;
         const remoteJid = key.remoteJid;
-        const senderId = remoteJid.split('@')[0];
+        const senderId = remoteJid.split('@')[0].split(':')[0];
         const messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
 
         // ANTI-DUPLICIDADE COM REDIS
