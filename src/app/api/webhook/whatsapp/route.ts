@@ -75,14 +75,15 @@ async function downloadMedia(url: string) {
 }
 
 async function getFinancialContext(supabase: any, userId: string, workspaceId: string) {
-    const today = new Date();
+    const today = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
     const currentYear = today.getFullYear();
     const activeMonthIdx = today.getMonth();
     const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
+    // 🟢 CORREÇÃO 1: Adicionado o 'custom_values' no SELECT para o robô ler
     const [transRes, recRes, instRes] = await Promise.all([
         supabase.from('transactions').select('type, amount, date, status').eq('user_id', userId).eq('context', workspaceId),
-        supabase.from('recurring').select('type, value, start_date, created_at, status, paid_months, skipped_months, standby_months').eq('user_id', userId).eq('context', workspaceId),
+        supabase.from('recurring').select('type, value, custom_values, start_date, created_at, status, paid_months, skipped_months, standby_months').eq('user_id', userId).eq('context', workspaceId),
         supabase.from('installments').select('value_per_month, start_date, created_at, status, paid_months, standby_months, current_installment, installments_count').eq('user_id', userId).eq('context', workspaceId)
     ]);
 
@@ -90,9 +91,15 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
     const recurring = recRes.data || [];
     const installments = instRes.data || [];
 
+    // 🟢 CORREÇÃO 2: Parser Blindado (Agora ele lê datas com '-' do banco ou com '/' do site)
     const getStartData = (item: any) => {
-        if (item.start_date && item.start_date.includes('/')) {
-            const p = item.start_date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+        if (item.start_date) {
+            if (item.start_date.includes('-')) {
+                const p = item.start_date.split('-'); return { m: parseInt(p[1]) - 1, y: parseInt(p[0]) };
+            }
+            if (item.start_date.includes('/')) {
+                const p = item.start_date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+            }
         }
         if (item.date && item.date.includes('/')) {
             const p = item.date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
@@ -101,6 +108,14 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
             const d = new Date(item.created_at); return { m: d.getMonth(), y: d.getFullYear() };
         }
         return { m: 0, y: currentYear };
+    };
+
+    // 🟢 CORREÇÃO 3: O Tradutor Temporal injetado no robô
+    const getActualValue = (item: any, tag: string) => {
+        if (item.custom_values && item.custom_values[tag] !== undefined) {
+            return Number(item.custom_values[tag]);
+        }
+        return Number(item.value);
     };
 
     let previousSurplus = 0; let computedInc = 0; let computedExp = 0; let computedBalance = 0;
@@ -117,7 +132,7 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
                 const paid = r.paid_months?.includes(paymentTag) || r.paid_months?.includes(month);
                 if ((r.status === 'delayed' || r.status === 'standby' || r.standby_months?.includes(paymentTag)) && !paid) return false;
                 return r.type === 'income' && (currentYear > sY || (currentYear === sY && idx >= sM)) && !r.skipped_months?.includes(month);
-            }).reduce((acc: number, i: any) => acc + Number(i.value), 0) || 0);
+            }).reduce((acc: number, r: any) => acc + getActualValue(r, paymentTag), 0) || 0);
 
         const exp = (transactions?.filter((t: any) => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc: number, i: any) => acc + Number(i.amount), 0) || 0) +
             (recurring?.filter((r: any) => {
@@ -125,7 +140,7 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
                 const paid = r.paid_months?.includes(paymentTag) || r.paid_months?.includes(month);
                 if ((r.status === 'delayed' || r.status === 'standby' || r.standby_months?.includes(paymentTag)) && !paid) return false;
                 return r.type === 'expense' && (currentYear > sY || (currentYear === sY && idx >= sM)) && !r.skipped_months?.includes(month);
-            }).reduce((acc: number, i: any) => acc + Number(i.value), 0) || 0) +
+            }).reduce((acc: number, r: any) => acc + getActualValue(r, paymentTag), 0) || 0) +
             (installments?.reduce((acc: number, i: any) => {
                 const paid = i.paid_months?.includes(paymentTag) || i.paid_months?.includes(month);
                 if ((i.status === 'delayed' || i.status === 'standby' || i.standby_months?.includes(paymentTag)) && !paid) return acc;
