@@ -13,7 +13,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import { supabase } from '@/supabase';
 import { driver } from "driver.js";
-import "driver.js/dist/driver.css";
+
 import TimelineView from '@/components/dashboard/TimelineView';
 import BentoView from '@/components/dashboard/BentoView';
 import { Toaster, toast } from 'sonner';

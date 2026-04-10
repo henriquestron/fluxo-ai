@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Lock, Camera, Save, Loader2, Mail, Phone, Shield, Link as LinkIcon, ExternalLink, Copy, Check, Zap, AlertTriangle, Trash2, Briefcase, Bot, Sparkles, MessageSquare } from 'lucide-react'; 
+import { X, User, Lock, Camera, Save, Loader2, Mail, Phone, Shield, Link as LinkIcon, ExternalLink, Copy, Check, Zap, AlertTriangle, Trash2, Briefcase, Bot, Sparkles, MessageSquare, Users } from 'lucide-react'; 
 import { supabase } from '@/supabase'; 
 import { toast } from 'sonner';
 
-// --- CONFIGURAÇÃO DO BOT ---
-const BOT_NUMBER = "556293882931"; // Seu número de Admin
+// 🟢 CORREÇÃO: Variável de ambiente (Nunca deixar exposto no JS do cliente)
+const BOT_NUMBER = process.env.NEXT_PUBLIC_BOT_NUMBER || "";
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -16,19 +16,21 @@ interface ProfileModalProps {
 export default function ProfileModal({ isOpen, onClose, user, userPlan }: ProfileModalProps) {
   if (!isOpen || !user) return null;
 
-  // 🟢 NOVA ABA ADICIONADA AQUI: 'whatsapp'
   const [activeTab, setActiveTab] = useState<'details' | 'whatsapp' | 'security'>('details');
   
   // States Pessoais
   const [fullName, setFullName] = useState(user.user_metadata?.full_name || '');
   const [avatarUrl, setAvatarUrl] = useState(user.user_metadata?.avatar_url || '');
+  
+  // STATES DO WHATSAPP (Modo Casal)
   const [whatsapp, setWhatsapp] = useState('');
+  const [partnerWhatsapp, setPartnerWhatsapp] = useState('');
   
   // State da Logo
   const [companyLogo, setCompanyLogo] = useState('');
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
-  // 🟢 STATES DAS WORKSPACES PARA ROTEAMENTO DA IA
+  // STATES DAS WORKSPACES PARA ROTEAMENTO DA IA
   const [workspaces, setWorkspaces] = useState<any[]>([]);
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(false);
   const [savingRules, setSavingRules] = useState(false);
@@ -52,18 +54,19 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
   useEffect(() => {
     if (user?.id) {
       const fetchData = async () => {
-        // Busca Telefone
         const { data: settingsData } = await supabase
           .from('user_settings')
-          .select('whatsapp_phone')
+          .select('whatsapp_phone, partner_phone')
           .eq('user_id', user.id)
           .maybeSingle();
         
         if (settingsData?.whatsapp_phone) {
           setWhatsapp(settingsData.whatsapp_phone);
         }
+        if (settingsData?.partner_phone) {
+          setPartnerWhatsapp(settingsData.partner_phone);
+        }
 
-        // Busca a Logo da Empresa
         const { data: profileData } = await supabase
           .from('profiles')
           .select('company_logo')
@@ -74,8 +77,6 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
           setCompanyLogo(profileData.company_logo);
         }
 
-        // 🟢 BUSCA AS WORKSPACES DO USUÁRIO
-        // ⚠️ Substitua 'workspaces' pelo nome real da sua tabela se for diferente
         setLoadingWorkspaces(true);
         const { data: wsData } = await supabase
           .from('workspaces') 
@@ -91,7 +92,6 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
     }
   }, [user]);
 
-  // Upload Foto Perfil
   const handleAvatarUpload = async (e: any) => {
     try {
       setUploading(true);
@@ -110,13 +110,14 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
       toast.success("Foto carregada! Clique em Salvar para confirmar.");
 
     } catch (error: any) {
-      toast.error("Erro no upload: " + error.message);
+      // 🟢 CORREÇÃO: Erro genérico na UI, erro real no console
+      console.error("Erro no upload do avatar:", error);
+      toast.error("Erro ao enviar a imagem. Tente novamente.");
     } finally {
       setUploading(false);
     }
   };
 
-  // Upload Logo da Empresa
   const handleLogoUpload = async (e: any) => {
     try {
       setUploadingLogo(true);
@@ -143,13 +144,13 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
       toast.success("Logo atualizada!");
 
     } catch (error: any) {
-      toast.error("Erro no upload da logo: " + error.message);
+      console.error("Erro no upload da logo:", error);
+      toast.error("Erro ao atualizar a logo. Tente novamente.");
     } finally {
       setUploadingLogo(false);
     }
   };
 
-  // Salvar Dados Pessoais
   const handleUpdateProfile = async () => {
     setLoading(true);
     try {
@@ -161,37 +162,50 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
       toast.success("Perfil atualizado com sucesso!");
       setTimeout(() => { window.location.reload(); }, 1000);
     } catch (error: any) {
-      toast.error("Erro: " + error.message);
+      console.error("Erro ao atualizar perfil:", error);
+      toast.error("Não foi possível salvar os dados. Tente novamente.");
     } finally {
       setLoading(false);
     }
   };
 
-  // 🟢 Salvar Regras do WhatsApp IA
   const handleSaveWhatsappSettings = async () => {
     setSavingRules(true);
     try {
-      // 1. Salva o número principal
       const cleanPhone = whatsapp.replace(/\D/g, ''); 
+      const cleanPartnerPhone = partnerWhatsapp.replace(/\D/g, ''); 
+
+      // 🟢 CORREÇÃO: Validação de tamanho do número do parceiro
+      if (cleanPartnerPhone && cleanPartnerPhone.length < 10) {
+        toast.error("Número do parceiro incompleto. Use DDD + número.");
+        setSavingRules(false);
+        return;
+      }
+
       const { error: dbError } = await supabase
         .from('user_settings')
-        .upsert({ user_id: user.id, whatsapp_phone: cleanPhone }, { onConflict: 'user_id' });
+        .upsert({ 
+            user_id: user.id, 
+            whatsapp_phone: cleanPhone,
+            partner_phone: cleanPartnerPhone || null 
+        }, { onConflict: 'user_id' });
+      
       if (dbError) throw dbError;
 
-      // 2. Salva as regras de cada workspace
       if (workspaces.length > 0) {
         for (const ws of workspaces) {
-          // ⚠️ Substitua 'workspaces' pelo nome real da sua tabela
           await supabase
             .from('workspaces')
             .update({ whatsapp_rule: ws.whatsapp_rule })
-            .eq('id', ws.id);
+            .eq('id', ws.id)
+            .eq('user_id', user.id); // 🟢 CORREÇÃO: Garantia de Ownership (Trava IDOR)
         }
       }
 
       toast.success("Configurações da IA salvas com sucesso! 🤖");
     } catch (error: any) {
-      toast.error("Erro ao salvar IA: " + error.message);
+      console.error("Erro ao salvar regras da IA:", error);
+      toast.error("Não foi possível salvar as configurações. Tente novamente.");
     } finally {
       setSavingRules(false);
     }
@@ -201,14 +215,16 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
       setWorkspaces(prev => prev.map(ws => ws.id === id ? { ...ws, whatsapp_rule: newRule } : ws));
   };
 
-  // Trocar Senha e Excluir Conta omitidos para economizar espaço (permanecem iguais ao seu código)
   const handleChangePassword = async () => {
     if (password !== confirmPassword) return toast.warning("Senhas não conferem.");
     if (password.length < 6) return toast.warning("Mínimo 6 caracteres.");
     setLoading(true);
     const { error } = await supabase.auth.updateUser({ password: password });
-    if (error) toast.error("Erro: " + error.message);
-    else {
+    
+    if (error) {
+        console.error("Erro ao trocar senha:", error);
+        toast.error("Erro ao atualizar a senha. Tente novamente.");
+    } else {
       toast.success("Senha alterada com sucesso!");
       setPassword('');
       setConfirmPassword('');
@@ -216,19 +232,27 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
     setLoading(false);
   };
 
+  // 🟢 CORREÇÃO: DeleteAccount agora chama uma API segura com Service Role
   const handleDeleteAccount = async () => {
     setIsDeleting(true);
     try {
-      await supabase.from('transactions').delete().eq('user_id', user.id);
-      await supabase.from('installments').delete().eq('user_id', user.id);
-      await supabase.from('recurring').delete().eq('user_id', user.id);
-      await supabase.from('goals').delete().eq('user_id', user.id);
-      await supabase.from('user_settings').delete().eq('user_id', user.id);
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const res = await fetch('/api/account/delete', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${session?.access_token}` }
+      });
+
+      if (!res.ok) {
+          throw new Error("Falha na resposta da API.");
+      }
+
       await supabase.auth.signOut();
-      toast.success("Conta excluída.");
+      toast.success("Conta e todos os dados foram excluídos.");
       setTimeout(() => { window.location.reload(); }, 1500);
     } catch (error: any) {
-      toast.error("Erro ao excluir: " + error.message);
+      console.error("Erro ao excluir conta:", error);
+      toast.error("Não foi possível excluir a conta. Contate o suporte.");
       setIsDeleting(false);
     }
   };
@@ -236,7 +260,10 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
   const handleConnectWhatsapp = () => {
     if (!canUseWhatsapp) return toast.error("Recurso Bloqueado 🔒", { description: "Exclusivo dos planos Pro e Agent." });
     const cleanPhone = whatsapp.replace(/\D/g, '');
-    if (cleanPhone.length < 10) return toast.error("Número incompleto.");
+    if (cleanPhone.length < 10) return toast.error("Número principal incompleto.");
+    
+    if (!BOT_NUMBER) return toast.error("Erro de configuração. Contate o suporte.");
+
     const link = `https://wa.me/${BOT_NUMBER}?text=${encodeURIComponent(`Ativar ${cleanPhone}`)}`;
     window.open(link, '_blank');
   };
@@ -253,7 +280,7 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
           <button onClick={onClose} className="text-gray-500 hover:text-white transition"><X size={24}/></button>
         </div>
 
-        {/* TABS ATUALIZADAS (AGORA SÃO 3) */}
+        {/* TABS */}
         <div className="flex border-b border-gray-800 bg-[#0f0f10] overflow-x-auto scrollbar-hide">
           <button onClick={() => setActiveTab('details')} className={`flex items-center justify-center gap-2 px-4 py-4 text-sm font-bold border-b-2 transition min-w-max ${activeTab === 'details' ? 'border-purple-500 text-purple-400 bg-purple-500/5' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
             <User size={16} /> Perfil
@@ -335,7 +362,7 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
             </div>
           )}
 
-          {/* 🟢 NOVA ABA 2: WHATSAPP IA E ROTEAMENTO */}
+          {/* ABA 2: WHATSAPP IA E ROTEAMENTO */}
           {activeTab === 'whatsapp' && (
             <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
               
@@ -344,21 +371,30 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
                 <h3 className="text-emerald-400 font-bold flex items-center gap-2 mb-1">
                   <Phone size={18} /> 1. Conexão do Dispositivo
                 </h3>
-                <p className="text-gray-400 text-xs mb-4">Insira seu número com DDD para autorizar o Bot a receber seus comprovantes.</p>
+                <p className="text-gray-400 text-xs mb-4">Autorize o Bot a receber seus gastos. Você pode adicionar um número extra para compartilhar o painel com seu parceiro(a).</p>
                 
-                <div className="bg-gray-900/50 p-4 rounded-2xl border border-gray-800">
-                  <div className="flex justify-between items-center mb-2">
-                    <label className="text-xs text-gray-500 font-bold">Número do WhatsApp</label>
-                    {canUseWhatsapp ? (
-                        <span className="bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"><Zap size={10} /> Liberado</span>
-                    ) : (
-                        <span className="bg-gray-800 text-gray-500 border border-gray-700 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"><Lock size={10} /> Plano Grátis</span>
-                    )}
+                <div className="bg-gray-900/50 p-4 rounded-2xl border border-gray-800 space-y-4">
+                  {/* Número Principal */}
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <label className="text-xs text-gray-500 font-bold flex items-center gap-1"><User size={12}/> Seu WhatsApp</label>
+                      {canUseWhatsapp ? (
+                          <span className="bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"><Zap size={10} /> Liberado</span>
+                      ) : (
+                          <span className="bg-gray-800 text-gray-500 border border-gray-700 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"><Lock size={10} /> Plano Grátis</span>
+                      )}
+                    </div>
+                    <input type="text" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="Ex: 556299999999" className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white focus:border-emerald-500 outline-none transition" />
                   </div>
-                  <input type="text" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="Ex: 556299999999" className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white focus:border-emerald-500 outline-none transition mb-3" />
+
+                  {/* Número do Parceiro */}
+                  <div>
+                    <label className="text-xs text-gray-500 font-bold mb-2 flex items-center gap-1"><Users size={12}/> WhatsApp do Parceiro(a) <span className="font-normal text-[10px]">(Opcional)</span></label>
+                    <input type="text" value={partnerWhatsapp} onChange={(e) => setPartnerWhatsapp(e.target.value)} placeholder="Ex: 556288888888" className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white focus:border-emerald-500 outline-none transition" />
+                  </div>
                   
-                  <button onClick={handleConnectWhatsapp} className={`w-full py-2.5 rounded-xl font-bold transition flex items-center justify-center gap-2 ${canUseWhatsapp ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-gray-800 text-gray-500 border border-gray-700'}`}>
-                      {canUseWhatsapp ? <LinkIcon size={16} /> : <Lock size={16} />} {canUseWhatsapp ? "Autenticar Número" : "Bloqueado"}
+                  <button onClick={handleConnectWhatsapp} className={`w-full py-2.5 rounded-xl font-bold transition flex items-center justify-center gap-2 mt-2 ${canUseWhatsapp ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-gray-800 text-gray-500 border border-gray-700'}`}>
+                      {canUseWhatsapp ? <LinkIcon size={16} /> : <Lock size={16} />} {canUseWhatsapp ? "Autenticar Conta" : "Bloqueado"}
                   </button>
                 </div>
               </div>
@@ -386,7 +422,9 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
                           <div className="w-5 h-5 rounded bg-cyan-900/30 text-cyan-400 flex items-center justify-center text-xs border border-cyan-500/30">{index + 1}</div>
                           {ws.title}
                         </label>
+                        {/* 🟢 CORREÇÃO: Limite de Caracteres para não quebrar a IA */}
                         <textarea 
+                          maxLength={300}
                           value={ws.whatsapp_rule || ''}
                           onChange={(e) => handleRuleChange(ws.id, e.target.value)}
                           placeholder="Ex: Aqui entram apenas gastos de supermercado, farmácia, combustível do meu carro pessoal e contas de casa."
@@ -472,4 +510,3 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
     </div>
   );
 }
-

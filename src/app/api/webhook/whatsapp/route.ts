@@ -72,9 +72,16 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
     const activeMonthIdx = today.getMonth();
     const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
-    const { data: transactions } = await supabase.from('transactions').select('*').eq('user_id', userId).eq('context', workspaceId);
-    const { data: recurring } = await supabase.from('recurring').select('*').eq('user_id', userId).eq('context', workspaceId);
-    const { data: installments } = await supabase.from('installments').select('*').eq('user_id', userId).eq('context', workspaceId);
+    // 🟢 CORREÇÃO: Promise.all para buscas simultâneas e SELECT restrito (Acelera a resposta e economiza RAM)
+    const [transRes, recRes, instRes] = await Promise.all([
+        supabase.from('transactions').select('type, amount, date, status').eq('user_id', userId).eq('context', workspaceId),
+        supabase.from('recurring').select('type, value, start_date, created_at, status, paid_months, skipped_months, standby_months').eq('user_id', userId).eq('context', workspaceId),
+        supabase.from('installments').select('value_per_month, start_date, created_at, status, paid_months, standby_months, current_installment, installments_count').eq('user_id', userId).eq('context', workspaceId)
+    ]);
+
+    const transactions = transRes.data || [];
+    const recurring = recRes.data || [];
+    const installments = instRes.data || [];
 
     const getStartData = (item: any) => {
         if (item.start_date && item.start_date.includes('/')) {
@@ -142,7 +149,6 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
 export async function POST(req: Request) {
 
     try {
-        // PROTEÇÃO DO WEBHOOK COM TOKEN
         const EVOLUTION_WEBHOOK_SECRET = process.env.EVOLUTION_WEBHOOK_SECRET;
 
         if (!EVOLUTION_WEBHOOK_SECRET) {
@@ -176,7 +182,6 @@ export async function POST(req: Request) {
         // ANTI-DUPLICIDADE COM REDIS
         const alreadyProcessed = await redis.get(`msg:${messageId}`);
         if (alreadyProcessed) {
-            console.log("Mensagem duplicada ignorada:", messageId);
             return NextResponse.json({ status: 'Ignored Duplicate' });
         }
         await redis.set(`msg:${messageId}`, '1', { ex: 86400 });
@@ -202,7 +207,9 @@ export async function POST(req: Request) {
                     return NextResponse.json({ status: 'Blocked' });
                 }
 
-                const { data: us } = await supabase.from('user_settings').select('user_id').eq('whatsapp_id', senderId).single();
+                const variations = getPhoneVariations(senderId);
+                const inQuery = variations.join(',');
+                const { data: us } = await supabase.from('user_settings').select('user_id').or(`whatsapp_id.eq.${senderId},whatsapp_phone.in.(${inQuery}),partner_phone.in.(${inQuery})`).maybeSingle();
 
                 if (us) {
                     const { data: items } = await supabase.from(cmd.table).select('id, title').eq('user_id', us.user_id).ilike('title', `%${cmd.data.title}%`).order('created_at', { ascending: false }).limit(1);
@@ -265,56 +272,67 @@ export async function POST(req: Request) {
             promptParts.push(messageContent);
         }
 
-        // IDENTIFICAÇÃO DO USUÁRIO E PLANO
-        let { data: userSettings } = await supabase.from('user_settings').select('*').or(`whatsapp_phone.eq.${senderId},whatsapp_id.eq.${senderId}`).maybeSingle();
+        const variations = getPhoneVariations(senderId);
+        const inQuery = variations.join(',');
+
+        let { data: userSettings } = await supabase
+            .from('user_settings')
+            .select('*')
+            .or(`whatsapp_phone.eq.${senderId},whatsapp_id.eq.${senderId},partner_phone.eq.${senderId}`)
+            .maybeSingle();
 
         if (!userSettings) {
-            const variations = getPhoneVariations(senderId);
-            const { data: found } = await supabase.from('user_settings').select('*').in('whatsapp_phone', variations).maybeSingle();
+            const { data: found } = await supabase
+                .from('user_settings')
+                .select('*')
+                .or(`whatsapp_phone.in.(${inQuery}),partner_phone.in.(${inQuery})`)
+                .maybeSingle();
+            
             if (found) {
                 userSettings = found;
-                await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', found.user_id);
+                if (variations.includes(found.whatsapp_phone)) {
+                    await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', found.user_id);
+                }
             }
         }
 
+        // Fluxo de Ativação
         if (!userSettings) {
             const numbersInText = messageContent.replace(/\D/g, '');
             if (numbersInText.length >= 10) {
-                const possiblePhones = getPhoneVariations(numbersInText);
-                const { data: userToLink } = await supabase.from('user_settings').select('*').in('whatsapp_phone', possiblePhones).maybeSingle();
+                const possiblePhones = getPhoneVariations(numbersInText).join(',');
+                const { data: userToLink } = await supabase
+                    .from('user_settings')
+                    .select('*')
+                    .or(`whatsapp_phone.in.(${possiblePhones}),partner_phone.in.(${possiblePhones})`)
+                    .maybeSingle();
+                
                 if (userToLink) {
-                    await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userToLink.user_id);
-                    await sendWhatsAppMessage(remoteJid, `✅ *Vinculado!* Agora você pode usar a IA.`);
+                    await sendWhatsAppMessage(remoteJid, `✅ *Vinculado com sucesso!* Pode começar a enviar seus gastos ou fotos de notas fiscais.`);
                     return NextResponse.json({ success: true, action: "linked" });
                 }
             }
             return NextResponse.json({ error: "User unknown" });
         }
 
+        const isPartnerMessage = userSettings.partner_phone && variations.includes(userSettings.partner_phone);
+        const targetPhone = senderId; 
+
         const { data: profile } = await supabase.from('profiles').select('plan_tier').eq('id', userSettings.user_id).single();
         const plan = profile?.plan_tier || 'free';
 
         if (!['pro', 'agent', 'admin'].includes(plan)) {
-            const targetForBlock = userSettings.whatsapp_phone || senderId;
-            await sendWhatsAppMessage(targetForBlock, "🚫 *Acesso Exclusivo PRO*\n\nA Inteligência Artificial no WhatsApp está disponível apenas nos planos **Pro** e **Consultor**.", 100);
+            await sendWhatsAppMessage(targetPhone, "🚫 *Acesso Exclusivo PRO*\n\nA Inteligência Artificial no WhatsApp está disponível apenas nos planos **Pro** e **Consultor**.", 100);
             return NextResponse.json({ status: 'Blocked by Plan', plan: plan });
         }
 
-        if (senderId !== userSettings.whatsapp_phone && userSettings.whatsapp_id !== senderId) {
-            await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userSettings.user_id);
-        }
-
-        const targetPhone = userSettings.whatsapp_phone || senderId;
-        
-        // 🟢 BUSCAR TODAS AS WORKSPACES DO USUÁRIO
         const { data: workspaces } = await supabase.from('workspaces').select('id, title, whatsapp_rule').eq('user_id', userSettings.user_id);
         
-        let primaryWorkspace = workspaces?.[0]; // Pega a primeira por padrão
+        let primaryWorkspace = workspaces?.[0]; 
         
         let contextInfo = { saldo: "0", entradas: "0", saidas: "0", resumo_texto: "Sem dados", estado_conta: "Indefinido" };
         if (primaryWorkspace) contextInfo = await getFinancialContext(supabase, userSettings.user_id, primaryWorkspace.id);
 
-        // 🟢 PREPARAR O ROTEAMENTO (REGRAS DA IA)
         let workspacesContextPrompt = "";
         if (workspaces && workspaces.length > 1) {
             workspacesContextPrompt = `
@@ -323,7 +341,9 @@ export async function POST(req: Request) {
             Analise as seguintes contas e suas regras:
             `;
             workspaces.forEach((ws) => {
-                workspacesContextPrompt += `- ID: "${ws.id}" | Nome: "${ws.title}" | Regra do usuário: "${ws.whatsapp_rule || 'Geral'}"\n`;
+                // 🟢 CORREÇÃO: Sanitização Antimanchas contra Injeção de Prompt
+                const safeRule = (ws.whatsapp_rule || 'Geral').slice(0, 200).replace(/["{}[\]]/g, '');
+                workspacesContextPrompt += `- ID: "${ws.id}" | Nome: "${ws.title}" | Regra do usuário: "${safeRule}"\n`;
             });
             workspacesContextPrompt += `
             CRITÉRIOS DE ROTEAMENTO:
@@ -336,7 +356,6 @@ export async function POST(req: Request) {
         }
 
         const dataHojeBR = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-        // 🟢 PREPARAR O ROTEAMENTO DE CONTAS BANCÁRIAS (CARTÕES DE CRÉDITO)
         const cartoesCadastrados = ['nubank', 'inter', 'bb', 'itau', 'santander', 'caixa', 'bradesco', 'c6'];
         
         const systemPrompt = `
@@ -404,19 +423,24 @@ export async function POST(req: Request) {
             return NextResponse.json({ success: false, reason: 'AI/JSON Error' });
         }
 
-        // PROCESSAMENTO DAS AÇÕES
         let replySent = false;
         const ALLOWED_TABLES = ['transactions', 'installments', 'recurring'];
 
+        // 🟢 CORREÇÃO: Catraca de Segurança (ValidContextIds) contra injeção forçada de Workspaces
+        const validContextIds = new Set(workspaces?.map(w => w.id) || []);
+
         for (const cmd of commands) {
             if (cmd.table && !ALLOWED_TABLES.includes(cmd.table)) {
-                console.warn(`⛔ Tabela bloqueada pela IA: ${cmd.table}`);
                 continue;
             }
 
             if (cmd.action === 'add') {
-                // 🟢 USA O CONTEXTO DA IA, OU FALLBACK PARA O PRINCIPAL
-                let targetContext = cmd.context || primaryWorkspace?.id || null;
+                if (isPartnerMessage && cmd.data.title && !cmd.data.title.includes('[Parceiro]')) {
+                    cmd.data.title = `[Parceiro] ${cmd.data.title}`;
+                }
+
+                // 🟢 CORREÇÃO: Valida se o ID devolvido pela IA realmente pertence ao usuário
+                let targetContext = (cmd.context && validContextIds.has(cmd.context)) ? cmd.context : (primaryWorkspace?.id || null);
                 
                 let payload: any = { ...cmd.data, user_id: userSettings.user_id, context: targetContext, created_at: new Date(), message_id: messageId };
 
@@ -426,20 +450,13 @@ export async function POST(req: Request) {
                 if (cmd.table === 'installments') {
                     payload.current_installment = 0; 
                     payload.status = 'active';
-                    
-                    // 🟢 Pega o dia de vencimento (Padrão 10 se não informado)
                     payload.due_day = cmd.data.due_day || 10; 
-                    
-                    // 🟢 Se o Gemini não mandou a contagem de parcelas, força 1
                     if (!payload.installments_count) {
                         payload.installments_count = 1;
                     }
-
-                    // 🟢 Se o Gemini não mandou um banco específico, assume "outros"
                     if (!payload.payment_method) {
                         payload.payment_method = 'outros';
                     }
-
                     delete payload.date; delete payload.target_month; delete payload.is_paid;
                     const { error } = await supabase.from('installments').insert([payload]);
                     if (error && error.code === '23505') { replySent = true; continue; }
