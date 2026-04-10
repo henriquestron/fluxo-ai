@@ -23,7 +23,11 @@ const ratelimit = new Ratelimit({
 // FUNÇÕES AUXILIARES
 // ============================================================================
 const getPhoneVariations = (phone: string): string[] => {
-    const clean = phone.replace(/\D/g, '');
+    // 🟢 MÁGICA AQUI: Ele corta o ID do dispositivo (:6865) SÓ na hora de mandar a mensagem, 
+    // protegendo o whatsapp_id que vai pro banco de dados!
+    const basePhone = phone.split(':')[0]; 
+    
+    const clean = basePhone.replace(/\D/g, '');
     if (!clean.startsWith('55')) return [clean];
     const ddd = clean.substring(2, 4);
     const number = clean.substring(4);
