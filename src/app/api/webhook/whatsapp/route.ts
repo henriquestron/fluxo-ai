@@ -12,7 +12,6 @@ if (!EVOLUTION_API_KEY) throw new Error('EVOLUTION_API_KEY não definida no .env
 
 const INSTANCE_NAME = "MEO_ALIADO_INSTANCE";
 
-// UPSTASH REDIS PARA DUPLICIDADES E RATE LIMIT
 const redis = Redis.fromEnv();
 const ratelimit = new Ratelimit({
     redis: redis,
@@ -23,11 +22,16 @@ const ratelimit = new Ratelimit({
 // FUNÇÕES AUXILIARES
 // ============================================================================
 const getPhoneVariations = (phone: string): string[] => {
-    // 🟢 MÁGICA AQUI: Ele corta o ID do dispositivo (:6865) SÓ na hora de mandar a mensagem, 
-    // protegendo o whatsapp_id que vai pro banco de dados!
     const basePhone = phone.split(':')[0]; 
+    let clean = basePhone.replace(/\D/g, '');
     
-    const clean = basePhone.replace(/\D/g, '');
+    // 🟢 MÁGICA 1: O CORTADOR MATEMÁTICO (Extirpa o ID do Dispositivo)
+    if (clean.startsWith('55')) {
+        if (clean.length > 13) clean = clean.substring(0, 13);
+    } else {
+        if (clean.length > 11) clean = clean.substring(0, 11);
+    }
+
     if (!clean.startsWith('55')) return [clean];
     const ddd = clean.substring(2, 4);
     const number = clean.substring(4);
@@ -76,7 +80,6 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
     const activeMonthIdx = today.getMonth();
     const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
-    // 🟢 CORREÇÃO: Promise.all para buscas simultâneas e SELECT restrito (Acelera a resposta e economiza RAM)
     const [transRes, recRes, instRes] = await Promise.all([
         supabase.from('transactions').select('type, amount, date, status').eq('user_id', userId).eq('context', workspaceId),
         supabase.from('recurring').select('type, value, start_date, created_at, status, paid_months, skipped_months, standby_months').eq('user_id', userId).eq('context', workspaceId),
@@ -149,7 +152,6 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
 }
 // ============================================================================
 
-// --- ROTA PRINCIPAL ---
 export async function POST(req: Request) {
 
     try {
@@ -164,7 +166,6 @@ export async function POST(req: Request) {
         const webhookToken = req.headers.get('apikey') ?? req.headers.get('authorization')?.replace('Bearer ', '') ?? urlToken;
 
         if (webhookToken !== EVOLUTION_WEBHOOK_SECRET) {
-            console.warn('Webhook recusado: token inválido ou ausente.');
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
@@ -180,24 +181,21 @@ export async function POST(req: Request) {
 
         const messageId = key.id;
         const remoteJid = key.remoteJid;
-        const senderId = remoteJid.split('@')[0].split(':')[0];
+        const senderId = remoteJid.split('@')[0];
         const messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
 
-        // ANTI-DUPLICIDADE COM REDIS
         const alreadyProcessed = await redis.get(`msg:${messageId}`);
         if (alreadyProcessed) {
             return NextResponse.json({ status: 'Ignored Duplicate' });
         }
         await redis.set(`msg:${messageId}`, '1', { ex: 86400 });
 
-        // RATE LIMITING
         const { success: rateLimitSuccess } = await ratelimit.limit(senderId);
         if (!rateLimitSuccess) {
             await sendWhatsAppMessage(remoteJid, "⏳ Calma! Você está enviando mensagens muito rápido. Aguarde um minuto.");
             return NextResponse.json({ status: 'Rate Limited' });
         }
 
-        // VERIFICAR DELEÇÃO PENDENTE
         const pendingDeleteStr = await redis.get(`pending_delete:${senderId}`);
         if (pendingDeleteStr) {
             const userInput = messageContent.trim().toUpperCase();
@@ -233,7 +231,6 @@ export async function POST(req: Request) {
             }
         }
 
-        // PROCESSAMENTO DE ÁUDIO E IMAGEM
         let promptParts: any[] = [];
         let hasAudio = false;
         let hasImage = false;
@@ -300,7 +297,6 @@ export async function POST(req: Request) {
             }
         }
 
-        // Fluxo de Ativação
         if (!userSettings) {
             const numbersInText = messageContent.replace(/\D/g, '');
             if (numbersInText.length >= 10) {
@@ -319,8 +315,17 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "User unknown" });
         }
 
-        const isPartnerMessage = userSettings.partner_phone && variations.includes(userSettings.partner_phone);
-        const targetPhone = senderId; 
+        // 🟢 MÁGICA 2: IDENTIFICAÇÃO CORRETA IGNORANDO LIXO NO ID
+        const cleanSender = senderId.replace(/\D/g, '');
+        const partnerSuffix = userSettings.partner_phone ? userSettings.partner_phone.replace(/\D/g, '').slice(-8) : null;
+        
+        let targetPhone = userSettings.whatsapp_phone;
+        let isPartnerMessage = false;
+
+        if (partnerSuffix && cleanSender.includes(partnerSuffix)) {
+            targetPhone = userSettings.partner_phone;
+            isPartnerMessage = true;
+        }
 
         const { data: profile } = await supabase.from('profiles').select('plan_tier').eq('id', userSettings.user_id).single();
         const plan = profile?.plan_tier || 'free';
@@ -345,7 +350,6 @@ export async function POST(req: Request) {
             Analise as seguintes contas e suas regras:
             `;
             workspaces.forEach((ws) => {
-                // 🟢 CORREÇÃO: Sanitização Antimanchas contra Injeção de Prompt
                 const safeRule = (ws.whatsapp_rule || 'Geral').slice(0, 200).replace(/["{}[\]]/g, '');
                 workspacesContextPrompt += `- ID: "${ws.id}" | Nome: "${ws.title}" | Regra do usuário: "${safeRule}"\n`;
             });
@@ -429,8 +433,6 @@ export async function POST(req: Request) {
 
         let replySent = false;
         const ALLOWED_TABLES = ['transactions', 'installments', 'recurring'];
-
-        // 🟢 CORREÇÃO: Catraca de Segurança (ValidContextIds) contra injeção forçada de Workspaces
         const validContextIds = new Set(workspaces?.map(w => w.id) || []);
 
         for (const cmd of commands) {
@@ -443,7 +445,6 @@ export async function POST(req: Request) {
                     cmd.data.title = `[Parceiro] ${cmd.data.title}`;
                 }
 
-                // 🟢 CORREÇÃO: Valida se o ID devolvido pela IA realmente pertence ao usuário
                 let targetContext = (cmd.context && validContextIds.has(cmd.context)) ? cmd.context : (primaryWorkspace?.id || null);
                 
                 let payload: any = { ...cmd.data, user_id: userSettings.user_id, context: targetContext, created_at: new Date(), message_id: messageId };
