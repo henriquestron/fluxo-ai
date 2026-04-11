@@ -398,30 +398,35 @@ export async function POST(req: Request) {
             COMO AGIR:
             [BATE-PAPO / SALDO] → Responda naturalmente. Seja breve.
             [APAGAR/REMOVER] → Monte o JSON com action: "remove".
-            [REGISTRO] → Siga as Regras de Roteamento abaixo.
+            [REGISTRO] → Siga rigorosamente as Regras de Roteamento abaixo.
 
             ${workspacesContextPrompt}
 
-            🧠 REGRAS DE ROTEAMENTO:
+            🧠 REGRAS DE ROTEAMENTO (FORMATOS JSON OBRIGATÓRIOS):
             
-            1. 💳 CARTÃO DE CRÉDITO (se mencionar banco/cartão):
-            {"action":"add","table":"installments","context":"ID","data":{"title":"...","value_per_month":0.00,"installments_count":1,"payment_method":"banco"}}
+            1. 💳 CARTÃO DE CRÉDITO (se mencionar banco, fatura ou cartão):
+            * Bancos disponíveis: ${cartoesCadastrados.join(', ')}.
+            * Tabela: "installments".
+            * Se o usuário falar um dia (ex: "dia 25"), preencha o "due_day" com o número.
+            {"action":"add","table":"installments","context":"ID","data":{"title":"[Nome do Gasto]","value_per_month":0.00,"installments_count":1,"payment_method":"banco","due_day":25}}
 
-            2. 🔁 GASTO FIXO (fixo, todo mês, assinatura):
-            {"action":"add","table":"recurring","context":"ID","data":{"title":"...","value":0.00,"type":"expense","due_day":10}}
+            2. 🔁 GASTO FIXO (fixo, todo mês, assinatura, aluguel):
+            * Tabela: "recurring".
+            {"action":"add","table":"recurring","context":"ID","data":{"title":"[Nome do Gasto]","value":0.00,"type":"expense","due_day":10}}
 
-            3. 💸 GASTO COMUM (débito, pix, dinheiro):
-            {"action":"add","table":"transactions","context":"ID","data":{"title":"...","amount":0.00,"type":"expense","date":"DD/MM/YYYY"}}
+            3. 💸 GASTO COMUM (débito, pix, dinheiro, ou compras diárias):
+            * Tabela: "transactions".
+            {"action":"add","table":"transactions","context":"ID","data":{"title":"[Nome do Gasto]","amount":0.00,"type":"expense","date":"DD/MM/YYYY"}}
 
-            REGRAS ABSOLUTAS:
-            ✅ Saída SEMPRE como array JSON válido.
-            ✅ Respostas curtas (WhatsApp).
-            ✅ Valores sempre float (ex: 49.90).
-            ✅ SEMPRE inclua: {"reply": "mensagem curta de confirmação"}
-            ✅ Cartões disponíveis: ${cartoesCadastrados.join(', ')}
+            ⚠️ REGRAS ABSOLUTAS PARA O JSON (RISCO DE QUEBRA DE BANCO):
+            ✅ Retorne APENAS o array JSON válido. Zero texto fora dele.
+            ✅ Valores financeiros DEVEM ser números float com ponto (Ex: 2000.00). NUNCA use vírgula ou aspas para dinheiro.
+            ✅ O campo "title" deve ser o nome do gasto limpo (Ex: "Itaú Fatura", "Mercado", etc), sem a palavra "pendente".
+            ✅ NUNCA crie campos que não estão no exemplo.
+            ✅ SEMPRE inclua o campo "reply" confirmando o valor, o método e quando foi salvo (Ex: "✅ Salvo na fatura do Itaú (Dia 25) o valor de R$ 2000,00!").
 
             ${hasAudio ? "\n⚠️ ÁUDIO RECEBIDO: Transcreva e responda com base no que foi dito." : ""}
-            ${hasImage ? "\n📸 IMAGEM RECEBIDA: Extraia valor, data e estabelecimento. Tente identificar forma de pagamento." : ""}
+            ${hasImage ? "\n📸 IMAGEM RECEBIDA: Extraia valor, data e estabelecimento. Tente identificar a forma de pagamento." : ""}
         `;
 
         const finalPrompt = [systemPrompt, ...promptParts];
