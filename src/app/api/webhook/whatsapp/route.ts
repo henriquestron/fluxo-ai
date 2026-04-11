@@ -22,7 +22,9 @@ const ratelimit = new Ratelimit({
 // FUNÇÕES AUXILIARES
 // ============================================================================
 const getPhoneVariations = (phone: string): string[] => {
-    let clean = phone.replace(/\D/g, '');
+    const basePhone = phone.split(':')[0]; 
+    let clean = basePhone.replace(/\D/g, '');
+    
     if (clean.startsWith('55')) {
         if (clean.length > 13) clean = clean.substring(0, 13);
         const ddd = clean.substring(2, 4);
@@ -34,13 +36,21 @@ const getPhoneVariations = (phone: string): string[] => {
     return [clean];
 };
 
-// 🟢 ENVIADOR BLINDADO (Só usa números limpos do Banco de Dados)
-async function sendWhatsAppMessage(phone: string, text: string, delay: number = 1200) {
-    const variations = getPhoneVariations(phone);
+async function sendWhatsAppMessage(jidOrPhone: string, text: string, delay: number = 1200) {
+    let jidsToTry: string[] = [];
+
+    if (jidOrPhone.includes('@')) {
+        const [userPart, domainPart] = jidOrPhone.split('@');
+        const cleanUserPart = userPart.split(':')[0]; 
+        jidsToTry = [`${cleanUserPart}@${domainPart}`];
+    } else {
+        const variations = getPhoneVariations(jidOrPhone);
+        jidsToTry = variations.map(v => `${v}@s.whatsapp.net`);
+    }
+
     let success = false;
-    for (const v of variations) {
+    for (const finalJid of jidsToTry) {
         if (success) break;
-        const finalJid = `${v}@s.whatsapp.net`;
         try {
             console.log(`📤 Tentando enviar para ${finalJid} (Delay: ${delay}ms)...`);
             const res = await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE_NAME}`, {
@@ -160,7 +170,6 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
 // ============================================================================
 
 export async function POST(req: Request) {
-
     try {
         const EVOLUTION_WEBHOOK_SECRET = process.env.EVOLUTION_WEBHOOK_SECRET;
 
@@ -187,36 +196,32 @@ export async function POST(req: Request) {
         if (!key?.remoteJid || key.fromMe) return NextResponse.json({ status: 'Ignored' });
 
         const messageId = key.id;
-        const remoteJid = key.remoteJid;
+        const remoteJid = key.remoteJid; 
         const senderId = remoteJid.split('@')[0];
         const messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
 
-        // 🟢 ETAPA 1: IDENTIFICAÇÃO DO USUÁRIO E DEFINIÇÃO DO TARGET PHONE
+        const alreadyProcessed = await redis.get(`msg:${messageId}`);
+        if (alreadyProcessed) return NextResponse.json({ status: 'Ignored Duplicate' });
+        await redis.set(`msg:${messageId}`, '1', { ex: 86400 });
+
+        const { success: rateLimitSuccess } = await ratelimit.limit(senderId);
+        if (!rateLimitSuccess) {
+            await sendWhatsAppMessage(remoteJid, "⏳ Calma! Você está enviando mensagens muito rápido. Aguarde um minuto.");
+            return NextResponse.json({ status: 'Rate Limited' });
+        }
+
+        // 🟢 CORREÇÃO 1: Construção das variações ANTES das queries
         const variations = getPhoneVariations(senderId);
         const inQuery = variations.join(',');
 
+        // 🟢 CORREÇÃO 2: Busca unificada considerando as variações para Titular E Parceiro
         let { data: userSettings } = await supabase
             .from('user_settings')
             .select('*')
-            .or(`whatsapp_phone.eq.${senderId},whatsapp_id.eq.${senderId},partner_phone.eq.${senderId}`)
+            .or(`whatsapp_id.eq.${senderId},whatsapp_phone.in.(${inQuery}),partner_phone.in.(${inQuery})`)
             .maybeSingle();
 
-        if (!userSettings) {
-            const { data: found } = await supabase
-                .from('user_settings')
-                .select('*')
-                .or(`whatsapp_phone.in.(${inQuery}),partner_phone.in.(${inQuery})`)
-                .maybeSingle();
-            
-            if (found) {
-                userSettings = found;
-                if (variations.includes(found.whatsapp_phone)) {
-                    await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', found.user_id);
-                }
-            }
-        }
-
-        // Fluxo de Ativação (Caso o usuário não tenha sido achado ainda)
+        // Fluxo de Ativação
         if (!userSettings) {
             const numbersInText = messageContent.replace(/\D/g, '');
             if (numbersInText.length >= 10) {
@@ -228,39 +233,31 @@ export async function POST(req: Request) {
                     .maybeSingle();
                 
                 if (userToLink) {
-                    await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userToLink.user_id);
-                    // 🟢 Manda a mensagem pro telefone SALVO NO BANCO
-                    await sendWhatsAppMessage(userToLink.whatsapp_phone, `✅ *Vinculado com sucesso!* Pode começar a enviar seus gastos ou fotos de notas fiscais.`);
+                    // 🟢 CORREÇÃO 3: Impede que o ID do parceiro sobrescreva o ID principal do titular
+                    const isPartnerActivating = variations.some(v => userToLink.partner_phone?.includes(v));
+                    
+                    if (!isPartnerActivating) {
+                        // Apenas se for o titular ativando, atualiza o whatsapp_id dele
+                        await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userToLink.user_id);
+                    }
+
+                    // 🟢 CORREÇÃO 4: Responde DIRETAMENTE para quem enviou a mensagem (O Parceiro ou o Titular)
+                    await sendWhatsAppMessage(remoteJid, `✅ *Vinculado com sucesso!* Pode começar a enviar seus gastos ou fotos de notas fiscais.`);
                     return NextResponse.json({ success: true, action: "linked" });
                 }
             }
             return NextResponse.json({ error: "User unknown" });
         }
 
-        // 🟢 DEFINE PARA QUEM O ROBÔ VAI RESPONDER
-        const cleanSender = senderId.replace(/\D/g, '');
-        const partnerSuffix = userSettings.partner_phone ? userSettings.partner_phone.replace(/\D/g, '').slice(-8) : null;
+        // 🟢 CORREÇÃO 5: Identifica se é o parceiro de forma confiável usando as variações
         let isPartnerMessage = false;
-        
-        let targetPhone = userSettings.whatsapp_phone; // Fallback seguro
-        if (partnerSuffix && cleanSender.includes(partnerSuffix)) {
-            targetPhone = userSettings.partner_phone;
+        if (userSettings.partner_phone && variations.some(v => userSettings.partner_phone.includes(v))) {
             isPartnerMessage = true;
         }
 
-        // 🟢 DAQUI PARA FRENTE, O ROBÔ SÓ USA O 'targetPhone' PARA RESPONDER
+        // --- Daqui pra baixo, todas as mensagens usam remoteJid (Responde sempre pra quem enviou) ---
 
-        const alreadyProcessed = await redis.get(`msg:${messageId}`);
-        if (alreadyProcessed) return NextResponse.json({ status: 'Ignored Duplicate' });
-        await redis.set(`msg:${messageId}`, '1', { ex: 86400 });
-
-        const { success: rateLimitSuccess } = await ratelimit.limit(targetPhone);
-        if (!rateLimitSuccess) {
-            await sendWhatsAppMessage(targetPhone, "⏳ Calma! Você está enviando mensagens muito rápido. Aguarde um minuto.");
-            return NextResponse.json({ status: 'Rate Limited' });
-        }
-
-        const pendingDeleteStr = await redis.get(`pending_delete:${targetPhone}`);
+        const pendingDeleteStr = await redis.get(`pending_delete:${senderId}`);
         if (pendingDeleteStr) {
             const userInput = messageContent.trim().toUpperCase();
             if (userInput === 'SIM') {
@@ -268,23 +265,23 @@ export async function POST(req: Request) {
 
                 const ALLOWED_TABLES = ['transactions', 'installments', 'recurring'];
                 if (!ALLOWED_TABLES.includes(cmd.table)) {
-                    await sendWhatsAppMessage(targetPhone, '⚠️ Operação inválida. Tabela não permitida.');
-                    await redis.del(`pending_delete:${targetPhone}`);
+                    await sendWhatsAppMessage(remoteJid, '⚠️ Operação inválida. Tabela não permitida.');
+                    await redis.del(`pending_delete:${senderId}`);
                     return NextResponse.json({ status: 'Blocked' });
                 }
 
                 const { data: items } = await supabase.from(cmd.table).select('id, title').eq('user_id', userSettings.user_id).ilike('title', `%${cmd.data.title}%`).order('created_at', { ascending: false }).limit(1);
                 if (items?.length) {
                     await supabase.from(cmd.table).delete().eq('id', items[0].id);
-                    await sendWhatsAppMessage(targetPhone, `🗑️ Apagado com sucesso: "${items[0].title}"`);
+                    await sendWhatsAppMessage(remoteJid, `🗑️ Apagado com sucesso: "${items[0].title}"`);
                 } else {
-                    await sendWhatsAppMessage(targetPhone, `⚠️ Não encontrei o item para apagar.`);
+                    await sendWhatsAppMessage(remoteJid, `⚠️ Não encontrei o item para apagar.`);
                 }
-                await redis.del(`pending_delete:${targetPhone}`);
+                await redis.del(`pending_delete:${senderId}`);
                 return NextResponse.json({ success: true, action: "deleted_confirmed" });
             } else {
-                await redis.del(`pending_delete:${targetPhone}`);
-                await sendWhatsAppMessage(targetPhone, `❌ Exclusão cancelada. Sobre o que você quer falar agora?`);
+                await redis.del(`pending_delete:${senderId}`);
+                await sendWhatsAppMessage(remoteJid, `❌ Exclusão cancelada. Sobre o que você quer falar agora?`);
                 return NextResponse.json({ success: true, action: "deleted_cancelled" });
             }
         }
@@ -305,7 +302,7 @@ export async function POST(req: Request) {
                 hasAudio = true;
                 promptParts.push({ inlineData: { mimeType: "audio/ogg", data: audioBase64 } });
             } else {
-                await sendWhatsAppMessage(targetPhone, "⚠️ Ocorreu um erro ao processar o seu áudio. Pode me mandar em texto?");
+                await sendWhatsAppMessage(remoteJid, "⚠️ Ocorreu um erro ao processar o seu áudio. Pode me mandar em texto?");
                 return NextResponse.json({ status: 'Audio Failed' });
             }
         }
@@ -322,7 +319,7 @@ export async function POST(req: Request) {
                 const caption = msgData?.imageMessage?.caption;
                 if (caption) promptParts.push(caption);
             } else {
-                await sendWhatsAppMessage(targetPhone, "⚠️ Não consegui ler a imagem. Pode tentar enviar de novo?");
+                await sendWhatsAppMessage(remoteJid, "⚠️ Não consegui ler a imagem. Pode tentar enviar de novo?");
                 return NextResponse.json({ status: 'Image Failed' });
             }
         }
@@ -335,7 +332,7 @@ export async function POST(req: Request) {
         const plan = profile?.plan_tier || 'free';
 
         if (!['pro', 'agent', 'admin'].includes(plan)) {
-            await sendWhatsAppMessage(targetPhone, "🚫 *Acesso Exclusivo PRO*\n\nA Inteligência Artificial no WhatsApp está disponível apenas nos planos **Pro** e **Consultor**.", 100);
+            await sendWhatsAppMessage(remoteJid, "🚫 *Acesso Exclusivo PRO*\n\nA Inteligência Artificial no WhatsApp está disponível apenas nos planos **Pro** e **Consultor**.", 100);
             return NextResponse.json({ status: 'Blocked by Plan', plan: plan });
         }
 
@@ -431,7 +428,7 @@ export async function POST(req: Request) {
             if (!Array.isArray(commands)) commands = [commands];
         } catch (error: any) {
             console.error("❌ ERRO NA IA OU NO JSON:", error);
-            await sendWhatsAppMessage(targetPhone, "Desculpe, meu cérebro (IA) deu uma travada agora. Pode me mandar a mensagem de novo? 🤖");
+            await sendWhatsAppMessage(remoteJid, "Desculpe, meu cérebro (IA) deu uma travada agora. Pode me mandar a mensagem de novo? 🤖");
             return NextResponse.json({ success: false, reason: 'AI/JSON Error' });
         }
 
@@ -469,14 +466,14 @@ export async function POST(req: Request) {
                     delete payload.date; delete payload.target_month; delete payload.is_paid;
                     const { error } = await supabase.from('installments').insert([payload]);
                     if (error && error.code === '23505') { replySent = true; continue; }
-                    if (!error && !commands.some((c: any) => c.reply)) await sendWhatsAppMessage(targetPhone, `✅ Gasto salvo no cartão: ${cmd.data.title}`);
+                    if (!error && !commands.some((c: any) => c.reply)) await sendWhatsAppMessage(remoteJid, `✅ Gasto salvo no cartão: ${cmd.data.title}`);
                 }
                 else if (cmd.table === 'recurring') {
                     payload.status = 'active';
                     delete payload.is_paid; delete payload.amount; delete payload.date;
                     const { error } = await supabase.from('recurring').insert([payload]);
                     if (error && error.code === '23505') { replySent = true; continue; }
-                    if (!error && !commands.some((c: any) => c.reply)) await sendWhatsAppMessage(targetPhone, `✅ Fixo salvo: ${cmd.data.title}`);
+                    if (!error && !commands.some((c: any) => c.reply)) await sendWhatsAppMessage(remoteJid, `✅ Fixo salvo: ${cmd.data.title}`);
                 }
                 else if (cmd.table === 'transactions') {
                     if (!payload.date) {
@@ -488,17 +485,17 @@ export async function POST(req: Request) {
                     payload.is_paid = true; payload.status = 'paid';
                     const { error } = await supabase.from('transactions').insert([payload]);
                     if (error && error.code === '23505') { replySent = true; continue; }
-                    if (!error && !commands.some((c: any) => c.reply)) await sendWhatsAppMessage(targetPhone, `✅ Lançado: ${cmd.data.title}`);
+                    if (!error && !commands.some((c: any) => c.reply)) await sendWhatsAppMessage(remoteJid, `✅ Lançado: ${cmd.data.title}`);
                 }
             }
             else if (cmd.action === 'remove') {
-                await sendWhatsAppMessage(targetPhone, `⚠️ Você quer apagar "${cmd.data.title}"? Responda *SIM* para confirmar.`);
-                await redis.set(`pending_delete:${targetPhone}`, JSON.stringify(cmd), { ex: 300 });
+                await sendWhatsAppMessage(remoteJid, `⚠️ Você quer apagar "${cmd.data.title}"? Responda *SIM* para confirmar.`);
+                await redis.set(`pending_delete:${senderId}`, JSON.stringify(cmd), { ex: 300 });
                 replySent = true; 
             }
 
             if (cmd.reply && !replySent) {
-                await sendWhatsAppMessage(targetPhone, cmd.reply);
+                await sendWhatsAppMessage(remoteJid, cmd.reply);
                 replySent = true;
             }
         }
