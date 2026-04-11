@@ -31,14 +31,13 @@ const getPhoneVariations = (phone: string): string[] => {
         else if (number.length === 8) { return [clean, `55${ddd}9${number}`]; }
         return [clean];
     }
-    // Se não tem 55, tenta adicionar
     if (clean.length === 10 || clean.length === 11) {
         return [`55${clean}`, clean];
     }
     return [clean];
 };
 
-// Enviador que sempre usa número do banco (nunca JID @lid)
+// 🟢 ENVIADOR BLINDADO (Usa apenas os números oficiais do banco)
 async function sendWhatsAppMessage(phone: string, text: string, delay: number = 1200) {
     const variations = getPhoneVariations(phone);
     let success = false;
@@ -61,7 +60,7 @@ async function sendWhatsAppMessage(phone: string, text: string, delay: number = 
             }
         } catch (e) { console.error(`❌ Erro Envio ZAP para ${finalJid}:`, e); }
     }
-    if (!success) console.log("🚨 Nenhuma variação funcionou.");
+    if (!success) console.log("🚨 Nenhuma variação funcionou. Evolution recusou.");
 }
 
 async function downloadMedia(url: string) {
@@ -164,7 +163,6 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
 // ============================================================================
 
 export async function POST(req: Request) {
-
     try {
         const EVOLUTION_WEBHOOK_SECRET = process.env.EVOLUTION_WEBHOOK_SECRET;
 
@@ -192,79 +190,64 @@ export async function POST(req: Request) {
 
         const messageId = key.id;
         const remoteJid = key.remoteJid;
-        // Extrai só os dígitos do sender (remove @lid, @s.whatsapp.net, :device)
+        // Extrai o "código fantasma" ou número limpo enviado
         const senderRaw = remoteJid.split('@')[0].split(':')[0];
         const senderId = senderRaw.replace(/\D/g, '');
         const messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
 
-        // ─── ETAPA 1: IDENTIFICAÇÃO DO USUÁRIO ────────────────────────────────
-        // 🔑 CORREÇÃO PRINCIPAL: usa variações em TODAS as colunas de telefone
         const variations = getPhoneVariations(senderId);
         const inQuery = variations.join(',');
 
-        console.log(`📩 Mensagem de senderId: ${senderId} | variações: ${inQuery}`);
-
-        // Query única com variações — cobre titular E parceiro
+        // 1. TENTA ACHAR O USUÁRIO PELO NÚMERO OU CÓDIGO FANTASMA
         let { data: userSettings } = await supabase
             .from('user_settings')
-            .select('user_id, whatsapp_phone, whatsapp_id, partner_phone')
-            .or(`whatsapp_id.eq.${senderId},whatsapp_phone.in.(${inQuery}),partner_phone.in.(${inQuery})`)
+            .select('*')
+            .or(`whatsapp_id.eq.${senderId},partner_whatsapp_id.eq.${senderId},whatsapp_phone.in.(${inQuery}),partner_phone.in.(${inQuery})`)
             .maybeSingle();
 
-        // Fallback: tenta com o senderId raw (caso seja um @lid numérico não padrão)
+        // 2. FLUXO DE ATIVAÇÃO (Se não achou, ele exige a palavra "Ativar")
         if (!userSettings) {
-            console.log(`🔍 Fallback: buscando pelo senderRaw: ${senderRaw}`);
-            const { data: found } = await supabase
-                .from('user_settings')
-                .select('user_id, whatsapp_phone, whatsapp_id, partner_phone')
-                .or(`whatsapp_id.eq.${senderRaw},whatsapp_phone.eq.${senderRaw},partner_phone.eq.${senderRaw}`)
-                .maybeSingle();
-
-            if (found) {
-                userSettings = found;
-                // Salva o whatsapp_id para próximas mensagens serem achadas na query principal
-                await supabase.from('user_settings').update({ whatsapp_id: senderRaw }).eq('user_id', found.user_id);
-                console.log(`✅ Usuário encontrado pelo fallback raw. whatsapp_id atualizado.`);
-            }
-        }
-
-        // Fluxo de ativação (primeira mensagem de um número novo)
-        if (!userSettings) {
-            console.log(`❓ Usuário não encontrado. Verificando fluxo de ativação...`);
             const numbersInText = messageContent.replace(/\D/g, '');
+            // Se o texto tiver um número de telefone (ex: Ativar 5562...)
             if (numbersInText.length >= 10) {
-                const possiblePhones = getPhoneVariations(numbersInText).join(',');
+                const possiblePhones = getPhoneVariations(numbersInText);
+                const inQueryPossible = possiblePhones.join(',');
+
                 const { data: userToLink } = await supabase
                     .from('user_settings')
-                    .select('user_id, whatsapp_phone, whatsapp_id, partner_phone')
-                    .or(`whatsapp_phone.in.(${possiblePhones}),partner_phone.in.(${possiblePhones})`)
+                    .select('*')
+                    .or(`whatsapp_phone.in.(${inQueryPossible}),partner_phone.in.(${inQueryPossible})`)
                     .maybeSingle();
 
                 if (userToLink) {
-                    // Salva o ID desse dispositivo para ser reconhecido nas próximas mensagens
-                    await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userToLink.user_id);
-                    await sendWhatsAppMessage(userToLink.whatsapp_phone, `✅ *Vinculado com sucesso!* Pode começar a enviar seus gastos ou fotos de notas fiscais.`);
+                    // 🟢 MAGIA AQUI: Ele descobre se quem está ativando é o Titular ou o Parceiro
+                    const partnerClean = userToLink.partner_phone?.replace(/\D/g, '');
+                    const isPartnerActivating = partnerClean && possiblePhones.some(v => partnerClean.includes(v));
+
+                    if (isPartnerActivating) {
+                        // Salva o código fantasma na gaveta do PARCEIRO
+                        await supabase.from('user_settings').update({ partner_whatsapp_id: senderId }).eq('user_id', userToLink.user_id);
+                        await sendWhatsAppMessage(userToLink.partner_phone, `✅ *Parceiro vinculado com sucesso!* O Aliado já reconhece o seu aparelho. Pode mandar os gastos!`);
+                    } else {
+                        // Salva o código fantasma na gaveta do TITULAR
+                        await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userToLink.user_id);
+                        await sendWhatsAppMessage(userToLink.whatsapp_phone, `✅ *Vinculado com sucesso!* O Aliado já reconhece o seu aparelho. Pode mandar os gastos!`);
+                    }
                     return NextResponse.json({ success: true, action: "linked" });
                 }
             }
             return NextResponse.json({ error: "User unknown" });
         }
 
-        console.log(`👤 Usuário encontrado: ${userSettings.user_id}`);
-
-        // ─── ETAPA 2: DEFINIR PARA QUEM RESPONDER ─────────────────────────────
-        // Verifica se é o parceiro comparando sufixo dos últimos 8 dígitos
-        const partnerClean = userSettings.partner_phone?.replace(/\D/g, '') || '';
-        const isPartnerMessage = partnerClean.length >= 8 && senderId.includes(partnerClean.slice(-8));
-
-        // Responde sempre para o número limpo salvo no banco (nunca para @lid)
+        // 3. SE ACHOU, DEFINE PRA QUEM A MENSAGEM DEVE VOLTAR
+        const isPartnerMessage = (userSettings.partner_whatsapp_id === senderId) || variations.some(v => userSettings.partner_phone?.includes(v));
+        
         const targetPhone = isPartnerMessage
             ? userSettings.partner_phone
             : userSettings.whatsapp_phone;
 
-        console.log(`📲 isPartner: ${isPartnerMessage} | targetPhone: ${targetPhone}`);
+        // --- A PARTIR DAQUI O CÓDIGO USA O NÚMERO LIMPO (targetPhone) ---
 
-        // ─── ETAPA 3: ANTI-DUPLICIDADE E RATE LIMIT ────────────────────────────
         const alreadyProcessed = await redis.get(`msg:${messageId}`);
         if (alreadyProcessed) return NextResponse.json({ status: 'Ignored Duplicate' });
         await redis.set(`msg:${messageId}`, '1', { ex: 86400 });
@@ -275,7 +258,6 @@ export async function POST(req: Request) {
             return NextResponse.json({ status: 'Rate Limited' });
         }
 
-        // ─── ETAPA 4: VERIFICAR DELEÇÃO PENDENTE ──────────────────────────────
         const pendingDeleteStr = await redis.get(`pending_delete:${targetPhone}`);
         if (pendingDeleteStr) {
             const userInput = messageContent.trim().toUpperCase();
@@ -312,7 +294,6 @@ export async function POST(req: Request) {
             }
         }
 
-        // ─── ETAPA 5: PROCESSAR MÍDIA ──────────────────────────────────────────
         let promptParts: any[] = [];
         let hasAudio = false;
         let hasImage = false;
@@ -355,7 +336,6 @@ export async function POST(req: Request) {
             promptParts.push(messageContent);
         }
 
-        // ─── ETAPA 6: VERIFICAR PLANO ──────────────────────────────────────────
         const { data: profile } = await supabase
             .from('profiles')
             .select('plan_tier')
@@ -368,7 +348,6 @@ export async function POST(req: Request) {
             return NextResponse.json({ status: 'Blocked by Plan', plan });
         }
 
-        // ─── ETAPA 7: CONTEXTO FINANCEIRO E WORKSPACES ────────────────────────
         const { data: workspaces } = await supabase
             .from('workspaces')
             .select('id, title, whatsapp_rule')
@@ -401,7 +380,6 @@ export async function POST(req: Request) {
             workspacesContextPrompt = `Sempre inclua "context": "${primaryWorkspace.id}" no JSON.\n`;
         }
 
-        // ─── ETAPA 8: MONTAR E EXECUTAR O PROMPT ──────────────────────────────
         const dataHojeBR = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
         const cartoesCadastrados = ['nubank', 'inter', 'bb', 'itau', 'santander', 'caixa', 'bradesco', 'c6'];
 
@@ -463,25 +441,21 @@ export async function POST(req: Request) {
             return NextResponse.json({ success: false, reason: 'AI/JSON Error' });
         }
 
-        // ─── ETAPA 9: EXECUTAR COMANDOS DA IA ─────────────────────────────────
         let replySent = false;
         const ALLOWED_TABLES = ['transactions', 'installments', 'recurring'];
         const validContextIds = new Set(workspaces?.map(w => w.id) || []);
 
         for (const cmd of commands) {
-            // Bloqueia tabelas não permitidas
             if (cmd.table && !ALLOWED_TABLES.includes(cmd.table)) {
                 console.warn(`⛔ Tabela bloqueada pela IA: ${cmd.table}`);
                 continue;
             }
 
             if (cmd.action === 'add') {
-                // Tag de parceiro no título
                 if (isPartnerMessage && cmd.data?.title && !cmd.data.title.includes('[Parceiro]')) {
                     cmd.data.title = `[Parceiro] ${cmd.data.title}`;
                 }
 
-                // Valida o context retornado pela IA
                 const targetContext = (cmd.context && validContextIds.has(cmd.context))
                     ? cmd.context
                     : (primaryWorkspace?.id || null);
@@ -555,7 +529,6 @@ export async function POST(req: Request) {
 
     } catch (e: any) {
         console.error("🔥 ERRO FATAL NO WEBHOOK:", e);
-        // Retorna 200 para Evolution não entrar em loop de retentativas
         return NextResponse.json({ error: e.message, status: "Caught" }, { status: 200 });
     }
 }
