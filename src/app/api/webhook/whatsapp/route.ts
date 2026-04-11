@@ -22,9 +22,7 @@ const ratelimit = new Ratelimit({
 // FUNÇÕES AUXILIARES
 // ============================================================================
 const getPhoneVariations = (phone: string): string[] => {
-    const basePhone = phone.split(':')[0]; 
-    let clean = basePhone.replace(/\D/g, '');
-    
+    let clean = phone.replace(/\D/g, '');
     if (clean.startsWith('55')) {
         if (clean.length > 13) clean = clean.substring(0, 13);
         const ddd = clean.substring(2, 4);
@@ -36,25 +34,13 @@ const getPhoneVariations = (phone: string): string[] => {
     return [clean];
 };
 
-// 🟢 A MÁGICA ESTÁ AQUI: O Enviador Universal
-async function sendWhatsAppMessage(jidOrPhone: string, text: string, delay: number = 1200) {
-    let jidsToTry: string[] = [];
-
-    if (jidOrPhone.includes('@')) {
-        // Veio direto do Webhook (Ex: 14306980661@lid ou 55629999@s.whatsapp.net)
-        // Corta só o ID do dispositivo (:6865) mas MATÉM o domínio que o WhatsApp exigiu!
-        const [userPart, domainPart] = jidOrPhone.split('@');
-        const cleanUserPart = userPart.split(':')[0]; 
-        jidsToTry = [`${cleanUserPart}@${domainPart}`];
-    } else {
-        // Veio do Banco de Dados (Ex: Cron Job mandando lembrete)
-        const variations = getPhoneVariations(jidOrPhone);
-        jidsToTry = variations.map(v => `${v}@s.whatsapp.net`);
-    }
-
+// 🟢 ENVIADOR BLINDADO (Só usa números limpos do Banco de Dados)
+async function sendWhatsAppMessage(phone: string, text: string, delay: number = 1200) {
+    const variations = getPhoneVariations(phone);
     let success = false;
-    for (const finalJid of jidsToTry) {
+    for (const v of variations) {
         if (success) break;
+        const finalJid = `${v}@s.whatsapp.net`;
         try {
             console.log(`📤 Tentando enviar para ${finalJid} (Delay: ${delay}ms)...`);
             const res = await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE_NAME}`, {
@@ -201,100 +187,11 @@ export async function POST(req: Request) {
         if (!key?.remoteJid || key.fromMe) return NextResponse.json({ status: 'Ignored' });
 
         const messageId = key.id;
-        // 🟢 JID ORIGINAL INTACTO (Passado direto para enviar mensagem)
-        const remoteJid = key.remoteJid; 
+        const remoteJid = key.remoteJid;
         const senderId = remoteJid.split('@')[0];
         const messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
 
-        const alreadyProcessed = await redis.get(`msg:${messageId}`);
-        if (alreadyProcessed) {
-            return NextResponse.json({ status: 'Ignored Duplicate' });
-        }
-        await redis.set(`msg:${messageId}`, '1', { ex: 86400 });
-
-        const { success: rateLimitSuccess } = await ratelimit.limit(senderId);
-        if (!rateLimitSuccess) {
-            await sendWhatsAppMessage(remoteJid, "⏳ Calma! Você está enviando mensagens muito rápido. Aguarde um minuto.");
-            return NextResponse.json({ status: 'Rate Limited' });
-        }
-
-        const pendingDeleteStr = await redis.get(`pending_delete:${senderId}`);
-        if (pendingDeleteStr) {
-            const userInput = messageContent.trim().toUpperCase();
-            if (userInput === 'SIM') {
-                const cmd = typeof pendingDeleteStr === 'string' ? JSON.parse(pendingDeleteStr) : pendingDeleteStr;
-
-                const ALLOWED_TABLES = ['transactions', 'installments', 'recurring'];
-                if (!ALLOWED_TABLES.includes(cmd.table)) {
-                    await sendWhatsAppMessage(remoteJid, '⚠️ Operação inválida. Tabela não permitida.');
-                    await redis.del(`pending_delete:${senderId}`);
-                    return NextResponse.json({ status: 'Blocked' });
-                }
-
-                const variations = getPhoneVariations(senderId);
-                const inQuery = variations.join(',');
-                const { data: us } = await supabase.from('user_settings').select('user_id').or(`whatsapp_id.eq.${senderId},whatsapp_phone.in.(${inQuery}),partner_phone.in.(${inQuery})`).maybeSingle();
-
-                if (us) {
-                    const { data: items } = await supabase.from(cmd.table).select('id, title').eq('user_id', us.user_id).ilike('title', `%${cmd.data.title}%`).order('created_at', { ascending: false }).limit(1);
-                    if (items?.length) {
-                        await supabase.from(cmd.table).delete().eq('id', items[0].id);
-                        await sendWhatsAppMessage(remoteJid, `🗑️ Apagado com sucesso: "${items[0].title}"`);
-                    } else {
-                        await sendWhatsAppMessage(remoteJid, `⚠️ Não encontrei o item para apagar.`);
-                    }
-                }
-                await redis.del(`pending_delete:${senderId}`);
-                return NextResponse.json({ success: true, action: "deleted_confirmed" });
-            } else {
-                await redis.del(`pending_delete:${senderId}`);
-                await sendWhatsAppMessage(remoteJid, `❌ Exclusão cancelada. Sobre o que você quer falar agora?`);
-                return NextResponse.json({ success: true, action: "deleted_cancelled" });
-            }
-        }
-
-        let promptParts: any[] = [];
-        let hasAudio = false;
-        let hasImage = false;
-        const msgData = body.data?.message;
-        const msgType = body.data?.messageType;
-
-        if (msgType === "audioMessage" || msgData?.audioMessage) {
-            let audioBase64 = body.data?.base64 || msgData?.audioMessage?.base64 || body.data?.message?.base64;
-            if (!audioBase64) {
-                const url = msgData?.audioMessage?.url || body.data?.mediaUrl;
-                if (url) audioBase64 = await downloadMedia(url);
-            }
-            if (audioBase64) {
-                hasAudio = true;
-                promptParts.push({ inlineData: { mimeType: "audio/ogg", data: audioBase64 } });
-            } else {
-                await sendWhatsAppMessage(remoteJid, "⚠️ Ocorreu um erro ao processar o seu áudio. Pode me mandar em texto?");
-                return NextResponse.json({ status: 'Audio Failed' });
-            }
-        }
-        else if (msgType === "imageMessage" || msgData?.imageMessage) {
-            let imageBase64 = body.data?.base64 || msgData?.imageMessage?.base64 || body.data?.message?.base64;
-            if (!imageBase64) {
-                const url = msgData?.imageMessage?.url || body.data?.mediaUrl;
-                if (url) imageBase64 = await downloadMedia(url);
-            }
-            if (imageBase64) {
-                hasImage = true;
-                const mime = msgData?.imageMessage?.mimetype || "image/jpeg";
-                promptParts.push({ inlineData: { mimeType: mime, data: imageBase64 } });
-                const caption = msgData?.imageMessage?.caption;
-                if (caption) promptParts.push(caption);
-            } else {
-                await sendWhatsAppMessage(remoteJid, "⚠️ Não consegui ler a imagem. Pode tentar enviar de novo?");
-                return NextResponse.json({ status: 'Image Failed' });
-            }
-        }
-        else {
-            if (!messageContent) return NextResponse.json({ status: 'No Content' });
-            promptParts.push(messageContent);
-        }
-
+        // 🟢 ETAPA 1: IDENTIFICAÇÃO DO USUÁRIO E DEFINIÇÃO DO TARGET PHONE
         const variations = getPhoneVariations(senderId);
         const inQuery = variations.join(',');
 
@@ -319,6 +216,7 @@ export async function POST(req: Request) {
             }
         }
 
+        // Fluxo de Ativação (Caso o usuário não tenha sido achado ainda)
         if (!userSettings) {
             const numbersInText = messageContent.replace(/\D/g, '');
             if (numbersInText.length >= 10) {
@@ -330,28 +228,114 @@ export async function POST(req: Request) {
                     .maybeSingle();
                 
                 if (userToLink) {
-                    // 🟢 MODO CASAL: O número estranho do seu amigo (LID) é salvo aqui para sempre ser reconhecido!
                     await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userToLink.user_id);
-                    await sendWhatsAppMessage(remoteJid, `✅ *Vinculado com sucesso!* Pode começar a enviar seus gastos ou fotos de notas fiscais.`);
+                    // 🟢 Manda a mensagem pro telefone SALVO NO BANCO
+                    await sendWhatsAppMessage(userToLink.whatsapp_phone, `✅ *Vinculado com sucesso!* Pode começar a enviar seus gastos ou fotos de notas fiscais.`);
                     return NextResponse.json({ success: true, action: "linked" });
                 }
             }
             return NextResponse.json({ error: "User unknown" });
         }
 
+        // 🟢 DEFINE PARA QUEM O ROBÔ VAI RESPONDER
         const cleanSender = senderId.replace(/\D/g, '');
         const partnerSuffix = userSettings.partner_phone ? userSettings.partner_phone.replace(/\D/g, '').slice(-8) : null;
         let isPartnerMessage = false;
-
+        
+        let targetPhone = userSettings.whatsapp_phone; // Fallback seguro
         if (partnerSuffix && cleanSender.includes(partnerSuffix)) {
+            targetPhone = userSettings.partner_phone;
             isPartnerMessage = true;
+        }
+
+        // 🟢 DAQUI PARA FRENTE, O ROBÔ SÓ USA O 'targetPhone' PARA RESPONDER
+
+        const alreadyProcessed = await redis.get(`msg:${messageId}`);
+        if (alreadyProcessed) return NextResponse.json({ status: 'Ignored Duplicate' });
+        await redis.set(`msg:${messageId}`, '1', { ex: 86400 });
+
+        const { success: rateLimitSuccess } = await ratelimit.limit(targetPhone);
+        if (!rateLimitSuccess) {
+            await sendWhatsAppMessage(targetPhone, "⏳ Calma! Você está enviando mensagens muito rápido. Aguarde um minuto.");
+            return NextResponse.json({ status: 'Rate Limited' });
+        }
+
+        const pendingDeleteStr = await redis.get(`pending_delete:${targetPhone}`);
+        if (pendingDeleteStr) {
+            const userInput = messageContent.trim().toUpperCase();
+            if (userInput === 'SIM') {
+                const cmd = typeof pendingDeleteStr === 'string' ? JSON.parse(pendingDeleteStr) : pendingDeleteStr;
+
+                const ALLOWED_TABLES = ['transactions', 'installments', 'recurring'];
+                if (!ALLOWED_TABLES.includes(cmd.table)) {
+                    await sendWhatsAppMessage(targetPhone, '⚠️ Operação inválida. Tabela não permitida.');
+                    await redis.del(`pending_delete:${targetPhone}`);
+                    return NextResponse.json({ status: 'Blocked' });
+                }
+
+                const { data: items } = await supabase.from(cmd.table).select('id, title').eq('user_id', userSettings.user_id).ilike('title', `%${cmd.data.title}%`).order('created_at', { ascending: false }).limit(1);
+                if (items?.length) {
+                    await supabase.from(cmd.table).delete().eq('id', items[0].id);
+                    await sendWhatsAppMessage(targetPhone, `🗑️ Apagado com sucesso: "${items[0].title}"`);
+                } else {
+                    await sendWhatsAppMessage(targetPhone, `⚠️ Não encontrei o item para apagar.`);
+                }
+                await redis.del(`pending_delete:${targetPhone}`);
+                return NextResponse.json({ success: true, action: "deleted_confirmed" });
+            } else {
+                await redis.del(`pending_delete:${targetPhone}`);
+                await sendWhatsAppMessage(targetPhone, `❌ Exclusão cancelada. Sobre o que você quer falar agora?`);
+                return NextResponse.json({ success: true, action: "deleted_cancelled" });
+            }
+        }
+
+        let promptParts: any[] = [];
+        let hasAudio = false;
+        let hasImage = false;
+        const msgData = body.data?.message;
+        const msgType = body.data?.messageType;
+
+        if (msgType === "audioMessage" || msgData?.audioMessage) {
+            let audioBase64 = body.data?.base64 || msgData?.audioMessage?.base64 || body.data?.message?.base64;
+            if (!audioBase64) {
+                const url = msgData?.audioMessage?.url || body.data?.mediaUrl;
+                if (url) audioBase64 = await downloadMedia(url);
+            }
+            if (audioBase64) {
+                hasAudio = true;
+                promptParts.push({ inlineData: { mimeType: "audio/ogg", data: audioBase64 } });
+            } else {
+                await sendWhatsAppMessage(targetPhone, "⚠️ Ocorreu um erro ao processar o seu áudio. Pode me mandar em texto?");
+                return NextResponse.json({ status: 'Audio Failed' });
+            }
+        }
+        else if (msgType === "imageMessage" || msgData?.imageMessage) {
+            let imageBase64 = body.data?.base64 || msgData?.imageMessage?.base64 || body.data?.message?.base64;
+            if (!imageBase64) {
+                const url = msgData?.imageMessage?.url || body.data?.mediaUrl;
+                if (url) imageBase64 = await downloadMedia(url);
+            }
+            if (imageBase64) {
+                hasImage = true;
+                const mime = msgData?.imageMessage?.mimetype || "image/jpeg";
+                promptParts.push({ inlineData: { mimeType: mime, data: imageBase64 } });
+                const caption = msgData?.imageMessage?.caption;
+                if (caption) promptParts.push(caption);
+            } else {
+                await sendWhatsAppMessage(targetPhone, "⚠️ Não consegui ler a imagem. Pode tentar enviar de novo?");
+                return NextResponse.json({ status: 'Image Failed' });
+            }
+        }
+        else {
+            if (!messageContent) return NextResponse.json({ status: 'No Content' });
+            promptParts.push(messageContent);
         }
 
         const { data: profile } = await supabase.from('profiles').select('plan_tier').eq('id', userSettings.user_id).single();
         const plan = profile?.plan_tier || 'free';
 
         if (!['pro', 'agent', 'admin'].includes(plan)) {
-            await sendWhatsAppMessage(remoteJid, "🚫 *Acesso Exclusivo PRO*\n\nA Inteligência Artificial no WhatsApp está disponível apenas nos planos **Pro** e **Consultor**.", 100);
+            await sendWhatsAppMessage(targetPhone, "🚫 *Acesso Exclusivo PRO*\n\nA Inteligência Artificial no WhatsApp está disponível apenas nos planos **Pro** e **Consultor**.", 100);
             return NextResponse.json({ status: 'Blocked by Plan', plan: plan });
         }
 
@@ -447,7 +431,7 @@ export async function POST(req: Request) {
             if (!Array.isArray(commands)) commands = [commands];
         } catch (error: any) {
             console.error("❌ ERRO NA IA OU NO JSON:", error);
-            await sendWhatsAppMessage(remoteJid, "Desculpe, meu cérebro (IA) deu uma travada agora. Pode me mandar a mensagem de novo? 🤖");
+            await sendWhatsAppMessage(targetPhone, "Desculpe, meu cérebro (IA) deu uma travada agora. Pode me mandar a mensagem de novo? 🤖");
             return NextResponse.json({ success: false, reason: 'AI/JSON Error' });
         }
 
@@ -485,14 +469,14 @@ export async function POST(req: Request) {
                     delete payload.date; delete payload.target_month; delete payload.is_paid;
                     const { error } = await supabase.from('installments').insert([payload]);
                     if (error && error.code === '23505') { replySent = true; continue; }
-                    if (!error && !commands.some((c: any) => c.reply)) await sendWhatsAppMessage(remoteJid, `✅ Gasto salvo no cartão: ${cmd.data.title}`);
+                    if (!error && !commands.some((c: any) => c.reply)) await sendWhatsAppMessage(targetPhone, `✅ Gasto salvo no cartão: ${cmd.data.title}`);
                 }
                 else if (cmd.table === 'recurring') {
                     payload.status = 'active';
                     delete payload.is_paid; delete payload.amount; delete payload.date;
                     const { error } = await supabase.from('recurring').insert([payload]);
                     if (error && error.code === '23505') { replySent = true; continue; }
-                    if (!error && !commands.some((c: any) => c.reply)) await sendWhatsAppMessage(remoteJid, `✅ Fixo salvo: ${cmd.data.title}`);
+                    if (!error && !commands.some((c: any) => c.reply)) await sendWhatsAppMessage(targetPhone, `✅ Fixo salvo: ${cmd.data.title}`);
                 }
                 else if (cmd.table === 'transactions') {
                     if (!payload.date) {
@@ -504,17 +488,17 @@ export async function POST(req: Request) {
                     payload.is_paid = true; payload.status = 'paid';
                     const { error } = await supabase.from('transactions').insert([payload]);
                     if (error && error.code === '23505') { replySent = true; continue; }
-                    if (!error && !commands.some((c: any) => c.reply)) await sendWhatsAppMessage(remoteJid, `✅ Lançado: ${cmd.data.title}`);
+                    if (!error && !commands.some((c: any) => c.reply)) await sendWhatsAppMessage(targetPhone, `✅ Lançado: ${cmd.data.title}`);
                 }
             }
             else if (cmd.action === 'remove') {
-                await sendWhatsAppMessage(remoteJid, `⚠️ Você quer apagar "${cmd.data.title}"? Responda *SIM* para confirmar.`);
-                await redis.set(`pending_delete:${senderId}`, JSON.stringify(cmd), { ex: 300 });
+                await sendWhatsAppMessage(targetPhone, `⚠️ Você quer apagar "${cmd.data.title}"? Responda *SIM* para confirmar.`);
+                await redis.set(`pending_delete:${targetPhone}`, JSON.stringify(cmd), { ex: 300 });
                 replySent = true; 
             }
 
             if (cmd.reply && !replySent) {
-                await sendWhatsAppMessage(remoteJid, cmd.reply);
+                await sendWhatsAppMessage(targetPhone, cmd.reply);
                 replySent = true;
             }
         }
