@@ -478,30 +478,48 @@ export async function POST(req: Request) {
                     || parseFloat(cmd.data?.value_per_month)
                     || parseFloat(cmd.data?.total_value)
                     || 0;
+                    
                 if (extractedValue <= 0) continue;
 
+                // 🟢 CORREÇÃO: Tratamento rigoroso de colunas e erros para Cartão de Crédito
                 if (cmd.table === 'installments') {
                     payload.current_installment = 0;
                     payload.status = 'active';
                     payload.due_day = cmd.data.due_day || 10;
-                    if (!payload.installments_count) payload.installments_count = 1;
-                    if (!payload.payment_method) payload.payment_method = 'outros';
+                    payload.installments_count = cmd.data.installments_count || 1;
+                    payload.payment_method = cmd.data.payment_method || 'outros';
+                    
+                    // Preenchimento obrigatório para não dar erro no banco
+                    payload.value_per_month = extractedValue;
+                    payload.total_value = extractedValue * payload.installments_count;
+                    payload.paid_months = [];
+
                     delete payload.date; delete payload.target_month; delete payload.is_paid;
+                    
                     const { error } = await supabase.from('installments').insert([payload]);
-                    if (error && error.code === '23505') { replySent = true; continue; }
-                    if (!error && !commands.some((c: any) => c.reply)) {
-                        await sendWhatsAppMessage(targetPhone, `✅ Gasto salvo no cartão: ${cmd.data.title}`);
+                    if (error) {
+                        console.error("❌ ERRO SUPABASE (Installments):", error);
+                        await sendWhatsAppMessage(targetPhone, `❌ Falha ao salvar cartão no banco: ${error.message}`);
+                        replySent = true;
+                        continue;
                     }
                 }
+                // 🟢 CORREÇÃO: Tratamento para Contas Fixas
                 else if (cmd.table === 'recurring') {
                     payload.status = 'active';
+                    payload.value = extractedValue;
+                    payload.paid_months = [];
                     delete payload.is_paid; delete payload.amount; delete payload.date;
+                    
                     const { error } = await supabase.from('recurring').insert([payload]);
-                    if (error && error.code === '23505') { replySent = true; continue; }
-                    if (!error && !commands.some((c: any) => c.reply)) {
-                        await sendWhatsAppMessage(targetPhone, `✅ Fixo salvo: ${cmd.data.title}`);
+                    if (error) {
+                        console.error("❌ ERRO SUPABASE (Recurring):", error);
+                        await sendWhatsAppMessage(targetPhone, `❌ Falha ao salvar fixo no banco: ${error.message}`);
+                        replySent = true;
+                        continue;
                     }
                 }
+                // 🟢 CORREÇÃO: Tratamento para Transações Diárias
                 else if (cmd.table === 'transactions') {
                     if (!payload.date) {
                         const hoje = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
@@ -509,12 +527,16 @@ export async function POST(req: Request) {
                         const mStr = String(hoje.getMonth() + 1).padStart(2, '0');
                         payload.date = `${dStr}/${mStr}/${hoje.getFullYear()}`;
                     }
+                    payload.amount = extractedValue;
                     payload.is_paid = true;
                     payload.status = 'paid';
+                    
                     const { error } = await supabase.from('transactions').insert([payload]);
-                    if (error && error.code === '23505') { replySent = true; continue; }
-                    if (!error && !commands.some((c: any) => c.reply)) {
-                        await sendWhatsAppMessage(targetPhone, `✅ Lançado: ${cmd.data.title}`);
+                    if (error) {
+                        console.error("❌ ERRO SUPABASE (Transactions):", error);
+                        await sendWhatsAppMessage(targetPhone, `❌ Falha ao salvar transação no banco: ${error.message}`);
+                        replySent = true;
+                        continue;
                     }
                 }
             }
@@ -524,6 +546,7 @@ export async function POST(req: Request) {
                 replySent = true;
             }
 
+            // 🟢 Só envia a mensagem de sucesso se o banco não deu erro!
             if (cmd.reply && !replySent) {
                 await sendWhatsAppMessage(targetPhone, cmd.reply);
                 replySent = true;
