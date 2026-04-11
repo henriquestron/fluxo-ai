@@ -22,9 +22,7 @@ const ratelimit = new Ratelimit({
 // FUNÇÕES AUXILIARES
 // ============================================================================
 const getPhoneVariations = (phone: string): string[] => {
-    const basePhone = phone.split(':')[0]; 
-    let clean = basePhone.replace(/\D/g, '');
-    
+    let clean = phone.replace(/\D/g, '');
     if (clean.startsWith('55')) {
         if (clean.length > 13) clean = clean.substring(0, 13);
         const ddd = clean.substring(2, 4);
@@ -33,24 +31,20 @@ const getPhoneVariations = (phone: string): string[] => {
         else if (number.length === 8) { return [clean, `55${ddd}9${number}`]; }
         return [clean];
     }
+    // Se não tem 55, tenta adicionar
+    if (clean.length === 10 || clean.length === 11) {
+        return [`55${clean}`, clean];
+    }
     return [clean];
 };
 
-async function sendWhatsAppMessage(jidOrPhone: string, text: string, delay: number = 1200) {
-    let jidsToTry: string[] = [];
-
-    if (jidOrPhone.includes('@')) {
-        const [userPart, domainPart] = jidOrPhone.split('@');
-        const cleanUserPart = userPart.split(':')[0]; 
-        jidsToTry = [`${cleanUserPart}@${domainPart}`];
-    } else {
-        const variations = getPhoneVariations(jidOrPhone);
-        jidsToTry = variations.map(v => `${v}@s.whatsapp.net`);
-    }
-
+// Enviador que sempre usa número do banco (nunca JID @lid)
+async function sendWhatsAppMessage(phone: string, text: string, delay: number = 1200) {
+    const variations = getPhoneVariations(phone);
     let success = false;
-    for (const finalJid of jidsToTry) {
+    for (const v of variations) {
         if (success) break;
+        const finalJid = `${v}@s.whatsapp.net`;
         try {
             console.log(`📤 Tentando enviar para ${finalJid} (Delay: ${delay}ms)...`);
             const res = await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE_NAME}`, {
@@ -60,14 +54,14 @@ async function sendWhatsAppMessage(jidOrPhone: string, text: string, delay: numb
             });
             const json = await res.json();
             if (res.ok || json?.status === 'SUCCESS' || json?.key?.id) {
-                console.log(`✅ Status Envio Sucesso no número ${finalJid}!`);
+                console.log(`✅ Sucesso no número ${finalJid}!`);
                 success = true;
             } else {
                 console.log(`⚠️ Falha em ${finalJid}. Erro:`, json?.error || 'Bad Request');
             }
         } catch (e) { console.error(`❌ Erro Envio ZAP para ${finalJid}:`, e); }
     }
-    if (!success) console.log("🚨 Nenhuma das variações funcionou. Evolution recusou o envio.");
+    if (!success) console.log("🚨 Nenhuma variação funcionou.");
 }
 
 async function downloadMedia(url: string) {
@@ -170,6 +164,7 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
 // ============================================================================
 
 export async function POST(req: Request) {
+
     try {
         const EVOLUTION_WEBHOOK_SECRET = process.env.EVOLUTION_WEBHOOK_SECRET;
 
@@ -196,68 +191,92 @@ export async function POST(req: Request) {
         if (!key?.remoteJid || key.fromMe) return NextResponse.json({ status: 'Ignored' });
 
         const messageId = key.id;
-        const remoteJid = key.remoteJid; 
-        const senderId = remoteJid.split('@')[0];
+        const remoteJid = key.remoteJid;
+        // Extrai só os dígitos do sender (remove @lid, @s.whatsapp.net, :device)
+        const senderRaw = remoteJid.split('@')[0].split(':')[0];
+        const senderId = senderRaw.replace(/\D/g, '');
         const messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
 
-        const alreadyProcessed = await redis.get(`msg:${messageId}`);
-        if (alreadyProcessed) return NextResponse.json({ status: 'Ignored Duplicate' });
-        await redis.set(`msg:${messageId}`, '1', { ex: 86400 });
-
-        const { success: rateLimitSuccess } = await ratelimit.limit(senderId);
-        if (!rateLimitSuccess) {
-            await sendWhatsAppMessage(remoteJid, "⏳ Calma! Você está enviando mensagens muito rápido. Aguarde um minuto.");
-            return NextResponse.json({ status: 'Rate Limited' });
-        }
-
-        // 🟢 CORREÇÃO 1: Construção das variações ANTES das queries
+        // ─── ETAPA 1: IDENTIFICAÇÃO DO USUÁRIO ────────────────────────────────
+        // 🔑 CORREÇÃO PRINCIPAL: usa variações em TODAS as colunas de telefone
         const variations = getPhoneVariations(senderId);
         const inQuery = variations.join(',');
 
-        // 🟢 CORREÇÃO 2: Busca unificada considerando as variações para Titular E Parceiro
+        console.log(`📩 Mensagem de senderId: ${senderId} | variações: ${inQuery}`);
+
+        // Query única com variações — cobre titular E parceiro
         let { data: userSettings } = await supabase
             .from('user_settings')
-            .select('*')
+            .select('user_id, whatsapp_phone, whatsapp_id, partner_phone')
             .or(`whatsapp_id.eq.${senderId},whatsapp_phone.in.(${inQuery}),partner_phone.in.(${inQuery})`)
             .maybeSingle();
 
-        // Fluxo de Ativação
+        // Fallback: tenta com o senderId raw (caso seja um @lid numérico não padrão)
         if (!userSettings) {
+            console.log(`🔍 Fallback: buscando pelo senderRaw: ${senderRaw}`);
+            const { data: found } = await supabase
+                .from('user_settings')
+                .select('user_id, whatsapp_phone, whatsapp_id, partner_phone')
+                .or(`whatsapp_id.eq.${senderRaw},whatsapp_phone.eq.${senderRaw},partner_phone.eq.${senderRaw}`)
+                .maybeSingle();
+
+            if (found) {
+                userSettings = found;
+                // Salva o whatsapp_id para próximas mensagens serem achadas na query principal
+                await supabase.from('user_settings').update({ whatsapp_id: senderRaw }).eq('user_id', found.user_id);
+                console.log(`✅ Usuário encontrado pelo fallback raw. whatsapp_id atualizado.`);
+            }
+        }
+
+        // Fluxo de ativação (primeira mensagem de um número novo)
+        if (!userSettings) {
+            console.log(`❓ Usuário não encontrado. Verificando fluxo de ativação...`);
             const numbersInText = messageContent.replace(/\D/g, '');
             if (numbersInText.length >= 10) {
                 const possiblePhones = getPhoneVariations(numbersInText).join(',');
                 const { data: userToLink } = await supabase
                     .from('user_settings')
-                    .select('*')
+                    .select('user_id, whatsapp_phone, whatsapp_id, partner_phone')
                     .or(`whatsapp_phone.in.(${possiblePhones}),partner_phone.in.(${possiblePhones})`)
                     .maybeSingle();
-                
-                if (userToLink) {
-                    // 🟢 CORREÇÃO 3: Impede que o ID do parceiro sobrescreva o ID principal do titular
-                    const isPartnerActivating = variations.some(v => userToLink.partner_phone?.includes(v));
-                    
-                    if (!isPartnerActivating) {
-                        // Apenas se for o titular ativando, atualiza o whatsapp_id dele
-                        await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userToLink.user_id);
-                    }
 
-                    // 🟢 CORREÇÃO 4: Responde DIRETAMENTE para quem enviou a mensagem (O Parceiro ou o Titular)
-                    await sendWhatsAppMessage(remoteJid, `✅ *Vinculado com sucesso!* Pode começar a enviar seus gastos ou fotos de notas fiscais.`);
+                if (userToLink) {
+                    // Salva o ID desse dispositivo para ser reconhecido nas próximas mensagens
+                    await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userToLink.user_id);
+                    await sendWhatsAppMessage(userToLink.whatsapp_phone, `✅ *Vinculado com sucesso!* Pode começar a enviar seus gastos ou fotos de notas fiscais.`);
                     return NextResponse.json({ success: true, action: "linked" });
                 }
             }
             return NextResponse.json({ error: "User unknown" });
         }
 
-        // 🟢 CORREÇÃO 5: Identifica se é o parceiro de forma confiável usando as variações
-        let isPartnerMessage = false;
-        if (userSettings.partner_phone && variations.some(v => userSettings.partner_phone.includes(v))) {
-            isPartnerMessage = true;
+        console.log(`👤 Usuário encontrado: ${userSettings.user_id}`);
+
+        // ─── ETAPA 2: DEFINIR PARA QUEM RESPONDER ─────────────────────────────
+        // Verifica se é o parceiro comparando sufixo dos últimos 8 dígitos
+        const partnerClean = userSettings.partner_phone?.replace(/\D/g, '') || '';
+        const isPartnerMessage = partnerClean.length >= 8 && senderId.includes(partnerClean.slice(-8));
+
+        // Responde sempre para o número limpo salvo no banco (nunca para @lid)
+        const targetPhone = isPartnerMessage
+            ? userSettings.partner_phone
+            : userSettings.whatsapp_phone;
+
+        console.log(`📲 isPartner: ${isPartnerMessage} | targetPhone: ${targetPhone}`);
+
+        // ─── ETAPA 3: ANTI-DUPLICIDADE E RATE LIMIT ────────────────────────────
+        const alreadyProcessed = await redis.get(`msg:${messageId}`);
+        if (alreadyProcessed) return NextResponse.json({ status: 'Ignored Duplicate' });
+        await redis.set(`msg:${messageId}`, '1', { ex: 86400 });
+
+        const { success: rateLimitSuccess } = await ratelimit.limit(targetPhone);
+        if (!rateLimitSuccess) {
+            await sendWhatsAppMessage(targetPhone, "⏳ Calma! Você está enviando mensagens muito rápido. Aguarde um minuto.");
+            return NextResponse.json({ status: 'Rate Limited' });
         }
 
-        // --- Daqui pra baixo, todas as mensagens usam remoteJid (Responde sempre pra quem enviou) ---
-
-        const pendingDeleteStr = await redis.get(`pending_delete:${senderId}`);
+        // ─── ETAPA 4: VERIFICAR DELEÇÃO PENDENTE ──────────────────────────────
+        const pendingDeleteStr = await redis.get(`pending_delete:${targetPhone}`);
         if (pendingDeleteStr) {
             const userInput = messageContent.trim().toUpperCase();
             if (userInput === 'SIM') {
@@ -265,27 +284,35 @@ export async function POST(req: Request) {
 
                 const ALLOWED_TABLES = ['transactions', 'installments', 'recurring'];
                 if (!ALLOWED_TABLES.includes(cmd.table)) {
-                    await sendWhatsAppMessage(remoteJid, '⚠️ Operação inválida. Tabela não permitida.');
-                    await redis.del(`pending_delete:${senderId}`);
+                    await sendWhatsAppMessage(targetPhone, '⚠️ Operação inválida.');
+                    await redis.del(`pending_delete:${targetPhone}`);
                     return NextResponse.json({ status: 'Blocked' });
                 }
 
-                const { data: items } = await supabase.from(cmd.table).select('id, title').eq('user_id', userSettings.user_id).ilike('title', `%${cmd.data.title}%`).order('created_at', { ascending: false }).limit(1);
+                const { data: items } = await supabase
+                    .from(cmd.table)
+                    .select('id, title')
+                    .eq('user_id', userSettings.user_id)
+                    .ilike('title', `%${cmd.data.title}%`)
+                    .order('created_at', { ascending: false })
+                    .limit(1);
+
                 if (items?.length) {
                     await supabase.from(cmd.table).delete().eq('id', items[0].id);
-                    await sendWhatsAppMessage(remoteJid, `🗑️ Apagado com sucesso: "${items[0].title}"`);
+                    await sendWhatsAppMessage(targetPhone, `🗑️ Apagado com sucesso: "${items[0].title}"`);
                 } else {
-                    await sendWhatsAppMessage(remoteJid, `⚠️ Não encontrei o item para apagar.`);
+                    await sendWhatsAppMessage(targetPhone, `⚠️ Não encontrei o item para apagar.`);
                 }
-                await redis.del(`pending_delete:${senderId}`);
+                await redis.del(`pending_delete:${targetPhone}`);
                 return NextResponse.json({ success: true, action: "deleted_confirmed" });
             } else {
-                await redis.del(`pending_delete:${senderId}`);
-                await sendWhatsAppMessage(remoteJid, `❌ Exclusão cancelada. Sobre o que você quer falar agora?`);
+                await redis.del(`pending_delete:${targetPhone}`);
+                await sendWhatsAppMessage(targetPhone, `❌ Exclusão cancelada. Sobre o que você quer falar agora?`);
                 return NextResponse.json({ success: true, action: "deleted_cancelled" });
             }
         }
 
+        // ─── ETAPA 5: PROCESSAR MÍDIA ──────────────────────────────────────────
         let promptParts: any[] = [];
         let hasAudio = false;
         let hasImage = false;
@@ -302,7 +329,7 @@ export async function POST(req: Request) {
                 hasAudio = true;
                 promptParts.push({ inlineData: { mimeType: "audio/ogg", data: audioBase64 } });
             } else {
-                await sendWhatsAppMessage(remoteJid, "⚠️ Ocorreu um erro ao processar o seu áudio. Pode me mandar em texto?");
+                await sendWhatsAppMessage(targetPhone, "⚠️ Ocorreu um erro ao processar o seu áudio. Pode me mandar em texto?");
                 return NextResponse.json({ status: 'Audio Failed' });
             }
         }
@@ -319,7 +346,7 @@ export async function POST(req: Request) {
                 const caption = msgData?.imageMessage?.caption;
                 if (caption) promptParts.push(caption);
             } else {
-                await sendWhatsAppMessage(remoteJid, "⚠️ Não consegui ler a imagem. Pode tentar enviar de novo?");
+                await sendWhatsAppMessage(targetPhone, "⚠️ Não consegui ler a imagem. Pode tentar enviar de novo?");
                 return NextResponse.json({ status: 'Image Failed' });
             }
         }
@@ -328,91 +355,95 @@ export async function POST(req: Request) {
             promptParts.push(messageContent);
         }
 
-        const { data: profile } = await supabase.from('profiles').select('plan_tier').eq('id', userSettings.user_id).single();
+        // ─── ETAPA 6: VERIFICAR PLANO ──────────────────────────────────────────
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('plan_tier')
+            .eq('id', userSettings.user_id)
+            .single();
         const plan = profile?.plan_tier || 'free';
 
         if (!['pro', 'agent', 'admin'].includes(plan)) {
-            await sendWhatsAppMessage(remoteJid, "🚫 *Acesso Exclusivo PRO*\n\nA Inteligência Artificial no WhatsApp está disponível apenas nos planos **Pro** e **Consultor**.", 100);
-            return NextResponse.json({ status: 'Blocked by Plan', plan: plan });
+            await sendWhatsAppMessage(targetPhone, "🚫 *Acesso Exclusivo PRO*\n\nA Inteligência Artificial no WhatsApp está disponível apenas nos planos **Pro** e **Consultor**.", 100);
+            return NextResponse.json({ status: 'Blocked by Plan', plan });
         }
 
-        const { data: workspaces } = await supabase.from('workspaces').select('id, title, whatsapp_rule').eq('user_id', userSettings.user_id);
-        
-        let primaryWorkspace = workspaces?.[0]; 
-        
+        // ─── ETAPA 7: CONTEXTO FINANCEIRO E WORKSPACES ────────────────────────
+        const { data: workspaces } = await supabase
+            .from('workspaces')
+            .select('id, title, whatsapp_rule')
+            .eq('user_id', userSettings.user_id);
+
+        const primaryWorkspace = workspaces?.[0];
+
         let contextInfo = { saldo: "0", entradas: "0", saidas: "0", resumo_texto: "Sem dados", estado_conta: "Indefinido" };
-        if (primaryWorkspace) contextInfo = await getFinancialContext(supabase, userSettings.user_id, primaryWorkspace.id);
+        if (primaryWorkspace) {
+            contextInfo = await getFinancialContext(supabase, userSettings.user_id, primaryWorkspace.id);
+        }
 
         let workspacesContextPrompt = "";
         if (workspaces && workspaces.length > 1) {
             workspacesContextPrompt = `
             ━━━ ÁREAS DE TRABALHO (WORKSPACES) ━━━
-            O usuário tem múltiplas contas (Workspaces). Você OBRIGATORIAMENTE precisa incluir o campo "context" no seu JSON raiz com o ID correto da área de trabalho onde esse gasto/ganho deve ser registrado.
-            Analise as seguintes contas e suas regras:
+            O usuário tem múltiplas contas. Inclua o campo "context" no JSON com o ID correto.
             `;
             workspaces.forEach((ws) => {
                 const safeRule = (ws.whatsapp_rule || 'Geral').slice(0, 200).replace(/["{}[\]]/g, '');
-                workspacesContextPrompt += `- ID: "${ws.id}" | Nome: "${ws.title}" | Regra do usuário: "${safeRule}"\n`;
+                workspacesContextPrompt += `- ID: "${ws.id}" | Nome: "${ws.title}" | Regra: "${safeRule}"\n`;
             });
             workspacesContextPrompt += `
-            CRITÉRIOS DE ROTEAMENTO:
-            1. Se o usuário mencionou o nome de uma conta (ex: "lança na empresa"), use o ID dela.
-            2. Leia a foto ou o texto e cruze com a "Regra do usuário" para adivinhar a conta correta.
-            3. Se for IMPOSSÍVEL deduzir, envie "context": "${primaryWorkspace?.id}".
+            CRITÉRIOS:
+            1. Se o usuário mencionou o nome de uma conta, use o ID dela.
+            2. Cruze o texto/foto com a "Regra" para deduzir a conta correta.
+            3. Se impossível deduzir, use "context": "${primaryWorkspace?.id}".
             `;
         } else if (primaryWorkspace) {
             workspacesContextPrompt = `Sempre inclua "context": "${primaryWorkspace.id}" no JSON.\n`;
         }
 
+        // ─── ETAPA 8: MONTAR E EXECUTAR O PROMPT ──────────────────────────────
         const dataHojeBR = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
         const cartoesCadastrados = ['nubank', 'inter', 'bb', 'itau', 'santander', 'caixa', 'bradesco', 'c6'];
-        
+
         const systemPrompt = `
             IDENTIDADE: Você é "Meu Aliado", assistente financeiro pessoal via WhatsApp.
             Tom: amigável, direto, humano. Nunca robótico.
             DATA DE HOJE: ${dataHojeBR}.
 
-            ━━━ SITUAÇÃO FINANCEIRA DO MÊS (Workspace Principal) ━━━
+            ━━━ SITUAÇÃO FINANCEIRA DO MÊS ━━━
             💰 Receitas:  R$ ${contextInfo.entradas}
             💸 Despesas:  R$ ${contextInfo.saidas}
             📊 Saldo:     R$ ${contextInfo.saldo}
             ⚠️  Status:   ${contextInfo.estado_conta}
-            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-            COMO AGIR EM CADA SITUAÇÃO:
-            [BATE-PAPO / SALDO] → Responda naturalmente com os dados acima. Seja breve e humano.
-            [APAGAR/REMOVER GASTO] → Monte o JSON com action: "remove".
-            [REGISTRO DE TRANSAÇÃO] → Siga as Regras de Roteamento abaixo para montar o JSON.
+            COMO AGIR:
+            [BATE-PAPO / SALDO] → Responda naturalmente. Seja breve.
+            [APAGAR/REMOVER] → Monte o JSON com action: "remove".
+            [REGISTRO] → Siga as Regras de Roteamento abaixo.
 
             ${workspacesContextPrompt}
 
-            🧠 ━━━ REGRAS DE ROTEAMENTO (MUITO IMPORTANTE) ━━━ 🧠
+            🧠 REGRAS DE ROTEAMENTO:
             
-            1. 💳 CARTÃO DE CRÉDITO (Apenas se o usuário MENCIONAR o nome de um banco/cartão):
-            Se o usuário disser que pagou com: ${cartoesCadastrados.join(', ')} ou usar as palavras "crédito/cartão", você DEVE lançar na tabela "installments".
-            - Formato Exigido:
-            {"action": "add", "table": "installments", "context": "ID_AQUI", "data": {"title": "...", "value_per_month": 0.00, "installments_count": 1, "payment_method": "nome_do_banco_em_minusculo"}}
-            *(Nota: Se ele não disser em quantas vezes, assuma installments_count: 1. Extraia o nome do banco para o campo payment_method).*
+            1. 💳 CARTÃO DE CRÉDITO (se mencionar banco/cartão):
+            {"action":"add","table":"installments","context":"ID","data":{"title":"...","value_per_month":0.00,"installments_count":1,"payment_method":"banco"}}
 
-            2. 🔁 GASTO FIXO MENSAL (Ex: Netflix, Academia, Aluguel):
-            Se o usuário disser que é um gasto "fixo", "todo mês" ou "assinatura", você DEVE lançar na tabela "recurring".
-            - Formato Exigido:
-            {"action": "add", "table": "recurring", "context": "ID_AQUI", "data": {"title": "...", "value": 0.00, "type": "expense", "due_day": 10}}
-            *(Nota: due_day é o dia do vencimento. Se não dito, use 10).*
+            2. 🔁 GASTO FIXO (fixo, todo mês, assinatura):
+            {"action":"add","table":"recurring","context":"ID","data":{"title":"...","value":0.00,"type":"expense","due_day":10}}
 
-            3. 💸 GASTO COMUM (Débito, Pix, Dinheiro):
-            Para gastos normais do dia a dia (Padaria, iFood, Uber), você DEVE lançar na tabela "transactions".
-            - Formato Exigido:
-            {"action": "add", "table": "transactions", "context": "ID_AQUI", "data": {"title": "...", "amount": 0.00, "type": "expense", "date": "DD/MM/YYYY"}}
+            3. 💸 GASTO COMUM (débito, pix, dinheiro):
+            {"action":"add","table":"transactions","context":"ID","data":{"title":"...","amount":0.00,"type":"expense","date":"DD/MM/YYYY"}}
 
-            REGRAS ABSOLUTAS GERAIS:
-            ✅ Saída SEMPRE como array JSON válido — zero texto fora do JSON.
-            ✅ Respostas curtas (WhatsApp, não romance).
-            ✅ Valores sempre como número float (ex: 49.90), nunca string.
-            ✅ SEMPRE adicione o bloco obrigatório de resposta: {"reply": "mensagem curta confirmando onde foi lançado e como foi pago"}
+            REGRAS ABSOLUTAS:
+            ✅ Saída SEMPRE como array JSON válido.
+            ✅ Respostas curtas (WhatsApp).
+            ✅ Valores sempre float (ex: 49.90).
+            ✅ SEMPRE inclua: {"reply": "mensagem curta de confirmação"}
+            ✅ Cartões disponíveis: ${cartoesCadastrados.join(', ')}
 
-            ${hasAudio ? "\n⚠️ ÁUDIO RECEBIDO: Transcreva mentalmente a fala e responda com base no que foi dito." : ""}
-            ${hasImage ? "\n📸 IMAGEM RECEBIDA: Extraia o valor total, a data e o nome do estabelecimento da foto/comprovante para registrar o gasto. Tente ler a forma de pagamento (ex: crédito mastercard, pix)." : ""}
+            ${hasAudio ? "\n⚠️ ÁUDIO RECEBIDO: Transcreva e responda com base no que foi dito." : ""}
+            ${hasImage ? "\n📸 IMAGEM RECEBIDA: Extraia valor, data e estabelecimento. Tente identificar forma de pagamento." : ""}
         `;
 
         const finalPrompt = [systemPrompt, ...promptParts];
@@ -428,52 +459,69 @@ export async function POST(req: Request) {
             if (!Array.isArray(commands)) commands = [commands];
         } catch (error: any) {
             console.error("❌ ERRO NA IA OU NO JSON:", error);
-            await sendWhatsAppMessage(remoteJid, "Desculpe, meu cérebro (IA) deu uma travada agora. Pode me mandar a mensagem de novo? 🤖");
+            await sendWhatsAppMessage(targetPhone, "Desculpe, tive uma travada agora. Pode mandar de novo? 🤖");
             return NextResponse.json({ success: false, reason: 'AI/JSON Error' });
         }
 
+        // ─── ETAPA 9: EXECUTAR COMANDOS DA IA ─────────────────────────────────
         let replySent = false;
         const ALLOWED_TABLES = ['transactions', 'installments', 'recurring'];
         const validContextIds = new Set(workspaces?.map(w => w.id) || []);
 
         for (const cmd of commands) {
+            // Bloqueia tabelas não permitidas
             if (cmd.table && !ALLOWED_TABLES.includes(cmd.table)) {
+                console.warn(`⛔ Tabela bloqueada pela IA: ${cmd.table}`);
                 continue;
             }
 
             if (cmd.action === 'add') {
-                if (isPartnerMessage && cmd.data.title && !cmd.data.title.includes('[Parceiro]')) {
+                // Tag de parceiro no título
+                if (isPartnerMessage && cmd.data?.title && !cmd.data.title.includes('[Parceiro]')) {
                     cmd.data.title = `[Parceiro] ${cmd.data.title}`;
                 }
 
-                let targetContext = (cmd.context && validContextIds.has(cmd.context)) ? cmd.context : (primaryWorkspace?.id || null);
-                
-                let payload: any = { ...cmd.data, user_id: userSettings.user_id, context: targetContext, created_at: new Date(), message_id: messageId };
+                // Valida o context retornado pela IA
+                const targetContext = (cmd.context && validContextIds.has(cmd.context))
+                    ? cmd.context
+                    : (primaryWorkspace?.id || null);
 
-                const extractedValue = parseFloat(cmd.data.amount) || parseFloat(cmd.data.value) || parseFloat(cmd.data.value_per_month) || parseFloat(cmd.data.total_value) || 0;
+                let payload: any = {
+                    ...cmd.data,
+                    user_id: userSettings.user_id,
+                    context: targetContext,
+                    created_at: new Date(),
+                    message_id: messageId
+                };
+
+                const extractedValue = parseFloat(cmd.data?.amount)
+                    || parseFloat(cmd.data?.value)
+                    || parseFloat(cmd.data?.value_per_month)
+                    || parseFloat(cmd.data?.total_value)
+                    || 0;
                 if (extractedValue <= 0) continue;
 
                 if (cmd.table === 'installments') {
-                    payload.current_installment = 0; 
+                    payload.current_installment = 0;
                     payload.status = 'active';
-                    payload.due_day = cmd.data.due_day || 10; 
-                    if (!payload.installments_count) {
-                        payload.installments_count = 1;
-                    }
-                    if (!payload.payment_method) {
-                        payload.payment_method = 'outros';
-                    }
+                    payload.due_day = cmd.data.due_day || 10;
+                    if (!payload.installments_count) payload.installments_count = 1;
+                    if (!payload.payment_method) payload.payment_method = 'outros';
                     delete payload.date; delete payload.target_month; delete payload.is_paid;
                     const { error } = await supabase.from('installments').insert([payload]);
                     if (error && error.code === '23505') { replySent = true; continue; }
-                    if (!error && !commands.some((c: any) => c.reply)) await sendWhatsAppMessage(remoteJid, `✅ Gasto salvo no cartão: ${cmd.data.title}`);
+                    if (!error && !commands.some((c: any) => c.reply)) {
+                        await sendWhatsAppMessage(targetPhone, `✅ Gasto salvo no cartão: ${cmd.data.title}`);
+                    }
                 }
                 else if (cmd.table === 'recurring') {
                     payload.status = 'active';
                     delete payload.is_paid; delete payload.amount; delete payload.date;
                     const { error } = await supabase.from('recurring').insert([payload]);
                     if (error && error.code === '23505') { replySent = true; continue; }
-                    if (!error && !commands.some((c: any) => c.reply)) await sendWhatsAppMessage(remoteJid, `✅ Fixo salvo: ${cmd.data.title}`);
+                    if (!error && !commands.some((c: any) => c.reply)) {
+                        await sendWhatsAppMessage(targetPhone, `✅ Fixo salvo: ${cmd.data.title}`);
+                    }
                 }
                 else if (cmd.table === 'transactions') {
                     if (!payload.date) {
@@ -482,20 +530,23 @@ export async function POST(req: Request) {
                         const mStr = String(hoje.getMonth() + 1).padStart(2, '0');
                         payload.date = `${dStr}/${mStr}/${hoje.getFullYear()}`;
                     }
-                    payload.is_paid = true; payload.status = 'paid';
+                    payload.is_paid = true;
+                    payload.status = 'paid';
                     const { error } = await supabase.from('transactions').insert([payload]);
                     if (error && error.code === '23505') { replySent = true; continue; }
-                    if (!error && !commands.some((c: any) => c.reply)) await sendWhatsAppMessage(remoteJid, `✅ Lançado: ${cmd.data.title}`);
+                    if (!error && !commands.some((c: any) => c.reply)) {
+                        await sendWhatsAppMessage(targetPhone, `✅ Lançado: ${cmd.data.title}`);
+                    }
                 }
             }
             else if (cmd.action === 'remove') {
-                await sendWhatsAppMessage(remoteJid, `⚠️ Você quer apagar "${cmd.data.title}"? Responda *SIM* para confirmar.`);
-                await redis.set(`pending_delete:${senderId}`, JSON.stringify(cmd), { ex: 300 });
-                replySent = true; 
+                await sendWhatsAppMessage(targetPhone, `⚠️ Você quer apagar "${cmd.data.title}"? Responda *SIM* para confirmar.`);
+                await redis.set(`pending_delete:${targetPhone}`, JSON.stringify(cmd), { ex: 300 });
+                replySent = true;
             }
 
             if (cmd.reply && !replySent) {
-                await sendWhatsAppMessage(remoteJid, cmd.reply);
+                await sendWhatsAppMessage(targetPhone, cmd.reply);
                 replySent = true;
             }
         }
@@ -504,6 +555,7 @@ export async function POST(req: Request) {
 
     } catch (e: any) {
         console.error("🔥 ERRO FATAL NO WEBHOOK:", e);
-        return NextResponse.json({ error: e.message, status: "Caught but returning 200 to prevent retries" }, { status: 200 });
+        // Retorna 200 para Evolution não entrar em loop de retentativas
+        return NextResponse.json({ error: e.message, status: "Caught" }, { status: 200 });
     }
 }
