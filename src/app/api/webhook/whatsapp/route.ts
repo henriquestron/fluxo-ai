@@ -423,7 +423,20 @@ export async function POST(req: Request) {
 
         const dataHojeBR = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
         const cartoesCadastrados = ['nubank', 'inter', 'bb', 'itau', 'santander', 'caixa', 'bradesco', 'c6'];
-
+        if (messageContent.trim().toUpperCase() === 'DEBUG') {
+            console.log("=== 🕵️‍♂️ LOG DE DEBUG FINANCEIRO ===");
+            console.log(JSON.stringify(ctx, null, 2)); // Cospe o JSON inteiro na Vercel
+            
+            const msgDebug = `🛠️ *MODO RAIO-X ATIVADO* 🛠️\n\n` +
+                             `*Mês Lida:* ${ctx.mes_atual}\n` +
+                             `*Entradas no Mês:* ${ctx.entradas_fmt}\n` +
+                             `*Saídas no Mês:* ${ctx.saidas_fmt}\n` +
+                             `*SALDO ACUMULADO:* ${ctx.saldo_fmt}\n\n` +
+                             `De onde veio isso? Acabei de imprimir o JSON completo no console da sua Vercel. Vá lá em "Logs" e veja a matemática exata!`;
+            
+            await sendWhatsAppMessage(targetPhone, msgDebug);
+            return NextResponse.json({ success: true, debug: true });
+        }
         // ── ETAPA 8: SYSTEM PROMPT ─────────────────────────────────────────────
         const systemPrompt = `
 IDENTIDADE: Você é "Meu Aliado", assistente financeiro pessoal via WhatsApp.
