@@ -37,7 +37,6 @@ const getPhoneVariations = (phone: string): string[] => {
     return [clean];
 };
 
-// 🟢 ENVIADOR BLINDADO (Usa apenas os números oficiais do banco)
 async function sendWhatsAppMessage(phone: string, text: string, delay: number = 1200) {
     const variations = getPhoneVariations(phone);
     let success = false;
@@ -45,22 +44,22 @@ async function sendWhatsAppMessage(phone: string, text: string, delay: number = 
         if (success) break;
         const finalJid = `${v}@s.whatsapp.net`;
         try {
-            console.log(`📤 Tentando enviar para ${finalJid} (Delay: ${delay}ms)...`);
+            console.log(`📤 Tentando enviar para ${finalJid}...`);
             const res = await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE_NAME}`, {
                 method: 'POST',
                 headers: { 'apikey': EVOLUTION_API_KEY as string, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ number: finalJid, options: { delay: delay }, textMessage: { text: text } })
+                body: JSON.stringify({ number: finalJid, options: { delay }, textMessage: { text } })
             });
             const json = await res.json();
             if (res.ok || json?.status === 'SUCCESS' || json?.key?.id) {
-                console.log(`✅ Sucesso no número ${finalJid}!`);
+                console.log(`✅ Sucesso: ${finalJid}`);
                 success = true;
             } else {
-                console.log(`⚠️ Falha em ${finalJid}. Erro:`, json?.error || 'Bad Request');
+                console.log(`⚠️ Falha: ${finalJid}. Erro:`, json?.error || 'Bad Request');
             }
-        } catch (e) { console.error(`❌ Erro Envio ZAP para ${finalJid}:`, e); }
+        } catch (e) { console.error(`❌ Erro envio para ${finalJid}:`, e); }
     }
-    if (!success) console.log("🚨 Nenhuma variação funcionou. Evolution recusou.");
+    if (!success) console.log("🚨 Nenhuma variação funcionou.");
 }
 
 async function downloadMedia(url: string) {
@@ -72,16 +71,29 @@ async function downloadMedia(url: string) {
     } catch (error) { return null; }
 }
 
+// ============================================================================
+// CONTEXTO FINANCEIRO COMPLETO
+// ============================================================================
 async function getFinancialContext(supabase: any, userId: string, workspaceId: string) {
     const today = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
     const currentYear = today.getFullYear();
     const activeMonthIdx = today.getMonth();
     const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const currentMonthName = MONTHS[activeMonthIdx];
+    const currentTag = `${currentMonthName}/${currentYear}`;
+    const mCode = (activeMonthIdx + 1).toString().padStart(2, '0');
+    const dateFilter = `/${mCode}/${currentYear}`;
 
     const [transRes, recRes, instRes] = await Promise.all([
-        supabase.from('transactions').select('type, amount, date, status').eq('user_id', userId).eq('context', workspaceId),
-        supabase.from('recurring').select('type, value, custom_values, start_date, created_at, status, paid_months, skipped_months, standby_months').eq('user_id', userId).eq('context', workspaceId),
-        supabase.from('installments').select('value_per_month, start_date, created_at, status, paid_months, standby_months, current_installment, installments_count').eq('user_id', userId).eq('context', workspaceId)
+        supabase.from('transactions')
+            .select('type, amount, date, status, title, category, is_paid, target_month')
+            .eq('user_id', userId).eq('context', workspaceId),
+        supabase.from('recurring')
+            .select('type, value, custom_values, start_date, created_at, status, paid_months, skipped_months, standby_months, title, category, due_day')
+            .eq('user_id', userId).eq('context', workspaceId),
+        supabase.from('installments')
+            .select('value_per_month, total_value, start_date, created_at, status, paid_months, standby_months, current_installment, installments_count, title, payment_method, due_day')
+            .eq('user_id', userId).eq('context', workspaceId)
     ]);
 
     const transactions = transRes.data || [];
@@ -90,74 +102,139 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
 
     const getStartData = (item: any) => {
         if (item.start_date) {
-            if (item.start_date.includes('-')) {
-                const p = item.start_date.split('-'); return { m: parseInt(p[1]) - 1, y: parseInt(p[0]) };
-            }
-            if (item.start_date.includes('/')) {
-                const p = item.start_date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
-            }
+            if (item.start_date.includes('-')) { const p = item.start_date.split('-'); return { m: parseInt(p[1]) - 1, y: parseInt(p[0]) }; }
+            if (item.start_date.includes('/')) { const p = item.start_date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) }; }
         }
-        if (item.date && item.date.includes('/')) {
-            const p = item.date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
-        }
-        if (item.created_at) {
-            const d = new Date(item.created_at); return { m: d.getMonth(), y: d.getFullYear() };
-        }
+        if (item.date && item.date.includes('/')) { const p = item.date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) }; }
+        if (item.created_at) { const d = new Date(item.created_at); return { m: d.getMonth(), y: d.getFullYear() }; }
         return { m: 0, y: currentYear };
     };
 
     const getActualValue = (item: any, tag: string) => {
-        if (item.custom_values && item.custom_values[tag] !== undefined) {
-            return Number(item.custom_values[tag]);
-        }
+        if (item.custom_values && item.custom_values[tag] !== undefined) return Number(item.custom_values[tag]);
         return Number(item.value);
     };
 
-    let previousSurplus = 0; let computedInc = 0; let computedExp = 0; let computedBalance = 0;
+    const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+    // Cálculo acumulado mês a mês (para saldo com arrastamento)
+    let previousSurplus = 0, computedInc = 0, computedExp = 0, computedBalance = 0;
 
     for (let idx = 0; idx <= activeMonthIdx; idx++) {
         const month = MONTHS[idx];
-        const mCode = (idx + 1).toString().padStart(2, '0');
-        const dateFilter = `/${mCode}/${currentYear}`;
-        const paymentTag = `${month}/${currentYear}`;
+        const mc = (idx + 1).toString().padStart(2, '0');
+        const df = `/${mc}/${currentYear}`;
+        const pt = `${month}/${currentYear}`;
 
-        const inc = (transactions?.filter((t: any) => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc: number, i: any) => acc + Number(i.amount), 0) || 0) +
-            (recurring?.filter((r: any) => {
+        const inc =
+            transactions.filter((t: any) => t.type === 'income' && t.date?.includes(df) && t.status !== 'delayed' && t.status !== 'standby')
+                .reduce((a: number, i: any) => a + Number(i.amount), 0) +
+            recurring.filter((r: any) => {
                 const { m: sM, y: sY } = getStartData(r);
-                const paid = r.paid_months?.includes(paymentTag) || r.paid_months?.includes(month);
-                if ((r.status === 'delayed' || r.status === 'standby' || r.standby_months?.includes(paymentTag)) && !paid) return false;
+                const paid = r.paid_months?.includes(pt) || r.paid_months?.includes(month);
+                if ((r.status === 'delayed' || r.status === 'standby' || r.standby_months?.includes(pt)) && !paid) return false;
                 return r.type === 'income' && (currentYear > sY || (currentYear === sY && idx >= sM)) && !r.skipped_months?.includes(month);
-            }).reduce((acc: number, r: any) => acc + getActualValue(r, paymentTag), 0) || 0);
+            }).reduce((a: number, r: any) => a + getActualValue(r, pt), 0);
 
-        const exp = (transactions?.filter((t: any) => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc: number, i: any) => acc + Number(i.amount), 0) || 0) +
-            (recurring?.filter((r: any) => {
+        const exp =
+            transactions.filter((t: any) => t.type === 'expense' && t.date?.includes(df) && t.status !== 'delayed' && t.status !== 'standby')
+                .reduce((a: number, i: any) => a + Number(i.amount), 0) +
+            recurring.filter((r: any) => {
                 const { m: sM, y: sY } = getStartData(r);
-                const paid = r.paid_months?.includes(paymentTag) || r.paid_months?.includes(month);
-                if ((r.status === 'delayed' || r.status === 'standby' || r.standby_months?.includes(paymentTag)) && !paid) return false;
+                const paid = r.paid_months?.includes(pt) || r.paid_months?.includes(month);
+                if ((r.status === 'delayed' || r.status === 'standby' || r.standby_months?.includes(pt)) && !paid) return false;
                 return r.type === 'expense' && (currentYear > sY || (currentYear === sY && idx >= sM)) && !r.skipped_months?.includes(month);
-            }).reduce((acc: number, r: any) => acc + getActualValue(r, paymentTag), 0) || 0) +
-            (installments?.reduce((acc: number, i: any) => {
-                const paid = i.paid_months?.includes(paymentTag) || i.paid_months?.includes(month);
-                if ((i.status === 'delayed' || i.status === 'standby' || i.standby_months?.includes(paymentTag)) && !paid) return acc;
+            }).reduce((a: number, r: any) => a + getActualValue(r, pt), 0) +
+            installments.reduce((a: number, i: any) => {
+                const paid = i.paid_months?.includes(pt) || i.paid_months?.includes(month);
+                if ((i.status === 'delayed' || i.status === 'standby' || i.standby_months?.includes(pt)) && !paid) return a;
                 const { m: sM, y: sY } = getStartData(i);
                 const diff = ((currentYear - sY) * 12) + (idx - sM);
                 const act = 1 + (i.current_installment || 0) + diff;
-                return (act >= 1 && act <= i.installments_count) ? acc + Number(i.value_per_month) : acc;
-            }, 0) || 0);
+                return (act >= 1 && act <= i.installments_count) ? a + Number(i.value_per_month) : a;
+            }, 0);
 
-        const saldoMensal = inc - exp;
-        const saldoAcumulado = saldoMensal + previousSurplus;
+        const saldoAcumulado = (inc - exp) + previousSurplus;
         if (idx === activeMonthIdx) { computedInc = inc; computedExp = exp; computedBalance = saldoAcumulado; }
         previousSurplus = saldoAcumulado;
     }
 
+    // Listas detalhadas do mês atual
+    const receitasTransacao = transactions.filter((t: any) => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'standby');
+    const receitasFixas = recurring.filter((r: any) => {
+        const { m: sM, y: sY } = getStartData(r);
+        return r.type === 'income' && (currentYear > sY || (currentYear === sY && activeMonthIdx >= sM)) && r.status !== 'standby' && !r.skipped_months?.includes(currentMonthName);
+    });
+    const gastosTransacao = transactions.filter((t: any) => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'standby');
+    const gastosFixos = recurring.filter((r: any) => {
+        const { m: sM, y: sY } = getStartData(r);
+        return r.type === 'expense' && (currentYear > sY || (currentYear === sY && activeMonthIdx >= sM)) && r.status !== 'standby' && !r.skipped_months?.includes(currentMonthName);
+    });
+    const parcelamentosDoMes = installments.filter((i: any) => {
+        if (i.status === 'standby') return false;
+        const { m: sM, y: sY } = getStartData(i);
+        const diff = ((currentYear - sY) * 12) + (activeMonthIdx - sM);
+        const act = 1 + (i.current_installment || 0) + diff;
+        return act >= 1 && act <= i.installments_count;
+    });
+
+    // Pagas vs pendentes
+    const isPaid = (item: any) =>
+        item.is_paid ||
+        item.paid_months?.includes(currentTag) ||
+        item.paid_months?.includes(currentMonthName);
+
+    const todasDespesas = [...gastosTransacao, ...gastosFixos, ...parcelamentosDoMes];
+    const contasPagas = todasDespesas.filter(isPaid);
+    const contasPendentes = todasDespesas.filter(i => !isPaid(i));
+    const totalPendente = contasPendentes.reduce((a, i) => a + (Number(i.amount) || Number(i.value) || Number(i.value_per_month) || 0), 0);
+
+    // Monta blocos de texto detalhados
+    let detalhesReceitas = "";
+    if (receitasTransacao.length + receitasFixas.length > 0) {
+        detalhesReceitas = "\n📥 RECEITAS:\n";
+        receitasTransacao.forEach((t: any) => { detalhesReceitas += `  • ${t.title}: ${fmt(Number(t.amount))}\n`; });
+        receitasFixas.forEach((r: any) => { detalhesReceitas += `  • ${r.title} (fixo): ${fmt(getActualValue(r, currentTag))}\n`; });
+    }
+
+    let detalhesGastos = "";
+    if (todasDespesas.length > 0) {
+        detalhesGastos = "\n📤 DESPESAS:\n";
+        gastosTransacao.forEach((t: any) => {
+            detalhesGastos += `  ${t.is_paid ? "✅" : "⏳"} ${t.title}: ${fmt(Number(t.amount))}\n`;
+        });
+        gastosFixos.forEach((r: any) => {
+            const pago = isPaid(r) ? "✅" : "⏳";
+            detalhesGastos += `  ${pago} ${r.title} (fixo, dia ${r.due_day}): ${fmt(getActualValue(r, currentTag))}\n`;
+        });
+        parcelamentosDoMes.forEach((i: any) => {
+            const { m: sM, y: sY } = getStartData(i);
+            const diff = ((currentYear - sY) * 12) + (activeMonthIdx - sM);
+            const parcAtual = 1 + (i.current_installment || 0) + diff;
+            const pago = isPaid(i) ? "✅" : "⏳";
+            detalhesGastos += `  ${pago} ${i.title} (${parcAtual}/${i.installments_count}x - ${i.payment_method || 'outros'}): ${fmt(Number(i.value_per_month))}\n`;
+        });
+    }
+
     let estado = "ESTÁVEL 🟢";
-    if (computedBalance < 0) estado = "CRÍTICO (VERMELHO) 🔴";
-    else if (computedBalance < (computedInc * 0.1)) estado = "ALERTA (POUCA MARGEM) 🟡";
+    if (computedBalance < 0) estado = "CRÍTICO 🔴";
+    else if (computedBalance < (computedInc * 0.1)) estado = "ALERTA 🟡";
 
     return {
-        saldo: computedBalance.toFixed(2), entradas: computedInc.toFixed(2), saidas: computedExp.toFixed(2),
-        estado_conta: estado, resumo_texto: `Receitas: R$ ${computedInc.toFixed(2)} | Despesas: R$ ${computedExp.toFixed(2)} | Saldo: R$ ${computedBalance.toFixed(2)}`
+        saldo: computedBalance.toFixed(2),
+        entradas: computedInc.toFixed(2),
+        saidas: computedExp.toFixed(2),
+        estado_conta: estado,
+        saldo_fmt: fmt(computedBalance),
+        entradas_fmt: fmt(computedInc),
+        saidas_fmt: fmt(computedExp),
+        pendente_fmt: fmt(totalPendente),
+        mes_atual: currentMonthName,
+        contas_pagas: contasPagas.length,
+        contas_pendentes: contasPendentes.length,
+        detalhes_receitas: detalhesReceitas,
+        detalhes_gastos: detalhesGastos,
+        resumo_texto: `Receitas: ${fmt(computedInc)} | Despesas: ${fmt(computedExp)} | Saldo: ${fmt(computedBalance)}`
     };
 }
 // ============================================================================
@@ -165,10 +242,7 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
 export async function POST(req: Request) {
     try {
         const EVOLUTION_WEBHOOK_SECRET = process.env.EVOLUTION_WEBHOOK_SECRET;
-
-        if (!EVOLUTION_WEBHOOK_SECRET) {
-            throw new Error('ALERTA: EVOLUTION_WEBHOOK_SECRET não definida no .env');
-        }
+        if (!EVOLUTION_WEBHOOK_SECRET) throw new Error('EVOLUTION_WEBHOOK_SECRET não definida');
 
         const { searchParams } = new URL(req.url);
         const urlToken = searchParams.get('token');
@@ -190,48 +264,57 @@ export async function POST(req: Request) {
 
         const messageId = key.id;
         const remoteJid = key.remoteJid;
-        // Extrai o "código fantasma" ou número limpo enviado
         const senderRaw = remoteJid.split('@')[0].split(':')[0];
         const senderId = senderRaw.replace(/\D/g, '');
         const messageContent = body.data?.message?.conversation || body.data?.message?.extendedTextMessage?.text || "";
 
+        // ── ETAPA 1: IDENTIFICAÇÃO ─────────────────────────────────────────────
         const variations = getPhoneVariations(senderId);
         const inQuery = variations.join(',');
+        console.log(`📩 senderId: ${senderId} | variações: ${inQuery}`);
 
-        // 1. TENTA ACHAR O USUÁRIO PELO NÚMERO OU CÓDIGO FANTASMA
         let { data: userSettings } = await supabase
             .from('user_settings')
-            .select('*')
+            .select('user_id, whatsapp_phone, whatsapp_id, partner_phone, partner_whatsapp_id')
             .or(`whatsapp_id.eq.${senderId},partner_whatsapp_id.eq.${senderId},whatsapp_phone.in.(${inQuery}),partner_phone.in.(${inQuery})`)
             .maybeSingle();
 
-        // 2. FLUXO DE ATIVAÇÃO (Se não achou, ele exige a palavra "Ativar")
+        // Fallback com senderRaw para @lid
+        if (!userSettings && senderRaw !== senderId) {
+            const { data: found } = await supabase
+                .from('user_settings')
+                .select('user_id, whatsapp_phone, whatsapp_id, partner_phone, partner_whatsapp_id')
+                .or(`whatsapp_id.eq.${senderRaw},partner_whatsapp_id.eq.${senderRaw}`)
+                .maybeSingle();
+            if (found) {
+                userSettings = found;
+                console.log(`✅ Encontrado pelo fallback raw: ${senderRaw}`);
+            }
+        }
+
+        // ── FLUXO DE ATIVAÇÃO ──────────────────────────────────────────────────
         if (!userSettings) {
             const numbersInText = messageContent.replace(/\D/g, '');
-            // Se o texto tiver um número de telefone (ex: Ativar 5562...)
             if (numbersInText.length >= 10) {
                 const possiblePhones = getPhoneVariations(numbersInText);
                 const inQueryPossible = possiblePhones.join(',');
-
                 const { data: userToLink } = await supabase
                     .from('user_settings')
-                    .select('*')
+                    .select('user_id, whatsapp_phone, partner_phone')
                     .or(`whatsapp_phone.in.(${inQueryPossible}),partner_phone.in.(${inQueryPossible})`)
                     .maybeSingle();
 
                 if (userToLink) {
-                    // 🟢 MAGIA AQUI: Ele descobre se quem está ativando é o Titular ou o Parceiro
-                    const partnerClean = userToLink.partner_phone?.replace(/\D/g, '');
-                    const isPartnerActivating = partnerClean && possiblePhones.some(v => partnerClean.includes(v));
+                    const partnerClean = userToLink.partner_phone?.replace(/\D/g, '') || '';
+                    const isPartnerActivating = partnerClean.length >= 8 &&
+                        possiblePhones.some(v => v.replace(/\D/g, '').includes(partnerClean.slice(-8)));
 
                     if (isPartnerActivating) {
-                        // Salva o código fantasma na gaveta do PARCEIRO
                         await supabase.from('user_settings').update({ partner_whatsapp_id: senderId }).eq('user_id', userToLink.user_id);
-                        await sendWhatsAppMessage(userToLink.partner_phone, `✅ *Parceiro vinculado com sucesso!* O Aliado já reconhece o seu aparelho. Pode mandar os gastos!`);
+                        await sendWhatsAppMessage(userToLink.partner_phone, `✅ *Parceiro vinculado!* Pode mandar seus gastos agora! 🎉`);
                     } else {
-                        // Salva o código fantasma na gaveta do TITULAR
                         await supabase.from('user_settings').update({ whatsapp_id: senderId }).eq('user_id', userToLink.user_id);
-                        await sendWhatsAppMessage(userToLink.whatsapp_phone, `✅ *Vinculado com sucesso!* O Aliado já reconhece o seu aparelho. Pode mandar os gastos!`);
+                        await sendWhatsAppMessage(userToLink.whatsapp_phone, `✅ *Vinculado com sucesso!* Pode mandar seus gastos agora! 🎉`);
                     }
                     return NextResponse.json({ success: true, action: "linked" });
                 }
@@ -239,221 +322,195 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "User unknown" });
         }
 
-        // 3. SE ACHOU, DEFINE PRA QUEM A MENSAGEM DEVE VOLTAR
-        const isPartnerMessage = (userSettings.partner_whatsapp_id === senderId) || variations.some(v => userSettings.partner_phone?.includes(v));
-        
-        const targetPhone = isPartnerMessage
-            ? userSettings.partner_phone
-            : userSettings.whatsapp_phone;
+        // ── ETAPA 2: TARGET PHONE ──────────────────────────────────────────────
+        const partnerClean = userSettings.partner_phone?.replace(/\D/g, '') || '';
+        const isPartnerMessage =
+            userSettings.partner_whatsapp_id === senderId ||
+            userSettings.partner_whatsapp_id === senderRaw ||
+            (partnerClean.length >= 8 && senderId.includes(partnerClean.slice(-8)));
 
-        // --- A PARTIR DAQUI O CÓDIGO USA O NÚMERO LIMPO (targetPhone) ---
+        const targetPhone = isPartnerMessage ? userSettings.partner_phone : userSettings.whatsapp_phone;
+        console.log(`👤 user: ${userSettings.user_id} | parceiro: ${isPartnerMessage} | target: ${targetPhone}`);
 
+        // ── ETAPA 3: ANTI-DUPLICIDADE E RATE LIMIT ─────────────────────────────
         const alreadyProcessed = await redis.get(`msg:${messageId}`);
         if (alreadyProcessed) return NextResponse.json({ status: 'Ignored Duplicate' });
         await redis.set(`msg:${messageId}`, '1', { ex: 86400 });
 
         const { success: rateLimitSuccess } = await ratelimit.limit(targetPhone);
         if (!rateLimitSuccess) {
-            await sendWhatsAppMessage(targetPhone, "⏳ Calma! Você está enviando mensagens muito rápido. Aguarde um minuto.");
+            await sendWhatsAppMessage(targetPhone, "⏳ Muitas mensagens! Aguarde um minuto.");
             return NextResponse.json({ status: 'Rate Limited' });
         }
 
+        // ── ETAPA 4: DELEÇÃO PENDENTE ──────────────────────────────────────────
         const pendingDeleteStr = await redis.get(`pending_delete:${targetPhone}`);
         if (pendingDeleteStr) {
             const userInput = messageContent.trim().toUpperCase();
             if (userInput === 'SIM') {
                 const cmd = typeof pendingDeleteStr === 'string' ? JSON.parse(pendingDeleteStr) : pendingDeleteStr;
-
                 const ALLOWED_TABLES = ['transactions', 'installments', 'recurring'];
                 if (!ALLOWED_TABLES.includes(cmd.table)) {
                     await sendWhatsAppMessage(targetPhone, '⚠️ Operação inválida.');
                     await redis.del(`pending_delete:${targetPhone}`);
                     return NextResponse.json({ status: 'Blocked' });
                 }
-
-                const { data: items } = await supabase
-                    .from(cmd.table)
-                    .select('id, title')
-                    .eq('user_id', userSettings.user_id)
-                    .ilike('title', `%${cmd.data.title}%`)
-                    .order('created_at', { ascending: false })
-                    .limit(1);
+                const { data: items } = await supabase.from(cmd.table).select('id, title')
+                    .eq('user_id', userSettings.user_id).ilike('title', `%${cmd.data.title}%`)
+                    .order('created_at', { ascending: false }).limit(1);
 
                 if (items?.length) {
                     await supabase.from(cmd.table).delete().eq('id', items[0].id);
-                    await sendWhatsAppMessage(targetPhone, `🗑️ Apagado com sucesso: "${items[0].title}"`);
+                    await sendWhatsAppMessage(targetPhone, `🗑️ Apagado: "${items[0].title}"`);
                 } else {
-                    await sendWhatsAppMessage(targetPhone, `⚠️ Não encontrei o item para apagar.`);
+                    await sendWhatsAppMessage(targetPhone, `⚠️ Não encontrei o item.`);
                 }
                 await redis.del(`pending_delete:${targetPhone}`);
                 return NextResponse.json({ success: true, action: "deleted_confirmed" });
             } else {
                 await redis.del(`pending_delete:${targetPhone}`);
-                await sendWhatsAppMessage(targetPhone, `❌ Exclusão cancelada. Sobre o que você quer falar agora?`);
+                await sendWhatsAppMessage(targetPhone, `❌ Exclusão cancelada.`);
                 return NextResponse.json({ success: true, action: "deleted_cancelled" });
             }
         }
 
+        // ── ETAPA 5: PROCESSAR MÍDIA ───────────────────────────────────────────
         let promptParts: any[] = [];
-        let hasAudio = false;
-        let hasImage = false;
+        let hasAudio = false, hasImage = false;
         const msgData = body.data?.message;
         const msgType = body.data?.messageType;
 
         if (msgType === "audioMessage" || msgData?.audioMessage) {
             let audioBase64 = body.data?.base64 || msgData?.audioMessage?.base64 || body.data?.message?.base64;
-            if (!audioBase64) {
-                const url = msgData?.audioMessage?.url || body.data?.mediaUrl;
-                if (url) audioBase64 = await downloadMedia(url);
-            }
-            if (audioBase64) {
-                hasAudio = true;
-                promptParts.push({ inlineData: { mimeType: "audio/ogg", data: audioBase64 } });
-            } else {
-                await sendWhatsAppMessage(targetPhone, "⚠️ Ocorreu um erro ao processar o seu áudio. Pode me mandar em texto?");
-                return NextResponse.json({ status: 'Audio Failed' });
-            }
-        }
-        else if (msgType === "imageMessage" || msgData?.imageMessage) {
+            if (!audioBase64) { const url = msgData?.audioMessage?.url || body.data?.mediaUrl; if (url) audioBase64 = await downloadMedia(url); }
+            if (audioBase64) { hasAudio = true; promptParts.push({ inlineData: { mimeType: "audio/ogg", data: audioBase64 } }); }
+            else { await sendWhatsAppMessage(targetPhone, "⚠️ Erro no áudio. Pode mandar em texto?"); return NextResponse.json({ status: 'Audio Failed' }); }
+        } else if (msgType === "imageMessage" || msgData?.imageMessage) {
             let imageBase64 = body.data?.base64 || msgData?.imageMessage?.base64 || body.data?.message?.base64;
-            if (!imageBase64) {
-                const url = msgData?.imageMessage?.url || body.data?.mediaUrl;
-                if (url) imageBase64 = await downloadMedia(url);
-            }
+            if (!imageBase64) { const url = msgData?.imageMessage?.url || body.data?.mediaUrl; if (url) imageBase64 = await downloadMedia(url); }
             if (imageBase64) {
                 hasImage = true;
-                const mime = msgData?.imageMessage?.mimetype || "image/jpeg";
-                promptParts.push({ inlineData: { mimeType: mime, data: imageBase64 } });
-                const caption = msgData?.imageMessage?.caption;
-                if (caption) promptParts.push(caption);
-            } else {
-                await sendWhatsAppMessage(targetPhone, "⚠️ Não consegui ler a imagem. Pode tentar enviar de novo?");
-                return NextResponse.json({ status: 'Image Failed' });
-            }
-        }
-        else {
+                promptParts.push({ inlineData: { mimeType: msgData?.imageMessage?.mimetype || "image/jpeg", data: imageBase64 } });
+                if (msgData?.imageMessage?.caption) promptParts.push(msgData.imageMessage.caption);
+            } else { await sendWhatsAppMessage(targetPhone, "⚠️ Não consegui ler a imagem."); return NextResponse.json({ status: 'Image Failed' }); }
+        } else {
             if (!messageContent) return NextResponse.json({ status: 'No Content' });
             promptParts.push(messageContent);
         }
 
-        const { data: profile } = await supabase
-            .from('profiles')
-            .select('plan_tier')
-            .eq('id', userSettings.user_id)
-            .single();
+        // ── ETAPA 6: VERIFICAR PLANO ───────────────────────────────────────────
+        const { data: profile } = await supabase.from('profiles').select('plan_tier').eq('id', userSettings.user_id).single();
         const plan = profile?.plan_tier || 'free';
-
         if (!['pro', 'agent', 'admin'].includes(plan)) {
-            await sendWhatsAppMessage(targetPhone, "🚫 *Acesso Exclusivo PRO*\n\nA Inteligência Artificial no WhatsApp está disponível apenas nos planos **Pro** e **Consultor**.", 100);
+            await sendWhatsAppMessage(targetPhone, "🚫 *Acesso PRO*\n\nEsse recurso é exclusivo dos planos Pro e Consultor.", 100);
             return NextResponse.json({ status: 'Blocked by Plan', plan });
         }
 
-        const { data: workspaces } = await supabase
-            .from('workspaces')
-            .select('id, title, whatsapp_rule')
-            .eq('user_id', userSettings.user_id);
-
+        // ── ETAPA 7: CONTEXTO E WORKSPACES ────────────────────────────────────
+        const { data: workspaces } = await supabase.from('workspaces').select('id, title, whatsapp_rule').eq('user_id', userSettings.user_id);
         const primaryWorkspace = workspaces?.[0];
 
-        let contextInfo = { saldo: "0", entradas: "0", saidas: "0", resumo_texto: "Sem dados", estado_conta: "Indefinido" };
-        if (primaryWorkspace) {
-            contextInfo = await getFinancialContext(supabase, userSettings.user_id, primaryWorkspace.id);
-        }
+        let ctx = {
+            saldo_fmt: "R$ 0,00", entradas_fmt: "R$ 0,00", saidas_fmt: "R$ 0,00",
+            pendente_fmt: "R$ 0,00", mes_atual: "Mês", estado_conta: "Indefinido",
+            contas_pagas: 0, contas_pendentes: 0,
+            detalhes_receitas: "", detalhes_gastos: "", resumo_texto: "Sem dados",
+            saldo: "0", entradas: "0", saidas: "0"
+        };
+        if (primaryWorkspace) ctx = await getFinancialContext(supabase, userSettings.user_id, primaryWorkspace.id);
 
         let workspacesContextPrompt = "";
         if (workspaces && workspaces.length > 1) {
-            workspacesContextPrompt = `
-            ━━━ ÁREAS DE TRABALHO (WORKSPACES) ━━━
-            O usuário tem múltiplas contas. Inclua o campo "context" no JSON com o ID correto.
-            `;
+            workspacesContextPrompt = `\n━━━ ÁREAS DE TRABALHO ━━━\nInclua "context" no JSON com o ID correto.\n`;
             workspaces.forEach((ws) => {
                 const safeRule = (ws.whatsapp_rule || 'Geral').slice(0, 200).replace(/["{}[\]]/g, '');
                 workspacesContextPrompt += `- ID: "${ws.id}" | Nome: "${ws.title}" | Regra: "${safeRule}"\n`;
             });
-            workspacesContextPrompt += `
-            CRITÉRIOS:
-            1. Se o usuário mencionou o nome de uma conta, use o ID dela.
-            2. Cruze o texto/foto com a "Regra" para deduzir a conta correta.
-            3. Se impossível deduzir, use "context": "${primaryWorkspace?.id}".
-            `;
+            workspacesContextPrompt += `Se não souber, use context: "${primaryWorkspace?.id}".\n`;
         } else if (primaryWorkspace) {
-            workspacesContextPrompt = `Sempre inclua "context": "${primaryWorkspace.id}" no JSON.\n`;
+            workspacesContextPrompt = `Inclua "context": "${primaryWorkspace.id}" em todos os JSONs.\n`;
         }
 
         const dataHojeBR = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
         const cartoesCadastrados = ['nubank', 'inter', 'bb', 'itau', 'santander', 'caixa', 'bradesco', 'c6'];
 
+        // ── ETAPA 8: SYSTEM PROMPT ─────────────────────────────────────────────
         const systemPrompt = `
-            IDENTIDADE: Você é "Meu Aliado", assistente financeiro pessoal via WhatsApp.
-            Tom: amigável, direto, humano. Nunca robótico.
-            DATA DE HOJE: ${dataHojeBR}.
+IDENTIDADE: Você é "Meu Aliado", assistente financeiro pessoal via WhatsApp.
+Tom: amigável, direto, humano. Nunca robótico. Respostas curtas.
+DATA DE HOJE: ${dataHojeBR} | MÊS ATUAL: ${ctx.mes_atual}
 
-            ━━━ SITUAÇÃO FINANCEIRA DO MÊS ━━━
-            💰 Receitas:  R$ ${contextInfo.entradas}
-            💸 Despesas:  R$ ${contextInfo.saidas}
-            📊 Saldo:     R$ ${contextInfo.saldo}
-            ⚠️  Status:   ${contextInfo.estado_conta}
-            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ SITUAÇÃO FINANCEIRA DE ${ctx.mes_atual.toUpperCase()} ━━━
+💰 Receitas:   ${ctx.entradas_fmt}
+💸 Despesas:   ${ctx.saidas_fmt}
+📊 Saldo:      ${ctx.saldo_fmt}
+⏳ A pagar:    ${ctx.pendente_fmt} (${ctx.contas_pendentes} conta(s) pendente(s))
+✅ Pagas:      ${ctx.contas_pagas} conta(s)
+⚠️ Status:    ${ctx.estado_conta}
+${ctx.detalhes_receitas}${ctx.detalhes_gastos}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-            COMO AGIR:
-            [BATE-PAPO / SALDO] → Responda naturalmente. Seja breve.
-            [APAGAR/REMOVER] → Monte o JSON com action: "remove".
-            [REGISTRO] → Siga rigorosamente as Regras de Roteamento abaixo.
+${workspacesContextPrompt}
 
-            ${workspacesContextPrompt}
+🧠 REGRAS DE ROTEAMENTO (FORMATOS JSON OBRIGATÓRIOS):
 
-            🧠 REGRAS DE ROTEAMENTO (FORMATOS JSON OBRIGATÓRIOS):
-            
-            1. 💳 CARTÃO DE CRÉDITO (se mencionar banco, fatura ou cartão):
-            * Bancos disponíveis: ${cartoesCadastrados.join(', ')}.
-            * Tabela: "installments".
-            * Se o usuário falar um dia (ex: "dia 25"), preencha o "due_day" com o número.
-            {"action":"add","table":"installments","context":"ID","data":{"title":"[Nome do Gasto]","value_per_month":0.00,"installments_count":1,"payment_method":"banco","due_day":25}}
+1. 💳 CARTÃO DE CRÉDITO (se mencionar banco, fatura ou cartão):
+Bancos: ${cartoesCadastrados.join(', ')}
+{"action":"add","table":"installments","context":"ID","data":{"title":"Nome","value_per_month":0.00,"installments_count":1,"payment_method":"banco","due_day":10}}
 
-            2. 🔁 GASTO FIXO (fixo, todo mês, assinatura, aluguel):
-            * Tabela: "recurring".
-            {"action":"add","table":"recurring","context":"ID","data":{"title":"[Nome do Gasto]","value":0.00,"type":"expense","due_day":10}}
+2. 🔁 GASTO FIXO (fixo, todo mês, assinatura, aluguel):
+{"action":"add","table":"recurring","context":"ID","data":{"title":"Nome","value":0.00,"type":"expense","due_day":10}}
 
-            3. 💸 GASTO COMUM (débito, pix, dinheiro, ou compras diárias):
-            * Tabela: "transactions".
-            {"action":"add","table":"transactions","context":"ID","data":{"title":"[Nome do Gasto]","amount":0.00,"type":"expense","date":"DD/MM/YYYY"}}
+3. 💸 GASTO COMUM (débito, pix, dinheiro):
+{"action":"add","table":"transactions","context":"ID","data":{"title":"Nome","amount":0.00,"type":"expense","date":"DD/MM/YYYY"}}
 
-            ⚠️ REGRAS ABSOLUTAS PARA O JSON (RISCO DE QUEBRA DE BANCO):
-            ✅ Retorne APENAS o array JSON válido. Zero texto fora dele.
-            ✅ Valores financeiros DEVEM ser números float com ponto (Ex: 2000.00). NUNCA use vírgula ou aspas para dinheiro.
-            ✅ O campo "title" deve ser o nome do gasto limpo (Ex: "Itaú Fatura", "Mercado", etc), sem a palavra "pendente".
-            ✅ NUNCA crie campos que não estão no exemplo.
-            ✅ SEMPRE inclua o campo "reply" confirmando o valor, o método e quando foi salvo (Ex: "✅ Salvo na fatura do Itaú (Dia 25) o valor de R$ 2000,00!").
+4. 💰 RECEITA (salário, pix recebido, freela):
+{"action":"add","table":"transactions","context":"ID","data":{"title":"Nome","amount":0.00,"type":"income","date":"DD/MM/YYYY"}}
 
-            ${hasAudio ? "\n⚠️ ÁUDIO RECEBIDO: Transcreva e responda com base no que foi dito." : ""}
-            ${hasImage ? "\n📸 IMAGEM RECEBIDA: Extraia valor, data e estabelecimento. Tente identificar a forma de pagamento." : ""}
-        `;
+5. 🗑️ APAGAR gasto:
+{"action":"remove","table":"transactions","data":{"title":"Nome aproximado"}}
+
+6. 💬 PERGUNTAS SOBRE FINANÇAS (saldo, situação, dívidas, contas):
+Use os dados acima para responder de forma humanizada.
+Para falar de valores, use formato R$ X.XXX,XX.
+Se perguntarem sobre situação geral, mencione saldo, pendências e dê uma dica.
+
+REGRAS ABSOLUTAS:
+✅ Retorne SEMPRE um array JSON válido. Zero texto fora do array.
+✅ Valores financeiros: float com ponto (2000.00). NUNCA vírgula ou aspas em números.
+✅ SEMPRE inclua {"reply": "resposta ao usuário"} no array.
+✅ Para perguntas sem inserção no banco: retorne apenas [{"reply": "sua resposta"}].
+✅ Pode usar emojis e \\n nas respostas de texto para organizar.
+
+${hasAudio ? "\n⚠️ ÁUDIO: Transcreva e responda com base no que foi dito." : ""}
+${hasImage ? "\n📸 IMAGEM: Extraia valor, data e estabelecimento. Identifique a forma de pagamento." : ""}
+        `.trim();
 
         const finalPrompt = [systemPrompt, ...promptParts];
 
+        // ── ETAPA 9: CHAMAR A IA ───────────────────────────────────────────────
         let commands: any[] = [];
         try {
             const result = await model.generateContent(finalPrompt);
             let cleanJson = result.response.text().split('```json').join('').split('```').join('').trim();
             const arrayMatch = cleanJson.match(/\[[\s\S]*\]/);
             if (arrayMatch) cleanJson = arrayMatch[0];
-
             commands = JSON.parse(cleanJson);
             if (!Array.isArray(commands)) commands = [commands];
         } catch (error: any) {
-            console.error("❌ ERRO NA IA OU NO JSON:", error);
-            await sendWhatsAppMessage(targetPhone, "Desculpe, tive uma travada agora. Pode mandar de novo? 🤖");
+            console.error("❌ ERRO IA/JSON:", error);
+            await sendWhatsAppMessage(targetPhone, "Tive uma travada agora. Pode mandar de novo? 🤖");
             return NextResponse.json({ success: false, reason: 'AI/JSON Error' });
         }
 
+        // ── ETAPA 10: EXECUTAR COMANDOS ────────────────────────────────────────
         let replySent = false;
         const ALLOWED_TABLES = ['transactions', 'installments', 'recurring'];
         const validContextIds = new Set(workspaces?.map(w => w.id) || []);
 
         for (const cmd of commands) {
             if (cmd.table && !ALLOWED_TABLES.includes(cmd.table)) {
-                console.warn(`⛔ Tabela bloqueada pela IA: ${cmd.table}`);
-                continue;
+                console.warn(`⛔ Tabela bloqueada: ${cmd.table}`); continue;
             }
 
             if (cmd.action === 'add') {
@@ -461,92 +518,57 @@ export async function POST(req: Request) {
                     cmd.data.title = `[Parceiro] ${cmd.data.title}`;
                 }
 
-                const targetContext = (cmd.context && validContextIds.has(cmd.context))
-                    ? cmd.context
-                    : (primaryWorkspace?.id || null);
-
-                let payload: any = {
-                    ...cmd.data,
-                    user_id: userSettings.user_id,
-                    context: targetContext,
-                    created_at: new Date(),
-                    message_id: messageId
-                };
-
-                const extractedValue = parseFloat(cmd.data?.amount)
-                    || parseFloat(cmd.data?.value)
-                    || parseFloat(cmd.data?.value_per_month)
-                    || parseFloat(cmd.data?.total_value)
-                    || 0;
-                    
+                const targetContext = (cmd.context && validContextIds.has(cmd.context)) ? cmd.context : (primaryWorkspace?.id || null);
+                const extractedValue = parseFloat(cmd.data?.amount) || parseFloat(cmd.data?.value) || parseFloat(cmd.data?.value_per_month) || parseFloat(cmd.data?.total_value) || 0;
                 if (extractedValue <= 0) continue;
 
-                // 🟢 CORREÇÃO: Tratamento rigoroso de colunas e erros para Cartão de Crédito
+                let payload: any = { ...cmd.data, user_id: userSettings.user_id, context: targetContext, created_at: new Date(), message_id: messageId };
+
                 if (cmd.table === 'installments') {
                     payload.current_installment = 0;
                     payload.status = 'active';
-                    payload.due_day = cmd.data.due_day || 10;
-                    payload.installments_count = cmd.data.installments_count || 1;
+                    payload.due_day = parseInt(cmd.data.due_day) || 10;
+                    payload.installments_count = parseInt(cmd.data.installments_count) || 1;
                     payload.payment_method = cmd.data.payment_method || 'outros';
-                    
-                    // Preenchimento obrigatório para não dar erro no banco
                     payload.value_per_month = extractedValue;
                     payload.total_value = extractedValue * payload.installments_count;
                     payload.paid_months = [];
+                    delete payload.date; delete payload.target_month; delete payload.is_paid; delete payload.amount; delete payload.value;
 
-                    delete payload.date; delete payload.target_month; delete payload.is_paid;
-                    
                     const { error } = await supabase.from('installments').insert([payload]);
-                    if (error) {
-                        console.error("❌ ERRO SUPABASE (Installments):", error);
-                        await sendWhatsAppMessage(targetPhone, `❌ Falha ao salvar cartão no banco: ${error.message}`);
-                        replySent = true;
-                        continue;
-                    }
+                    if (error) { console.error("❌ SUPABASE (installments):", error); if (!replySent) { await sendWhatsAppMessage(targetPhone, `❌ Erro ao salvar no cartão.`); replySent = true; } continue; }
                 }
-                // 🟢 CORREÇÃO: Tratamento para Contas Fixas
                 else if (cmd.table === 'recurring') {
                     payload.status = 'active';
                     payload.value = extractedValue;
                     payload.paid_months = [];
-                    delete payload.is_paid; delete payload.amount; delete payload.date;
-                    
+                    payload.due_day = parseInt(cmd.data.due_day) || 10;
+                    delete payload.is_paid; delete payload.amount; delete payload.date; delete payload.value_per_month;
+
                     const { error } = await supabase.from('recurring').insert([payload]);
-                    if (error) {
-                        console.error("❌ ERRO SUPABASE (Recurring):", error);
-                        await sendWhatsAppMessage(targetPhone, `❌ Falha ao salvar fixo no banco: ${error.message}`);
-                        replySent = true;
-                        continue;
-                    }
+                    if (error) { console.error("❌ SUPABASE (recurring):", error); if (!replySent) { await sendWhatsAppMessage(targetPhone, `❌ Erro ao salvar conta fixa.`); replySent = true; } continue; }
                 }
-                // 🟢 CORREÇÃO: Tratamento para Transações Diárias
                 else if (cmd.table === 'transactions') {
                     if (!payload.date) {
                         const hoje = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
-                        const dStr = String(hoje.getDate()).padStart(2, '0');
-                        const mStr = String(hoje.getMonth() + 1).padStart(2, '0');
-                        payload.date = `${dStr}/${mStr}/${hoje.getFullYear()}`;
+                        payload.date = `${String(hoje.getDate()).padStart(2, '0')}/${String(hoje.getMonth() + 1).padStart(2, '0')}/${hoje.getFullYear()}`;
                     }
                     payload.amount = extractedValue;
-                    payload.is_paid = true;
-                    payload.status = 'paid';
-                    
+                    payload.is_paid = payload.type !== 'income';
+                    payload.status = 'active';
+                    payload.target_month = ctx.mes_atual;
+                    delete payload.value; delete payload.value_per_month;
+
                     const { error } = await supabase.from('transactions').insert([payload]);
-                    if (error) {
-                        console.error("❌ ERRO SUPABASE (Transactions):", error);
-                        await sendWhatsAppMessage(targetPhone, `❌ Falha ao salvar transação no banco: ${error.message}`);
-                        replySent = true;
-                        continue;
-                    }
+                    if (error) { console.error("❌ SUPABASE (transactions):", error); if (!replySent) { await sendWhatsAppMessage(targetPhone, `❌ Erro ao salvar transação.`); replySent = true; } continue; }
                 }
             }
             else if (cmd.action === 'remove') {
-                await sendWhatsAppMessage(targetPhone, `⚠️ Você quer apagar "${cmd.data.title}"? Responda *SIM* para confirmar.`);
+                await sendWhatsAppMessage(targetPhone, `⚠️ Apagar "${cmd.data.title}"? Responda *SIM* para confirmar.`);
                 await redis.set(`pending_delete:${targetPhone}`, JSON.stringify(cmd), { ex: 300 });
                 replySent = true;
             }
 
-            // 🟢 Só envia a mensagem de sucesso se o banco não deu erro!
             if (cmd.reply && !replySent) {
                 await sendWhatsAppMessage(targetPhone, cmd.reply);
                 replySent = true;
@@ -556,7 +578,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: true });
 
     } catch (e: any) {
-        console.error("🔥 ERRO FATAL NO WEBHOOK:", e);
+        console.error("🔥 ERRO FATAL:", e);
         return NextResponse.json({ error: e.message, status: "Caught" }, { status: 200 });
     }
 }

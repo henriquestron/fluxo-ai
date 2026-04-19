@@ -1636,41 +1636,99 @@ export default function FinancialDashboard() {
     // --- FUNÇÕES DE METAS (NOVO) ---
 
     const handleGoalSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
-        const formData = new FormData(e.currentTarget);
-        const activeId = getActiveUserId();
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    
+    const title = formData.get('title') as string;
+    const current_amount = parseFloat(formData.get('current_amount') as string) || 0;
+    const deadline = formData.get('deadline') as string || null;
+    const icon = formData.get('icon') as string;
+    const color = formData.get('color') as string;
+    
+    // Extrai a lista de itens
+    const itemsRaw = formData.get('items') as string;
+    const items = itemsRaw ? JSON.parse(itemsRaw) : [];
+    
+    // Pega o valor alvo
+    const target_amount = parseFloat(formData.get('target_amount') as string);
 
-        // Tratamento de valores
-        const targetVal = parseFloat((formData.get('target_amount') as string).replace(',', '.'));
-        const currentVal = parseFloat((formData.get('current_amount') as string).replace(',', '.'));
-
-        const goalData = {
-            user_id: activeId,
-            title: formData.get('title'),
-            target_amount: targetVal || 0,
-            current_amount: currentVal || 0,
-            deadline: formData.get('deadline') || null,
-            icon: formData.get('icon') || 'target',
-            color: formData.get('color') || '#10B981'
-        };
-
-        try {
-            if (editingGoal) {
-                await supabase.from('goals').update(goalData).eq('id', editingGoal.id);
-                toast.success("Meta atualizada!");
-            } else {
-                await supabase.from('goals').insert([goalData]);
-                toast.success("Nova meta criada! 🚀");
-            }
-
-            setIsGoalModalOpen(false);
-            setEditingGoal(null);
-            loadData(activeId!, currentWorkspace?.id);
-        } catch (error) {
-            console.error(error);
-            toast.error("Erro ao salvar meta.");
-        }
+    const payload = {
+        user_id: user?.id,
+        title,
+        target_amount,
+        current_amount,
+        deadline,
+        icon,
+        color,
+        items
     };
+
+    try {
+        if (editingGoal) {
+            // 🟢 CORREÇÃO: O ".select().single()" devolve os dados atualizados para atualizar a tela na hora
+            const { data, error } = await supabase.from('goals').update(payload).eq('id', editingGoal.id).select().single();
+            if (error) throw error;
+            
+            // Atualiza a meta na lista sem precisar recarregar do banco
+            setGoals(prevGoals => prevGoals.map(g => g.id === editingGoal.id ? data : g));
+            toast.success("Meta atualizada com sucesso!");
+        } else {
+            // 🟢 CORREÇÃO: Pega o ID gerado pelo Supabase para não dar erro na tela
+            const { data, error } = await supabase.from('goals').insert([payload]).select().single();
+            if (error) throw error;
+            
+            // Adiciona a nova meta no final da lista
+            setGoals(prevGoals => [...prevGoals, data]);
+            toast.success("Meta criada com sucesso!");
+        }
+        
+        setIsGoalModalOpen(false);
+        setEditingGoal(null);
+        
+    } catch (error: any) {
+        console.error("Erro ao salvar meta:", error);
+        toast.error("Erro ao salvar a meta.");
+    }
+};
+    const handleToggleGoalItem = async (goalId: number, itemId: string) => {
+    const goalIndex = goals.findIndex(g => g.id === goalId);
+    if (goalIndex === -1) return;
+    
+    const goal = goals[goalIndex];
+    if (!goal.items) return;
+
+    // 1. Guarda o estado original como um "Backup"
+    const previousGoals = [...goals];
+
+    // 2. Inverte o status de comprado (is_bought)
+    // 🟢 Repare no (item: any) aqui, isso mata o erro do TypeScript!
+    const updatedItems = goal.items.map((item: any) => { 
+        if (item.id === itemId) {
+            return { ...item, is_bought: !item.is_bought };
+        }
+        return item;
+    });
+
+    // 3. Atualiza a tela NA HORA (Efeito otimista)
+    const updatedGoals = [...goals];
+    updatedGoals[goalIndex] = { ...goal, items: updatedItems };
+    setGoals(updatedGoals);
+
+    // 4. Tenta salvar no banco de dados
+    try {
+        const { error } = await supabase
+            .from('goals')
+            .update({ items: updatedItems })
+            .eq('id', goalId);
+        
+        if (error) throw error;
+    } catch (error: any) {
+        console.error("Erro ao atualizar item da meta:", error);
+        toast.error("Sem conexão. Desfazendo a marcação...");
+        // 🟢 CORREÇÃO: Em vez de fetchGoals(), a gente só devolve o Backup pra tela!
+        setGoals(previousGoals); 
+    }
+};
 
     const handleDeleteGoal = async (id: number) => {
         if (!confirm("Excluir esta meta?")) return;
@@ -2600,6 +2658,7 @@ export default function FinancialDashboard() {
                     setIsGoalModalOpen={setIsGoalModalOpen}
                     setEditingGoal={setEditingGoal}
                     handleDeleteGoal={handleDeleteGoal}
+                    handleToggleGoalItem={handleToggleGoalItem} // 🟢 A mágica do checklist conectada aqui!
                 />
             )}
 

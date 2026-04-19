@@ -55,6 +55,12 @@ export interface Recurring {
     standby_months?: string[];
     context?: string;
 }
+export interface GoalItem {
+    id: string;
+    name: string;
+    price: number;
+    is_bought: boolean;
+}
 
 export interface Goal {
     id: number;
@@ -65,6 +71,7 @@ export interface Goal {
     deadline: string | null;
     icon: string;
     color: string;
+    items?: GoalItem[];
 }
 
 // --- SISTEMA & USUÁRIO ---
