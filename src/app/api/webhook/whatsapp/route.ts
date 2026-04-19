@@ -74,6 +74,9 @@ async function downloadMedia(url: string) {
 // ============================================================================
 // CONTEXTO FINANCEIRO COMPLETO
 // ============================================================================
+// ============================================================================
+// CONTEXTO FINANCEIRO COMPLETO (COM LEITOR DE DATAS UNIVERSAL)
+// ============================================================================
 async function getFinancialContext(supabase: any, userId: string, workspaceId: string) {
     const today = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
     const currentYear = today.getFullYear();
@@ -81,8 +84,6 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
     const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const currentMonthName = MONTHS[activeMonthIdx];
     const currentTag = `${currentMonthName}/${currentYear}`;
-    const mCode = (activeMonthIdx + 1).toString().padStart(2, '0');
-    const dateFilter = `/${mCode}/${currentYear}`;
 
     const [transRes, recRes, instRes] = await Promise.all([
         supabase.from('transactions')
@@ -110,6 +111,20 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
         return { m: 0, y: currentYear };
     };
 
+    // 🟢 MÁGICA: O Leitor Universal de Datas (Aceita 2026-04-19 e 19/04/2026)
+    const isDateInMonth = (dateStr: string, mIdx: number, year: number) => {
+        if (!dateStr) return false;
+        if (dateStr.includes('/')) {
+            const p = dateStr.split('/');
+            return parseInt(p[1]) === (mIdx + 1) && parseInt(p[2]) === year;
+        }
+        if (dateStr.includes('-')) {
+            const p = dateStr.split('-');
+            return parseInt(p[1]) === (mIdx + 1) && parseInt(p[0]) === year;
+        }
+        return false;
+    };
+
     const getActualValue = (item: any, tag: string) => {
         if (item.custom_values && item.custom_values[tag] !== undefined) return Number(item.custom_values[tag]);
         return Number(item.value);
@@ -117,17 +132,14 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
 
     const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-    // Cálculo acumulado mês a mês (para saldo com arrastamento)
     let previousSurplus = 0, computedInc = 0, computedExp = 0, computedBalance = 0;
 
     for (let idx = 0; idx <= activeMonthIdx; idx++) {
         const month = MONTHS[idx];
-        const mc = (idx + 1).toString().padStart(2, '0');
-        const df = `/${mc}/${currentYear}`;
         const pt = `${month}/${currentYear}`;
 
         const inc =
-            transactions.filter((t: any) => t.type === 'income' && t.date?.includes(df) && t.status !== 'delayed' && t.status !== 'standby')
+            transactions.filter((t: any) => t.type === 'income' && isDateInMonth(t.date, idx, currentYear) && t.status !== 'delayed' && t.status !== 'standby')
                 .reduce((a: number, i: any) => a + Number(i.amount), 0) +
             recurring.filter((r: any) => {
                 const { m: sM, y: sY } = getStartData(r);
@@ -137,7 +149,7 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
             }).reduce((a: number, r: any) => a + getActualValue(r, pt), 0);
 
         const exp =
-            transactions.filter((t: any) => t.type === 'expense' && t.date?.includes(df) && t.status !== 'delayed' && t.status !== 'standby')
+            transactions.filter((t: any) => t.type === 'expense' && isDateInMonth(t.date, idx, currentYear) && t.status !== 'delayed' && t.status !== 'standby')
                 .reduce((a: number, i: any) => a + Number(i.amount), 0) +
             recurring.filter((r: any) => {
                 const { m: sM, y: sY } = getStartData(r);
@@ -160,12 +172,12 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
     }
 
     // Listas detalhadas do mês atual
-    const receitasTransacao = transactions.filter((t: any) => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'standby');
+    const receitasTransacao = transactions.filter((t: any) => t.type === 'income' && isDateInMonth(t.date, activeMonthIdx, currentYear) && t.status !== 'standby');
     const receitasFixas = recurring.filter((r: any) => {
         const { m: sM, y: sY } = getStartData(r);
         return r.type === 'income' && (currentYear > sY || (currentYear === sY && activeMonthIdx >= sM)) && r.status !== 'standby' && !r.skipped_months?.includes(currentMonthName);
     });
-    const gastosTransacao = transactions.filter((t: any) => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'standby');
+    const gastosTransacao = transactions.filter((t: any) => t.type === 'expense' && isDateInMonth(t.date, activeMonthIdx, currentYear) && t.status !== 'standby');
     const gastosFixos = recurring.filter((r: any) => {
         const { m: sM, y: sY } = getStartData(r);
         return r.type === 'expense' && (currentYear > sY || (currentYear === sY && activeMonthIdx >= sM)) && r.status !== 'standby' && !r.skipped_months?.includes(currentMonthName);
@@ -178,18 +190,13 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
         return act >= 1 && act <= i.installments_count;
     });
 
-    // Pagas vs pendentes
-    const isPaid = (item: any) =>
-        item.is_paid ||
-        item.paid_months?.includes(currentTag) ||
-        item.paid_months?.includes(currentMonthName);
+    const isPaid = (item: any) => item.is_paid || item.paid_months?.includes(currentTag) || item.paid_months?.includes(currentMonthName);
 
     const todasDespesas = [...gastosTransacao, ...gastosFixos, ...parcelamentosDoMes];
     const contasPagas = todasDespesas.filter(isPaid);
     const contasPendentes = todasDespesas.filter(i => !isPaid(i));
     const totalPendente = contasPendentes.reduce((a, i) => a + (Number(i.amount) || Number(i.value) || Number(i.value_per_month) || 0), 0);
 
-    // Monta blocos de texto detalhados
     let detalhesReceitas = "";
     if (receitasTransacao.length + receitasFixas.length > 0) {
         detalhesReceitas = "\n📥 RECEITAS:\n";
@@ -200,9 +207,7 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
     let detalhesGastos = "";
     if (todasDespesas.length > 0) {
         detalhesGastos = "\n📤 DESPESAS:\n";
-        gastosTransacao.forEach((t: any) => {
-            detalhesGastos += `  ${t.is_paid ? "✅" : "⏳"} ${t.title}: ${fmt(Number(t.amount))}\n`;
-        });
+        gastosTransacao.forEach((t: any) => { detalhesGastos += `  ${t.is_paid ? "✅" : "⏳"} ${t.title}: ${fmt(Number(t.amount))}\n`; });
         gastosFixos.forEach((r: any) => {
             const pago = isPaid(r) ? "✅" : "⏳";
             detalhesGastos += `  ${pago} ${r.title} (fixo, dia ${r.due_day}): ${fmt(getActualValue(r, currentTag))}\n`;
@@ -237,6 +242,7 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
         resumo_texto: `Receitas: ${fmt(computedInc)} | Despesas: ${fmt(computedExp)} | Saldo: ${fmt(computedBalance)}`
     };
 }
+// ============================================================================
 // ============================================================================
 
 export async function POST(req: Request) {
