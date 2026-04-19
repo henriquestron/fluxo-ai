@@ -71,9 +71,25 @@ async function downloadMedia(url: string) {
     } catch (error) { return null; }
 }
 
+// ============================================================================
+// FUNÇÃO SEGURA PARA PARSE DE ARRAIS (standby_months, paid_months)
+// ============================================================================
+function safeParseArray(value: any): string[] {
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string') {
+        try {
+            const parsed = JSON.parse(value);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+            return [];
+        }
+    }
+    return [];
+}
 
 // ============================================================================
-// CONTEXTO FINANCEIRO COMPLETO (Com Efeito Cascata do Painel)
+// CONTEXTO FINANCEIRO COMPLETO (COM PARCELAS CORRETAMENTE CONTABILIZADAS)
 // ============================================================================
 async function getFinancialContext(supabase: any, userId: string, workspaceId: string) {
     const today = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
@@ -89,6 +105,8 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
         supabase.from('installments').select('value_per_month, total_value, start_date, created_at, status, paid_months, standby_months, current_installment, installments_count, title, payment_method, due_day').eq('user_id', userId).eq('context', workspaceId)
     ]);
 
+    console.log(`📦 Installments encontradas para workspace ${workspaceId}: ${instRes.data?.length || 0}`);
+
     const transactions = transRes.data || [];
     const recurring = recRes.data || [];
     const installments = instRes.data || [];
@@ -103,7 +121,6 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
         return { m: 0, y: currentYear };
     };
 
-    // Leitor de datas blindado para o banco (2026-04-19 12:00) e para o app (19/04/2026)
     const isDateInMonth = (dateStr: string, mIdx: number, year: number) => {
         if (!dateStr) return false;
         if (dateStr.includes('/')) {
@@ -131,7 +148,6 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
 
     const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-    // 🟢 MÁGICA: O Efeito Cascata Idêntico ao do Site
     let previousSurplus = 0;
     let computedInc = 0;
     let computedExp = 0;
@@ -146,10 +162,14 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
                 .reduce((a: number, i: any) => a + Number(i.amount), 0) +
             recurring.filter((r: any) => {
                 const { m: sM, y: sY } = getStartData(r);
-                const paid = r.paid_months?.includes(pt) || r.paid_months?.includes(mName);
-                const standby = r.status === 'delayed' || r.status === 'standby' || (typeof r.standby_months === 'string' && (r.standby_months.includes(pt) || r.standby_months.includes(mName)));
+                const paidMonths = safeParseArray(r.paid_months);
+                const standbyMonths = safeParseArray(r.standby_months);
+                const paid = paidMonths.includes(pt) || paidMonths.includes(mName);
+                const standby = r.status === 'delayed' || r.status === 'standby' || standbyMonths.includes(pt) || standbyMonths.includes(mName);
                 if (standby && !paid) return false;
-                return r.type === 'income' && (currentYear > sY || (currentYear === sY && idx >= sM)) && !(typeof r.skipped_months === 'string' && (r.skipped_months.includes(mName) || r.skipped_months.includes(pt)));
+                const skippedMonths = safeParseArray(r.skipped_months);
+                const skipped = skippedMonths.includes(mName) || skippedMonths.includes(pt);
+                return r.type === 'income' && (currentYear > sY || (currentYear === sY && idx >= sM)) && !skipped;
             }).reduce((a: number, r: any) => a + getActualValue(r, pt), 0);
 
         const exp =
@@ -157,14 +177,20 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
                 .reduce((a: number, i: any) => a + Number(i.amount), 0) +
             recurring.filter((r: any) => {
                 const { m: sM, y: sY } = getStartData(r);
-                const paid = r.paid_months?.includes(pt) || r.paid_months?.includes(mName);
-                const standby = r.status === 'delayed' || r.status === 'standby' || (typeof r.standby_months === 'string' && (r.standby_months.includes(pt) || r.standby_months.includes(mName)));
+                const paidMonths = safeParseArray(r.paid_months);
+                const standbyMonths = safeParseArray(r.standby_months);
+                const paid = paidMonths.includes(pt) || paidMonths.includes(mName);
+                const standby = r.status === 'delayed' || r.status === 'standby' || standbyMonths.includes(pt) || standbyMonths.includes(mName);
                 if (standby && !paid) return false;
-                return r.type === 'expense' && (currentYear > sY || (currentYear === sY && idx >= sM)) && !(typeof r.skipped_months === 'string' && (r.skipped_months.includes(mName) || r.skipped_months.includes(pt)));
+                const skippedMonths = safeParseArray(r.skipped_months);
+                const skipped = skippedMonths.includes(mName) || skippedMonths.includes(pt);
+                return r.type === 'expense' && (currentYear > sY || (currentYear === sY && idx >= sM)) && !skipped;
             }).reduce((a: number, r: any) => a + getActualValue(r, pt), 0) +
             installments.reduce((a: number, i: any) => {
-                const paid = i.paid_months?.includes(pt) || i.paid_months?.includes(mName);
-                const standby = i.status === 'delayed' || i.status === 'standby' || (typeof i.standby_months === 'string' && (i.standby_months.includes(pt) || i.standby_months.includes(mName)));
+                const paidMonths = safeParseArray(i.paid_months);
+                const standbyMonths = safeParseArray(i.standby_months);
+                const paid = paidMonths.includes(pt) || paidMonths.includes(mName);
+                const standby = i.status === 'delayed' || i.status === 'standby' || standbyMonths.includes(pt) || standbyMonths.includes(mName);
                 if (standby && !paid) return a;
                 const { m: sM, y: sY } = getStartData(i);
                 const diff = ((currentYear - sY) * 12) + (idx - sM);
@@ -184,12 +210,19 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
     }
 
     // Filtros para mostrar detalhes (Pagas x Pendentes)
-    const isPaid = (item: any) => item.is_paid || item.paid_months?.includes(currentTag) || item.paid_months?.includes(currentMonthName);
+    const isItemPaid = (item: any): boolean => {
+        if (item.is_paid) return true;
+        const paidMonths = safeParseArray(item.paid_months);
+        return paidMonths.includes(currentTag) || paidMonths.includes(currentMonthName);
+    };
 
     const gastosTransacao = transactions.filter((t: any) => t.type === 'expense' && isItemInMonth(t, activeMonthIdx, currentYear) && t.status !== 'standby');
     const gastosFixos = recurring.filter((r: any) => {
         const { m: sM, y: sY } = getStartData(r);
-        return r.type === 'expense' && (currentYear > sY || (currentYear === sY && activeMonthIdx >= sM)) && r.status !== 'standby' && !(typeof r.skipped_months === 'string' && r.skipped_months.includes(currentMonthName));
+        if (r.type !== 'expense') return false;
+        const skippedMonths = safeParseArray(r.skipped_months);
+        if (skippedMonths.includes(currentMonthName)) return false;
+        return (currentYear > sY || (currentYear === sY && activeMonthIdx >= sM)) && r.status !== 'standby';
     });
     const parcelamentosDoMes = installments.filter((i: any) => {
         if (i.status === 'standby') return false;
@@ -200,8 +233,8 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
     });
 
     const todasDespesas = [...gastosTransacao, ...gastosFixos, ...parcelamentosDoMes];
-    const contasPagas = todasDespesas.filter(isPaid);
-    const contasPendentes = todasDespesas.filter(i => !isPaid(i));
+    const contasPagas = todasDespesas.filter(isItemPaid);
+    const contasPendentes = todasDespesas.filter(i => !isItemPaid(i));
     const totalPendente = contasPendentes.reduce((a, i) => a + (Number(i.amount) || Number(i.value) || Number(i.value_per_month) || 0), 0);
 
     let estado = "ESTÁVEL 🟢";
@@ -220,15 +253,15 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
         mes_atual: currentMonthName,
         contas_pagas: contasPagas.length,
         contas_pendentes: contasPendentes.length,
-        detalhes_receitas: "", // Simplificado pro prompt ficar menor e mais rápido
-        detalhes_gastos: "", 
+        detalhes_receitas: "",
+        detalhes_gastos: "",
         resumo_texto: `Receitas: ${fmt(computedInc)} | Despesas: ${fmt(computedExp)} | Saldo: ${fmt(computedBalance)}`
     };
 }
-// ============================================================================
-// ============================================================================
-// ============================================================================
 
+// ============================================================================
+// ENDPOINT PRINCIPAL
+// ============================================================================
 export async function POST(req: Request) {
     try {
         const EVOLUTION_WEBHOOK_SECRET = process.env.EVOLUTION_WEBHOOK_SECRET;
@@ -396,18 +429,41 @@ export async function POST(req: Request) {
             return NextResponse.json({ status: 'Blocked by Plan', plan });
         }
 
-        // ── ETAPA 7: CONTEXTO E WORKSPACES ────────────────────────────────────
+        // ── ETAPA 7: CONTEXTO E WORKSPACES (CORRIGIDO: escolhe o workspace correto) ──
         const { data: workspaces } = await supabase.from('workspaces').select('id, title, whatsapp_rule').eq('user_id', userSettings.user_id);
-        const primaryWorkspace = workspaces?.[0];
+        
+        // Se não há workspaces, retorna erro
+        if (!workspaces || workspaces.length === 0) {
+            await sendWhatsAppMessage(targetPhone, "⚠️ Nenhuma área de trabalho encontrada. Cadastre uma pelo site.");
+            return NextResponse.json({ status: 'No workspace' });
+        }
 
-        let ctx = {
-            saldo_fmt: "R$ 0,00", entradas_fmt: "R$ 0,00", saidas_fmt: "R$ 0,00",
-            pendente_fmt: "R$ 0,00", mes_atual: "Mês", estado_conta: "Indefinido",
-            contas_pagas: 0, contas_pendentes: 0,
-            detalhes_receitas: "", detalhes_gastos: "", resumo_texto: "Sem dados",
-            saldo: "0", entradas: "0", saidas: "0"
-        };
-        if (primaryWorkspace) ctx = await getFinancialContext(supabase, userSettings.user_id, primaryWorkspace.id);
+        // Escolhe o workspace com mais transações no mês atual (ou o primeiro)
+        const today = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+        const currentYear = today.getFullYear();
+        const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+        const currentMonthName = MONTHS[today.getMonth()];
+        const currentTag = `${currentMonthName}/${currentYear}`;
+        
+        let primaryWorkspace = workspaces[0];
+        let maxCount = 0;
+        for (const ws of workspaces) {
+            const { count, error } = await supabase
+                .from('transactions')
+                .select('id', { count: 'exact', head: true })
+                .eq('user_id', userSettings.user_id)
+                .eq('context', ws.id)
+                .eq('target_month', currentTag);
+            if (error) console.error(`Erro ao contar transações para ${ws.id}:`, error);
+            if (count && count > maxCount) {
+                maxCount = count;
+                primaryWorkspace = ws;
+            }
+        }
+        console.log(`📁 Workspace selecionado: ${primaryWorkspace.title} (${primaryWorkspace.id}) com ${maxCount} transações em ${currentTag}`);
+
+        // Busca o contexto financeiro usando o workspace correto
+        let ctx = await getFinancialContext(supabase, userSettings.user_id, primaryWorkspace.id);
 
         let workspacesContextPrompt = "";
         if (workspaces && workspaces.length > 1) {
@@ -416,38 +472,14 @@ export async function POST(req: Request) {
                 const safeRule = (ws.whatsapp_rule || 'Geral').slice(0, 200).replace(/["{}[\]]/g, '');
                 workspacesContextPrompt += `- ID: "${ws.id}" | Nome: "${ws.title}" | Regra: "${safeRule}"\n`;
             });
-            workspacesContextPrompt += `Se não souber, use context: "${primaryWorkspace?.id}".\n`;
+            workspacesContextPrompt += `Se não souber, use context: "${primaryWorkspace.id}".\n`;
         } else if (primaryWorkspace) {
             workspacesContextPrompt = `Inclua "context": "${primaryWorkspace.id}" em todos os JSONs.\n`;
         }
 
         const dataHojeBR = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
         const cartoesCadastrados = ['nubank', 'inter', 'bb', 'itau', 'santander', 'caixa', 'bradesco', 'c6'];
-        // ── ETAPA MODO DEBUG (RAIO-X DIRETO NO ZAP) ────────────────────────────
-        if (messageContent.trim().toUpperCase() === 'DEBUG') {
-            // Pega só o mais importante para o texto não ficar gigante no WhatsApp
-            const miniContext = {
-                saldo: ctx.saldo_fmt,
-                entradas: ctx.entradas_fmt,
-                saidas: ctx.saidas_fmt,
-                pagas: ctx.contas_pagas,
-                pendentes: ctx.contas_pendentes,
-                receitas_consideradas: ctx.detalhes_receitas.trim(),
-                gastos_considerados: ctx.detalhes_gastos.trim()
-            };
-            
-            const msgDebug = `🛠️ *MODO RAIO-X ATIVADO* 🛠️\n\n` +
-                             `*Mês:* ${ctx.mes_atual}\n` +
-                             `*Entradas no Mês:* ${ctx.entradas_fmt}\n` +
-                             `*Saídas no Mês:* ${ctx.saidas_fmt}\n` +
-                             `*SALDO ATUAL:* ${ctx.saldo_fmt}\n\n` +
-                             `*O QUE O ROBÔ ESTÁ LENDO EXATAMENTE AGORA:*\n\n` +
-                             `${miniContext.receitas_consideradas}\n\n` +
-                             `${miniContext.gastos_considerados}`;
-            
-            await sendWhatsAppMessage(targetPhone, msgDebug);
-            return NextResponse.json({ success: true, debug: true });
-        }
+        
         // ── ETAPA 8: SYSTEM PROMPT ─────────────────────────────────────────────
         const systemPrompt = `
 IDENTIDADE: Você é "Meu Aliado", assistente financeiro pessoal via WhatsApp.
@@ -461,7 +493,6 @@ DATA DE HOJE: ${dataHojeBR} | MÊS ATUAL: ${ctx.mes_atual}
 ⏳ A pagar:    ${ctx.pendente_fmt} (${ctx.contas_pendentes} conta(s) pendente(s))
 ✅ Pagas:      ${ctx.contas_pagas} conta(s)
 ⚠️ Status:    ${ctx.estado_conta}
-${ctx.detalhes_receitas}${ctx.detalhes_gastos}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ${workspacesContextPrompt}
