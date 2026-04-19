@@ -423,16 +423,27 @@ export async function POST(req: Request) {
 
         const dataHojeBR = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
         const cartoesCadastrados = ['nubank', 'inter', 'bb', 'itau', 'santander', 'caixa', 'bradesco', 'c6'];
+        // ── ETAPA MODO DEBUG (RAIO-X DIRETO NO ZAP) ────────────────────────────
         if (messageContent.trim().toUpperCase() === 'DEBUG') {
-            console.log("=== 🕵️‍♂️ LOG DE DEBUG FINANCEIRO ===");
-            console.log(JSON.stringify(ctx, null, 2)); // Cospe o JSON inteiro na Vercel
+            // Pega só o mais importante para o texto não ficar gigante no WhatsApp
+            const miniContext = {
+                saldo: ctx.saldo_fmt,
+                entradas: ctx.entradas_fmt,
+                saidas: ctx.saidas_fmt,
+                pagas: ctx.contas_pagas,
+                pendentes: ctx.contas_pendentes,
+                receitas_consideradas: ctx.detalhes_receitas.trim(),
+                gastos_considerados: ctx.detalhes_gastos.trim()
+            };
             
             const msgDebug = `🛠️ *MODO RAIO-X ATIVADO* 🛠️\n\n` +
-                             `*Mês Lida:* ${ctx.mes_atual}\n` +
+                             `*Mês:* ${ctx.mes_atual}\n` +
                              `*Entradas no Mês:* ${ctx.entradas_fmt}\n` +
                              `*Saídas no Mês:* ${ctx.saidas_fmt}\n` +
-                             `*SALDO ACUMULADO:* ${ctx.saldo_fmt}\n\n` +
-                             `De onde veio isso? Acabei de imprimir o JSON completo no console da sua Vercel. Vá lá em "Logs" e veja a matemática exata!`;
+                             `*SALDO ATUAL:* ${ctx.saldo_fmt}\n\n` +
+                             `*O QUE O ROBÔ ESTÁ LENDO EXATAMENTE AGORA:*\n\n` +
+                             `${miniContext.receitas_consideradas}\n\n` +
+                             `${miniContext.gastos_considerados}`;
             
             await sendWhatsAppMessage(targetPhone, msgDebug);
             return NextResponse.json({ success: true, debug: true });
