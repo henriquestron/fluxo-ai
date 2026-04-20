@@ -60,6 +60,7 @@ export interface GoalItem {
     name: string;
     price: number;
     is_bought: boolean;
+    link?: string;
 }
 
 export interface Goal {

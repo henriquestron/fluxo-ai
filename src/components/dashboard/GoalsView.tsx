@@ -1,5 +1,5 @@
 import React from 'react';
-import { Target, Plus, Edit2, Trash2, Calendar, CheckSquare, Square } from 'lucide-react';
+import { Target, Plus, Edit2, Trash2, Calendar, ExternalLink, CheckSquare, Square, FileText } from 'lucide-react';
 import { ICON_MAP } from '@/utils/constants';
 import { Goal } from '@/types'; // (Atenção: Garanta que o tipo Goal do seu types.ts agora aceite items?: GoalItem[])
 
@@ -104,25 +104,56 @@ export default function GoalsView({ goals, setIsGoalModalOpen, setEditingGoal, h
                                     {hasItems && (
                                         <div className="mt-4 pt-4 border-t border-gray-800/50 space-y-2">
                                             <p className="text-[10px] text-gray-500 uppercase font-bold mb-3">Checklist de Compras</p>
-                                            <div className="space-y-3 max-h-32 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-700 pr-2">
-                                                {goal.items!.map(item => (
-                                                    <div key={item.id} className="flex items-center justify-between group/item">
-                                                        <label className="flex items-center gap-3 cursor-pointer flex-1 min-w-0">
-                                                            <div onClick={(e) => {
-                                                                e.preventDefault(); 
-                                                                if(handleToggleGoalItem) handleToggleGoalItem(goal.id, item.id);
-                                                            }} className="cursor-pointer text-indigo-400 hover:text-indigo-300">
-                                                                {item.is_bought ? <CheckSquare size={18} /> : <Square size={18} className="text-gray-500" />}
+                                            <div className="space-y-3 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-700 pr-2">
+                                                {goal.items!.map(item => {
+                                                    // Verifica se é uma URL válida
+                                                    const isLink = item.link?.startsWith('http') || item.link?.startsWith('www');
+                                                    const href = item.link?.startsWith('www') ? `https://${item.link}` : item.link;
+
+                                                    return (
+                                                        <div key={item.id} className="flex flex-col group/item border-b border-gray-800/30 pb-2 last:border-0 last:pb-0">
+                                                            <div className="flex items-center justify-between">
+                                                                <label className="flex items-center gap-3 cursor-pointer flex-1 min-w-0">
+                                                                    <div onClick={(e) => {
+                                                                        e.preventDefault(); 
+                                                                        if(handleToggleGoalItem) handleToggleGoalItem(goal.id, item.id);
+                                                                    }} className="cursor-pointer text-indigo-400 hover:text-indigo-300 transition-colors">
+                                                                        {item.is_bought ? <CheckSquare size={18} className="text-emerald-500" /> : <Square size={18} className="text-gray-500" />}
+                                                                    </div>
+                                                                    <span className={`text-sm font-medium truncate transition-all ${item.is_bought ? "text-gray-600 line-through" : "text-gray-200"}`}>
+                                                                        {item.name}
+                                                                    </span>
+                                                                </label>
+                                                                <span className={`text-xs font-mono ml-3 ${item.is_bought ? "text-gray-600 line-through" : "text-gray-400"}`}>
+                                                                    {item.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                                                </span>
                                                             </div>
-                                                            <span className={`text-sm truncate transition-all ${item.is_bought ? "text-gray-600 line-through" : "text-gray-300"}`}>
-                                                                {item.name}
-                                                            </span>
-                                                        </label>
-                                                        <span className={`text-xs font-mono ml-3 ${item.is_bought ? "text-gray-600 line-through" : "text-gray-400"}`}>
-                                                            {item.price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                                                        </span>
-                                                    </div>
-                                                ))}
+                                                            
+                                                            {/* 🟢 RENDERIZAÇÃO INTELIGENTE DO LINK/OBSERVAÇÃO */}
+                                                            
+                                                            {item.link && (
+                                                                <div className="pl-8 pt-1">
+                                                                    {isLink ? (
+                                                                        <a 
+                                                                            href={href} 
+                                                                            target="_blank" 
+                                                                            rel="noopener noreferrer" 
+                                                                            // 🟢 QUEBRA DE LINHA: break-all para o link não estourar a div
+                                                                            className={`text-xs flex items-start gap-1 w-full transition-colors hover:underline break-all ${item.is_bought ? "text-gray-600" : "text-indigo-400 hover:text-indigo-300"}`}
+                                                                        >
+                                                                            <ExternalLink size={12} className="shrink-0 mt-0.5" /> {item.link}
+                                                                        </a>
+                                                                    ) : (
+                                                                        // 🟢 QUEBRA DE LINHA: break-words e whitespace-pre-wrap para observações
+                                                                        <p className={`text-xs italic flex items-start gap-1 w-full break-words whitespace-pre-wrap ${item.is_bought ? "text-gray-600" : "text-gray-400"}`}>
+                                                                            <FileText size={12} className="shrink-0 mt-0.5" /> {item.link}
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     )}

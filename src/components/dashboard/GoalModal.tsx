@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { X, Edit2, Target, Plus, Trash2, CheckCircle2 } from 'lucide-react';
+import { X, Edit2, Target, Plus, Trash2, CheckCircle2, Link as LinkIcon, Check } from 'lucide-react';
 
 export interface GoalItem {
     id: string;
     name: string;
     price: number;
     is_bought: boolean;
+    link?: string;
 }
 
 export interface Goal {
@@ -30,13 +31,16 @@ export default function GoalModal({ isOpen, onClose, onSubmit, editingGoal }: Go
     const [items, setItems] = useState<GoalItem[]>([]);
     const [newItemName, setNewItemName] = useState('');
     const [newItemPrice, setNewItemPrice] = useState('');
+    const [newItemLink, setNewItemLink] = useState('');
+    const [editingItemId, setEditingItemId] = useState<string | null>(null); // 🟢 NOVO: Controla quem está sendo editado
 
-    // 🟢 A MÁGICA DA LIMPEZA: Toda vez que abrir o modal, ele reseta a lista
     useEffect(() => {
         if (isOpen) {
             setItems(editingGoal?.items || []);
             setNewItemName('');
             setNewItemPrice('');
+            setNewItemLink('');
+            setEditingItemId(null);
         }
     }, [isOpen, editingGoal]);
 
@@ -44,19 +48,48 @@ export default function GoalModal({ isOpen, onClose, onSubmit, editingGoal }: Go
 
     const handleAddItem = () => {
         if (!newItemName.trim() || !newItemPrice) return;
-        const newItem: GoalItem = {
-            id: Math.random().toString(36).substring(2, 9),
-            name: newItemName,
-            price: parseFloat(newItemPrice),
-            is_bought: false
-        };
-        setItems([...items, newItem]);
+        
+        if (editingItemId) {
+            // 🟢 Lógica de Edição
+            setItems(items.map(item => item.id === editingItemId ? {
+                ...item,
+                name: newItemName,
+                price: parseFloat(newItemPrice),
+                link: newItemLink.trim() || undefined
+            } : item));
+            setEditingItemId(null);
+        } else {
+            // Lógica de Adição
+            const newItem: GoalItem = {
+                id: Math.random().toString(36).substring(2, 9),
+                name: newItemName,
+                price: parseFloat(newItemPrice),
+                is_bought: false,
+                link: newItemLink.trim() || undefined
+            };
+            setItems([...items, newItem]);
+        }
+        
         setNewItemName('');
         setNewItemPrice('');
+        setNewItemLink('');
+    };
+
+    const handleEditItem = (item: GoalItem) => {
+        setNewItemName(item.name);
+        setNewItemPrice(item.price.toString());
+        setNewItemLink(item.link || '');
+        setEditingItemId(item.id);
     };
 
     const handleRemoveItem = (id: string) => {
         setItems(items.filter(item => item.id !== id));
+        if (editingItemId === id) {
+            setNewItemName('');
+            setNewItemPrice('');
+            setNewItemLink('');
+            setEditingItemId(null);
+        }
     };
 
     const hasItems = items.length > 0;
@@ -94,39 +127,63 @@ export default function GoalModal({ isOpen, onClose, onSubmit, editingGoal }: Go
                             <CheckCircle2 size={14} /> Checklist de Compras (Opcional)
                         </label>
                         
-                        <div className="flex gap-2 mb-4 items-center">
-                            <input
-                                value={newItemName}
-                                onChange={(e) => setNewItemName(e.target.value)}
-                                placeholder="Ex: Geladeira"
-                                className="flex-1 min-w-0 bg-black border border-gray-700 rounded-lg p-2.5 text-sm text-white focus:border-indigo-500 outline-none"
-                            />
-                            <input
-                                type="number"
-                                step="0.01"
-                                value={newItemPrice}
-                                onChange={(e) => setNewItemPrice(e.target.value)}
-                                placeholder="R$ Valor"
-                                className="w-20 sm:w-24 shrink-0 bg-black border border-gray-700 rounded-lg p-2.5 text-sm text-white focus:border-indigo-500 outline-none"
-                            />
-                            <button
-                                type="button"
-                                onClick={handleAddItem}
-                                className="shrink-0 bg-indigo-600 hover:bg-indigo-500 text-white p-2.5 rounded-lg transition flex items-center justify-center"
-                            >
-                                <Plus size={18} />
-                            </button>
+                        <div className="flex flex-col gap-2 mb-4">
+                            <div className="flex gap-2 items-center">
+                                <input
+                                    value={newItemName}
+                                    onChange={(e) => setNewItemName(e.target.value)}
+                                    placeholder="Ex: Geladeira"
+                                    className="flex-1 min-w-0 bg-black border border-gray-700 rounded-lg p-2.5 text-sm text-white focus:border-indigo-500 outline-none"
+                                />
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    value={newItemPrice}
+                                    onChange={(e) => setNewItemPrice(e.target.value)}
+                                    placeholder="R$ Valor"
+                                    className="w-24 shrink-0 bg-black border border-gray-700 rounded-lg p-2.5 text-sm text-white focus:border-indigo-500 outline-none"
+                                />
+                            </div>
+                            <div className="flex gap-2 items-center">
+                                <div className="relative flex-1 min-w-0">
+                                    <LinkIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                                    <input
+                                        value={newItemLink}
+                                        onChange={(e) => setNewItemLink(e.target.value)}
+                                        placeholder="Link da loja ou observação..."
+                                        className="w-full pl-9 pr-3 py-2.5 bg-black border border-gray-700 rounded-lg text-sm text-white focus:border-indigo-500 outline-none"
+                                    />
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={handleAddItem}
+                                    className={`shrink-0 text-white p-2.5 rounded-lg transition flex items-center justify-center w-[46px] ${editingItemId ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-indigo-600 hover:bg-indigo-500'}`}
+                                >
+                                    {/* 🟢 O ÍCONE MUDA SE ESTIVER EDITANDO */}
+                                    {editingItemId ? <Check size={18} /> : <Plus size={18} />}
+                                </button>
+                            </div>
                         </div>
 
                         {items.length > 0 && (
-                            <ul className="space-y-2 mb-2 max-h-32 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-700 pr-1">
+                            <ul className="space-y-3 mb-2 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-700 pr-1">
                                 {items.map(item => (
-                                    <li key={item.id} className="flex justify-between items-center bg-black p-2 rounded-lg border border-gray-800 text-sm">
-                                        <span className="text-gray-300 truncate pr-2">{item.name}</span>
-                                        <div className="flex items-center gap-3 shrink-0">
-                                            <span className="text-indigo-400 font-mono">R$ {item.price.toFixed(2)}</span>
-                                            <button type="button" onClick={() => handleRemoveItem(item.id)} className="text-red-500 hover:text-red-400"><Trash2 size={14} /></button>
+                                    <li key={item.id} className={`flex flex-col bg-black p-3 rounded-lg border transition-colors ${editingItemId === item.id ? 'border-indigo-500' : 'border-gray-800'}`}>
+                                        <div className="flex justify-between items-start">
+                                            {/* 🟢 REMOVIDO O TRUNCATE PARA O NOME MOSTRAR INTEIRO */}
+                                            <span className="text-sm text-gray-200 font-bold break-words pr-2">{item.name}</span>
+                                            <div className="flex items-center gap-2 shrink-0">
+                                                <span className="text-indigo-400 font-mono text-sm mr-2">R$ {item.price.toFixed(2)}</span>
+                                                <button type="button" onClick={() => handleEditItem(item)} className="text-gray-400 hover:text-white transition"><Edit2 size={14} /></button>
+                                                <button type="button" onClick={() => handleRemoveItem(item.id)} className="text-red-500 hover:text-red-400 transition"><Trash2 size={14} /></button>
+                                            </div>
                                         </div>
+                                        {item.link && (
+                                            // 🟢 QUEBRA DE LINHA NO LINK: break-all e whitespace-pre-wrap
+                                            <span className="text-xs text-gray-500 mt-2 flex items-start gap-1 break-all whitespace-pre-wrap">
+                                                <LinkIcon size={12} className="shrink-0 mt-0.5" /> {item.link}
+                                            </span>
+                                        )}
                                     </li>
                                 ))}
                             </ul>
@@ -137,49 +194,21 @@ export default function GoalModal({ isOpen, onClose, onSubmit, editingGoal }: Go
                         <div>
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Valor Alvo (R$)</label>
                             {hasItems ? (
-                                <input
-                                    key="target-dummy"
-                                    name="target_amount_dummy"
-                                    type="number"
-                                    value={autoTargetAmount}
-                                    className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-gray-400 cursor-not-allowed outline-none transition"
-                                    readOnly
-                                />
+                                <input key="target-dummy" name="target_amount_dummy" type="number" value={autoTargetAmount} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-gray-400 cursor-not-allowed outline-none transition" readOnly />
                             ) : (
-                                <input
-                                    key="target-real"
-                                    name="target_amount"
-                                    type="number"
-                                    step="0.01"
-                                    defaultValue={editingGoal?.target_amount || ''}
-                                    placeholder="0.00"
-                                    className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-indigo-500 outline-none transition"
-                                    required
-                                />
+                                <input key="target-real" name="target_amount" type="number" step="0.01" defaultValue={editingGoal?.target_amount || ''} placeholder="0.00" className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-indigo-500 outline-none transition" required />
                             )}
                         </div>
                         <div>
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Já Guardado (R$)</label>
-                            <input
-                                name="current_amount"
-                                type="number"
-                                step="0.01"
-                                defaultValue={editingGoal?.current_amount || 0}
-                                placeholder="0.00"
-                                className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-indigo-500 outline-none transition"
-                            />
+                            <input name="current_amount" type="number" step="0.01" defaultValue={editingGoal?.current_amount || 0} placeholder="0.00" className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-indigo-500 outline-none transition" />
                         </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Prazo (Opcional)</label>
-                            <input
-                                name="deadline"
-                                type="date"
-                                defaultValue={editingGoal?.deadline || ''}
-                                className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-indigo-500 outline-none transition"
-                            />
+                            <input name="deadline" type="date" defaultValue={editingGoal?.deadline || ''} className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-indigo-500 outline-none transition" />
                         </div>
                         <div>
                             <label className="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Ícone</label>
