@@ -153,151 +153,180 @@ const safeArray = (val: any): string[] => {
 // ============================================================================
 // CONTEXTO FINANCEIRO COMPLETO (Com Efeito Cascata do Site)
 // ============================================================================
+// ============================================================================
+// CONTEXTO FINANCEIRO COMPLETO (CLONE EXATO DO PAGE.TSX)
+// ============================================================================
 async function getFinancialContext(supabase: any, userId: string, workspaceId: string) {
     const today = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
     const currentYear = today.getFullYear();
     const activeMonthIdx = today.getMonth();
     const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-    const currentMonthName = MONTHS[activeMonthIdx];
-    const currentTag = `${currentMonthName}/${currentYear}`;
+    const activeTab = MONTHS[activeMonthIdx];
 
     const [transRes, recRes, instRes] = await Promise.all([
-        supabase.from('transactions').select('type, amount, date, status, title, category, is_paid, target_month').eq('user_id', userId).eq('context', workspaceId),
-        supabase.from('recurring').select('type, value, custom_values, start_date, created_at, status, paid_months, skipped_months, standby_months, title, category, due_day').eq('user_id', userId).eq('context', workspaceId),
-        supabase.from('installments').select('value_per_month, total_value, start_date, created_at, status, paid_months, standby_months, current_installment, installments_count, title, payment_method, due_day').eq('user_id', userId).eq('context', workspaceId)
+        supabase.from('transactions').select('*').eq('user_id', userId).eq('context', workspaceId),
+        supabase.from('recurring').select('*').eq('user_id', userId).eq('context', workspaceId),
+        supabase.from('installments').select('*').eq('user_id', userId).eq('context', workspaceId)
     ]);
 
     const transactions = transRes.data || [];
     const recurring = recRes.data || [];
     const installments = instRes.data || [];
 
-    const getStartData = (item: any) => {
-        if (item.start_date) {
-            if (item.start_date.includes('-')) { const p = item.start_date.split('-'); return { m: parseInt(p[1]) - 1, y: parseInt(p[0]) }; }
-            if (item.start_date.includes('/')) { const p = item.start_date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) }; }
+    const safeArray = (val: any) => {
+        if (Array.isArray(val)) return val;
+        if (typeof val === 'string') {
+            try { const p = JSON.parse(val); return Array.isArray(p) ? p : []; } catch { return []; }
         }
-        if (item.date && item.date.includes('/')) { const p = item.date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) }; }
+        return [];
+    };
+
+    const getStartData = (item: any) => {
+        if (item.start_date && item.start_date.includes('/')) {
+            const p = item.start_date.split('/');
+            return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+        }
+        if (item.date && item.date.includes('/')) {
+            const p = item.date.split('/');
+            return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+        }
         if (item.created_at) {
-            // Força horário do Brasil para não pular de mês na madrugada
             const d = new Date(new Date(item.created_at).toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
             return { m: d.getMonth(), y: d.getFullYear() };
         }
         return { m: 0, y: currentYear };
     };
 
-    const isDateInMonth = (dateStr: string, mIdx: number, year: number) => {
-        if (!dateStr) return false;
-        if (dateStr.includes('/')) { const p = dateStr.split('/'); return parseInt(p[1]) === (mIdx + 1) && parseInt(p[2]) === year; }
-        if (dateStr.includes('-')) { const p = dateStr.split('-'); return parseInt(p[1]) === (mIdx + 1) && parseInt(p[0]) === year; }
-        return false;
-    };
-
-    const isItemInMonth = (item: any, mIdx: number, year: number) => {
-        const mName = MONTHS[mIdx];
-        const mTag = `${mName}/${year}`;
-        if (item.target_month) return item.target_month === mName || item.target_month === mTag;
-        return isDateInMonth(item.date, mIdx, year);
-    };
-
-    const getActualValue = (item: any, tag: string) => {
-        if (item.custom_values && item.custom_values[tag] !== undefined) return Number(item.custom_values[tag]);
-        return Number(item.value);
-    };
-
-    const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
-    // 🟢 MÁGICA DO SITE: Efeito Cascata simulando de Jan até hoje
-    let previousSurplus = 0;
-    let computedInc = 0;
-    let computedExp = 0;
-    let computedBalance = 0;
-
-    for (let idx = 0; idx <= activeMonthIdx; idx++) {
-        const mName = MONTHS[idx];
-        const pt = `${mName}/${currentYear}`;
-
-        const inc =
-            transactions.filter((t: any) => t.type === 'income' && isItemInMonth(t, idx, currentYear) && t.status !== 'delayed' && t.status !== 'standby')
-                .reduce((a: number, i: any) => a + Number(i.amount), 0) +
-            recurring.filter((r: any) => {
-                const { m: sM, y: sY } = getStartData(r);
-                const paid = safeArray(r.paid_months).includes(pt) || safeArray(r.paid_months).includes(mName);
-                const standby = r.status === 'delayed' || r.status === 'standby' || safeArray(r.standby_months).includes(pt) || safeArray(r.standby_months).includes(mName);
-                if (standby && !paid) return false;
-                return r.type === 'income' && (currentYear > sY || (currentYear === sY && idx >= sM)) && !safeArray(r.skipped_months).includes(mName) && !safeArray(r.skipped_months).includes(pt);
-            }).reduce((a: number, r: any) => a + getActualValue(r, pt), 0);
-
-        const exp =
-            transactions.filter((t: any) => t.type === 'expense' && isItemInMonth(t, idx, currentYear) && t.status !== 'delayed' && t.status !== 'standby')
-                .reduce((a: number, i: any) => a + Number(i.amount), 0) +
-            recurring.filter((r: any) => {
-                const { m: sM, y: sY } = getStartData(r);
-                const paid = safeArray(r.paid_months).includes(pt) || safeArray(r.paid_months).includes(mName);
-                const standby = r.status === 'delayed' || r.status === 'standby' || safeArray(r.standby_months).includes(pt) || safeArray(r.standby_months).includes(mName);
-                if (standby && !paid) return false;
-                return r.type === 'expense' && (currentYear > sY || (currentYear === sY && idx >= sM)) && !safeArray(r.skipped_months).includes(mName) && !safeArray(r.skipped_months).includes(pt);
-            }).reduce((a: number, r: any) => a + getActualValue(r, pt), 0) +
-            installments.reduce((a: number, i: any) => {
-                const paid = safeArray(i.paid_months).includes(pt) || safeArray(i.paid_months).includes(mName);
-                const standby = i.status === 'delayed' || i.status === 'standby' || safeArray(i.standby_months).includes(pt) || safeArray(i.standby_months).includes(mName);
-                if (standby && !paid) return a;
-                const { m: sM, y: sY } = getStartData(i);
-                const diff = ((currentYear - sY) * 12) + (idx - sM);
-                const act = 1 + (i.current_installment || 0) + diff;
-                return (act >= 1 && act <= i.installments_count) ? a + Number(i.value_per_month) : a;
-            }, 0);
-
-        const saldoMensal = inc - exp;
-        const saldoAcumulado = saldoMensal + previousSurplus;
-
-        if (idx === activeMonthIdx) {
-            computedInc = inc;
-            computedExp = exp;
-            computedBalance = saldoAcumulado;
+    const isPaid = (item: any, tag: string) => {
+        if (item.paid_months) {
+            const arr = safeArray(item.paid_months);
+            return arr.includes(tag) || arr.includes(tag.split('/')[0]);
         }
-        previousSurplus = saldoAcumulado;
+        return item.is_paid === true;
+    };
+
+    // 🟢 FUNÇÃO IDÊNTICA AO getMonthData DO SEU SITE
+    const getMonthData = (monthName: string, monthIndex: number) => {
+        const monthMap: Record<string, string> = { 'Jan': '/01', 'Fev': '/02', 'Mar': '/03', 'Abr': '/04', 'Mai': '/05', 'Jun': '/06', 'Jul': '/07', 'Ago': '/08', 'Set': '/09', 'Out': '/10', 'Nov': '/11', 'Dez': '/12' };
+        const dateFilter = `${monthMap[monthName]}/${currentYear}`;
+        const currentPaymentTag = `${monthName}/${currentYear}`;
+
+        const activeRecurring = recurring.filter((r: any) => {
+            const paid = isPaid(r, currentPaymentTag);
+            if ((r.status === 'delayed' || r.status === 'standby') && !paid) return false;
+            if (safeArray(r.standby_months).includes(currentPaymentTag) && !paid) return false;
+
+            const { m: startMonth, y: startYear } = getStartData(r);
+            if (currentYear > startYear) return true;
+            if (currentYear === startYear && monthIndex >= startMonth) return true;
+            return false;
+        });
+
+        // ENTRADAS (Transactions usa SOMENTE o dateFilter, ignorando o target_month bagunçado)
+        const incomeFixed = activeRecurring.filter((r: any) => r.type === 'income' && !safeArray(r.skipped_months).includes(monthName)).reduce((acc: number, curr: any) => acc + Number(curr.value || 0), 0);
+        const incomeVariable = transactions.filter((t: any) => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc: number, curr: any) => acc + Number(curr.amount || 0), 0);
+        const incomeTotal = incomeFixed + incomeVariable;
+
+        // SAÍDAS
+        const expenseFixed = activeRecurring.filter((r: any) => r.type === 'expense' && !safeArray(r.skipped_months).includes(monthName)).reduce((acc: number, curr: any) => acc + Number(curr.value || 0), 0);
+        const expenseVariable = transactions.filter((t: any) => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc: number, curr: any) => acc + Number(curr.amount || 0), 0);
+
+        const installTotal = installments.reduce((acc: number, curr: any) => {
+            const paid = isPaid(curr, currentPaymentTag);
+            if ((curr.status === 'delayed' || curr.status === 'standby') && !paid) return acc;
+            if (safeArray(curr.standby_months).includes(currentPaymentTag) && !paid) return acc;
+
+            const { m: startMonth, y: startYear } = getStartData(curr);
+            const monthsDiff = ((currentYear - startYear) * 12) + (monthIndex - startMonth);
+            const currentInstNum = 1 + (curr.current_installment || 0) + monthsDiff;
+
+            if (currentInstNum >= 1 && currentInstNum <= curr.installments_count) {
+                return acc + Number(curr.value_per_month || 0);
+            }
+            return acc;
+        }, 0);
+
+        const expenseTotal = expenseVariable + expenseFixed + installTotal;
+
+        // EXCLUSIVO PARA O WHATSAPP: Detalhamento do mês atual
+        let pendingAmount = 0;
+        let pendingCount = 0;
+        let paidCount = 0;
+        let detalhesG = "";
+        let detalhesR = "";
+
+        if (monthIndex === activeMonthIdx) {
+            detalhesR = "\n📥 RECEITAS:\n";
+            activeRecurring.filter((r: any) => r.type === 'income' && !safeArray(r.skipped_months).includes(monthName)).forEach((r: any) => {
+                detalhesR += ` • ${r.title}: R$ ${Number(r.value).toFixed(2)}\n`;
+            });
+            transactions.filter((t: any) => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').forEach((t: any) => {
+                detalhesR += ` • ${t.title}: R$ ${Number(t.amount).toFixed(2)}\n`;
+            });
+
+            detalhesG = "\n📤 DESPESAS:\n";
+            activeRecurring.filter((r: any) => r.type === 'expense' && !safeArray(r.skipped_months).includes(monthName)).forEach((r: any) => {
+                const pd = isPaid(r, currentPaymentTag);
+                if (!pd) { pendingCount++; pendingAmount += Number(r.value); } else { paidCount++; }
+                detalhesG += ` ${pd ? "✅" : "⏳"} ${r.title}: R$ ${Number(r.value).toFixed(2)}\n`;
+            });
+            transactions.filter((t: any) => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').forEach((t: any) => {
+                const pd = t.is_paid;
+                if (!pd) { pendingCount++; pendingAmount += Number(t.amount); } else { paidCount++; }
+                detalhesG += ` ${pd ? "✅" : "⏳"} ${t.title}: R$ ${Number(t.amount).toFixed(2)}\n`;
+            });
+            installments.forEach((curr: any) => {
+                const pd = isPaid(curr, currentPaymentTag);
+                if ((curr.status === 'delayed' || curr.status === 'standby') && !pd) return;
+                if (safeArray(curr.standby_months).includes(currentPaymentTag) && !pd) return;
+                const { m: startMonth, y: startYear } = getStartData(curr);
+                const monthsDiff = ((currentYear - startYear) * 12) + (monthIndex - startMonth);
+                const currentInstNum = 1 + (curr.current_installment || 0) + monthsDiff;
+                if (currentInstNum >= 1 && currentInstNum <= curr.installments_count) {
+                    if (!pd) { pendingCount++; pendingAmount += Number(curr.value_per_month); } else { paidCount++; }
+                    detalhesG += ` ${pd ? "✅" : "⏳"} ${curr.title} (${currentInstNum}/${curr.installments_count}x): R$ ${Number(curr.value_per_month).toFixed(2)}\n`;
+                }
+            });
+        }
+
+        return {
+            income: incomeTotal,
+            expenseTotal: expenseTotal,
+            balance: incomeTotal - expenseTotal,
+            pendingCount, pendingAmount, paidCount, detalhesR, detalhesG
+        };
+    };
+
+    // 🟢 MÁQUINA DO TEMPO (EFEITO CASCATA IDÊNTICO AO PAGE.TSX)
+    let previousSurplus = 0;
+    for (let i = 0; i < activeMonthIdx; i++) {
+        const pastData = getMonthData(MONTHS[i], i);
+        previousSurplus += pastData.balance;
     }
 
-    // Listas detalhadas do Mês Atual para o bot
-    const isPaid = (item: any) => item.is_paid || safeArray(item.paid_months).includes(currentTag) || safeArray(item.paid_months).includes(currentMonthName);
+    const currentMonthData = getMonthData(activeTab, activeMonthIdx);
+    const displayBalance = currentMonthData.balance + previousSurplus;
 
-    const gastosTransacao = transactions.filter((t: any) => t.type === 'expense' && isItemInMonth(t, activeMonthIdx, currentYear) && t.status !== 'standby');
-    const gastosFixos = recurring.filter((r: any) => {
-        const { m: sM, y: sY } = getStartData(r);
-        return r.type === 'expense' && (currentYear > sY || (currentYear === sY && activeMonthIdx >= sM)) && r.status !== 'standby' && !safeArray(r.skipped_months).includes(currentMonthName);
-    });
-    const parcelamentosDoMes = installments.filter((i: any) => {
-        if (i.status === 'standby') return false;
-        const { m: sM, y: sY } = getStartData(i);
-        const diff = ((currentYear - sY) * 12) + (activeMonthIdx - sM);
-        const act = 1 + (i.current_installment || 0) + diff;
-        return act >= 1 && act <= i.installments_count;
-    });
-
-    const todasDespesas = [...gastosTransacao, ...gastosFixos, ...parcelamentosDoMes];
-    const contasPagas = todasDespesas.filter(isPaid);
-    const contasPendentes = todasDespesas.filter(i => !isPaid(i));
-    const totalPendente = contasPendentes.reduce((a, i) => a + (Number(i.amount) || Number(i.value) || Number(i.value_per_month) || 0), 0);
-
+    const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     let estado = "ESTÁVEL 🟢";
-    if (computedBalance < 0) estado = "CRÍTICO 🔴";
-    else if (computedBalance < (computedInc * 0.1)) estado = "ALERTA 🟡";
+    if (displayBalance < 0) estado = "CRÍTICO 🔴";
+    else if (displayBalance < (currentMonthData.income * 0.1)) estado = "ALERTA 🟡";
 
     return {
-        saldo: computedBalance.toFixed(2),
-        entradas: computedInc.toFixed(2),
-        saidas: computedExp.toFixed(2),
+        saldo: displayBalance.toFixed(2),
+        entradas: currentMonthData.income.toFixed(2),
+        saidas: currentMonthData.expenseTotal.toFixed(2),
         estado_conta: estado,
-        saldo_fmt: fmt(computedBalance),
-        entradas_fmt: fmt(computedInc),
-        saidas_fmt: fmt(computedExp),
-        pendente_fmt: fmt(totalPendente),
-        mes_atual: currentMonthName,
-        contas_pagas: contasPagas.length,
-        contas_pendentes: contasPendentes.length,
-        detalhes_receitas: "", 
-        detalhes_gastos: "",
-        resumo_texto: `Receitas: ${fmt(computedInc)} | Despesas: ${fmt(computedExp)} | Saldo: ${fmt(computedBalance)}`
+        saldo_fmt: fmt(displayBalance),
+        entradas_fmt: fmt(currentMonthData.income),
+        saidas_fmt: fmt(currentMonthData.expenseTotal),
+        pendente_fmt: fmt(currentMonthData.pendingAmount),
+        mes_atual: activeTab,
+        contas_pagas: currentMonthData.paidCount,
+        contas_pendentes: currentMonthData.pendingCount,
+        detalhes_receitas: currentMonthData.detalhesR,
+        detalhes_gastos: currentMonthData.detalhesG,
+        resumo_texto: `Receitas: ${fmt(currentMonthData.income)} | Despesas: ${fmt(currentMonthData.expenseTotal)} | Saldo: ${fmt(displayBalance)}`
     };
 }
 
