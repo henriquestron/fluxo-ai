@@ -231,24 +231,20 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
         const expenseFixed = activeRecurring.filter((r: any) => r.type === 'expense' && !safeArray(r.skipped_months).includes(monthName)).reduce((acc: number, curr: any) => acc + Number(curr.value || 0), 0);
         const expenseVariable = transactions.filter((t: any) => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc: number, curr: any) => acc + Number(curr.amount || 0), 0);
 
-        installments.reduce((a: number, i: any) => {
-                const paid = safeArray(i.paid_months).includes(pt) || safeArray(i.paid_months).includes(mName);
-                const standby = i.status === 'delayed' || i.status === 'standby' || safeArray(i.standby_months).includes(pt) || safeArray(i.standby_months).includes(mName);
-                if (standby && !paid) return a;
-                const { m: startMonth, y: startYear } = getStartData(i);
-                const monthsDiff = ((currentYear - startYear) * 12) + (idx - startMonth);
-                
-                // 🟢 MATEMÁTICA DO TEMPO NO ROBÔ
-                let pastStandbys = 0;
-                for (let j = 0; j < monthsDiff; j++) {
-                    const checkM = (startMonth + j) % 12;
-                    const checkY = startYear + Math.floor((startMonth + j) / 12);
-                    if (safeArray(i.standby_months).includes(`${MONTHS[checkM]}/${checkY}`)) pastStandbys++;
-                }
-                const act = 1 + (i.current_installment || 0) + monthsDiff - pastStandbys;
-                
-                return (act >= 1 && act <= i.installments_count) ? a + Number(i.value_per_month) : a;
-            }, 0);
+        const installTotal = installments.reduce((acc: number, curr: any) => {
+            const paid = isPaid(curr, currentPaymentTag);
+            if ((curr.status === 'delayed' || curr.status === 'standby') && !paid) return acc;
+            if (safeArray(curr.standby_months).includes(currentPaymentTag) && !paid) return acc;
+
+            const { m: startMonth, y: startYear } = getStartData(curr);
+            const monthsDiff = ((currentYear - startYear) * 12) + (monthIndex - startMonth);
+            const currentInstNum = 1 + (curr.current_installment || 0) + monthsDiff;
+
+            if (currentInstNum >= 1 && currentInstNum <= curr.installments_count) {
+                return acc + Number(curr.value_per_month || 0);
+            }
+            return acc;
+        }, 0);
 
         const expenseTotal = expenseVariable + expenseFixed + installTotal;
 
