@@ -26,6 +26,7 @@ const BANK_STYLES: any = {
     'caixa': { label: 'Caixa', color: 'bg-[#005CA9]', bg: 'bg-[#005CA9]/10', border: 'border-[#005CA9]/30', text: 'text-[#4ea4eb]', icon: 'https://upload.wikimedia.org/wikipedia/commons/3/3c/Caixa_Econ%C3%B4mica_Federal_logo_1997.svg' },
     'bradesco': { label: 'Bradesco', color: 'bg-[#CC092F]', bg: 'bg-[#CC092F]/10', border: 'border-[#CC092F]/30', text: 'text-[#ff4d6f]', icon: 'https://upload.wikimedia.org/wikipedia/commons/c/c3/Banco_Bradesco_logo.svg' },
     'c6': { label: 'C6 Bank', color: 'bg-[#222]', bg: 'bg-gray-800', border: 'border-gray-600', text: 'text-gray-300', icon: 'https://upload.wikimedia.org/wikipedia/commons/7/77/Logo_C6_Bank.svg' },
+    'picpay': { label: 'PicPay', color: 'bg-[#11C76F]', bg: 'bg-[#11C76F]/10', border: 'border-[#11C76F]/30', text: 'text-[#11C76F]', icon: 'https://upload.wikimedia.org/wikipedia/commons/5/5e/PicPay_Logogrande.png' },    
     'money': { label: 'Dinheiro', color: 'bg-emerald-600', bg: 'bg-emerald-900/10', border: 'border-emerald-500/30', text: 'text-emerald-400', icon: null },
     'outros': { label: 'Outros', color: 'bg-gray-700', bg: 'bg-gray-800/50', border: 'border-gray-700', text: 'text-gray-400', icon: null },
 };
@@ -179,6 +180,7 @@ export default function StandardView({
     });
 
     // --- FILTRO PARCELAS ---
+    // --- FILTRO PARCELAS ---
     const groupedInstallments = installments.reduce((acc: any, curr: any) => {
         const paid = isPaidThisMonth(curr);
         if ((curr.status === 'delayed' || curr.status === 'standby') && !paid) return acc;
@@ -186,8 +188,21 @@ export default function StandardView({
 
         const { m: startM, y: startY } = getStartData(curr);
         const monthsDiff = ((selectedYear - startY) * 12) + (monthIndex - startM);
-        const actualInstallment = 1 + (curr.current_installment || 0) + monthsDiff;
+        
+        // 🟢 MÁQUINA DO TEMPO: Conta quantos standbys essa conta teve no passado
+        let pastStandbys = 0;
+        const standbyArr = Array.isArray(curr.standby_months) ? curr.standby_months : JSON.parse(curr.standby_months || '[]');
+        
+        for (let i = 0; i < monthsDiff; i++) {
+            const checkM = (startM + i) % 12;
+            const checkY = startY + Math.floor((startM + i) / 12);
+            if (standbyArr.includes(`${months[checkM]}/${checkY}`)) pastStandbys++;
+        }
 
+        // Subtrai os meses congelados da parcela atual
+        const actualInstallment = 1 + (curr.current_installment || 0) + monthsDiff - pastStandbys;
+
+        // Se a parcela já passou do limite ou ainda não começou, não mostra
         if (actualInstallment < 1 || actualInstallment > curr.installments_count) return acc;
 
         const bank = curr.payment_method || 'outros';

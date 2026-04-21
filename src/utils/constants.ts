@@ -21,6 +21,7 @@ export const ACCOUNTS = [
     { id: 'caixa', label: 'Caixa', color: 'bg-[#005CA9]', text: 'text-white' },
     { id: 'bradesco', label: 'Bradesco', color: 'bg-[#CC092F]', text: 'text-white' },
     { id: 'c6', label: 'C6 Bank', color: 'bg-[#222]', text: 'text-white' },
+    {id:'picpay', label: 'PicPay', color: 'bg-[#11C76F]', bg: 'bg-[#11C76F]/10', border: 'border-[#11C76F]/30', text: 'text-[#11C76F]'},
     { id: 'money', label: 'Dinheiro', color: 'bg-emerald-600', text: 'text-white' },
     { id: 'outros', label: 'Outros', color: 'bg-gray-700', text: 'text-gray-300' },
 ];

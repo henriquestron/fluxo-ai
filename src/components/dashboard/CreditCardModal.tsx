@@ -60,6 +60,7 @@ const BANK_STYLES: any = {
         text: 'text-[#ff4d6f]', 
         icon: 'https://upload.wikimedia.org/wikipedia/commons/c/c3/Banco_Bradesco_logo.svg' 
     },
+    'picpay': { label: 'PicPay', color: 'bg-[#11C76F]', bg: 'bg-[#11C76F]/10', border: 'border-[#11C76F]/30', text: 'text-[#11C76F]', icon: 'https://upload.wikimedia.org/wikipedia/commons/5/5e/PicPay_Logogrande.png' },
     'c6': { 
         label: 'C6 Bank', 
         color: 'bg-[#222]', 

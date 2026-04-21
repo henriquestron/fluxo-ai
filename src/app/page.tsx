@@ -872,27 +872,33 @@ export default function FinancialDashboard() {
     }, [transactions, installments, recurring, user]);
 
 
+    const safeArray = (val: any) => {
+        if (Array.isArray(val)) return val;
+        if (typeof val === 'string') {
+            try { const p = JSON.parse(val); return Array.isArray(p) ? p : []; } catch { return []; }
+        }
+        return [];
+    };
+
     const loadData = async (userId: string, workspaceId: string) => {
         if (!userId || !workspaceId) return;
 
-        // Busca os dados financeiros normais
         const { data: trans } = await supabase.from('transactions').select('*').eq('user_id', userId).eq('context', workspaceId);
         const { data: inst } = await supabase.from('installments').select('*').eq('user_id', userId).eq('context', workspaceId);
         const { data: recur } = await supabase.from('recurring').select('*').eq('user_id', userId).eq('context', workspaceId);
+        const { data: goalsData } = await supabase.from('goals').select('*').eq('user_id', userId).order('deadline', { ascending: true });
 
-        // 🔥 AQUI ESTAVA FALTANDO: Busca as METAS no banco
-        const { data: goalsData } = await supabase
-            .from('goals')
-            .select('*')
-            .eq('user_id', userId)
-            .order('deadline', { ascending: true }); // Ordena por prazo
+        // 🟢 LIMPEZA: Removemos a gambiarra de somar +2 nas parcelas.
+        const normalize = (list: any[]) => list?.map(item => ({
+            ...item,
+            paid_months: safeArray(item.paid_months),
+            standby_months: safeArray(item.standby_months),
+            skipped_months: safeArray(item.skipped_months)
+        })) || [];
 
-        // Atualiza os estados
         if (trans) setTransactions(trans);
-        if (inst) setInstallments(inst);
-        if (recur) setRecurring(recur);
-
-        // 🔥 ATUALIZA O ESTADO DAS METAS
+        if (inst) setInstallments(normalize(inst)); // Voltou a ter as 10 parcelas originais perfeitas!
+        if (recur) setRecurring(normalize(recur));
         if (goalsData) setGoals(goalsData);
     };
 
@@ -937,18 +943,32 @@ export default function FinancialDashboard() {
         });
 
         // 2. PARCELAS ATRASADAS
+        // 2. PARCELAS ATRASADAS
         installments.forEach(inst => {
             if (inst.status !== 'standby' && inst.status !== 'delayed') {
                 const { m: startMonth, y: startYear } = getStartData(inst);
 
-                // Pega a diferença de meses até o mês ATUAL (que o usuário está visualizando na aba)
+                // Pega a diferença de meses até o mês ATUAL
                 const totalMonthsDiffUntilNow = ((selectedYear - startYear) * 12) + (currentMonthIdx - startMonth);
 
                 // 🟢 TRAVA DE FUTURO: Se a conta começa no futuro, pula fora!
                 if (totalMonthsDiffUntilNow < 0) return;
 
+                // Previne erro ao ler os standbys do banco
+                const standbyArr = Array.isArray(inst.standby_months) ? inst.standby_months : JSON.parse(inst.standby_months || '[]');
+
                 for (let i = 0; i <= totalMonthsDiffUntilNow; i++) {
-                    const instNum = 1 + (inst.current_installment || 0) + i;
+                    
+                    // 🟢 MÁQUINA DO TEMPO: Verifica quantos meses foram pulados ANTES deste mês 'i'
+                    let pastStandbys = 0;
+                    for (let step = 0; step < i; step++) {
+                        const stepM = (startMonth + step) % 12;
+                        const stepY = startYear + Math.floor((startMonth + step) / 12);
+                        if (standbyArr.includes(`${MONTHS[stepM]}/${stepY}`)) pastStandbys++;
+                    }
+
+                    // A parcela atual desconta os meses que ficou congelada
+                    const instNum = 1 + (inst.current_installment || 0) + i - pastStandbys;
 
                     // Só cobra se a parcela atual for válida (entre 1 e o total de parcelas)
                     if (instNum >= 1 && instNum <= inst.installments_count) {
@@ -957,8 +977,8 @@ export default function FinancialDashboard() {
                         const pMonthName = MONTHS[absMonthIndex % 12];
                         const paymentTag = `${pMonthName}/${pYear}`;
 
-                        // Verifica se NÃO está paga E se NÃO está em stand-by
-                        if (!isPaid(inst, paymentTag) && !inst.standby_months?.includes(paymentTag)) {
+                        // Verifica se NÃO está paga E se NÃO está em stand-by neste mês específico
+                        if (!isPaid(inst, paymentTag) && !standbyArr.includes(paymentTag)) {
                             pastDueList.push({
                                 ...inst,
                                 title: `${inst.title} (${instNum}/${inst.installments_count})`,
@@ -1787,11 +1807,22 @@ export default function FinancialDashboard() {
         const installTotal = installments.reduce((acc, curr) => {
             const paid = isPaid(curr, currentPaymentTag);
             if ((curr.status === 'delayed' || curr.status === 'standby') && !paid) return acc;
-            if (curr.standby_months?.includes(currentPaymentTag) && !paid) return acc;
+            if (safeArray(curr.standby_months).includes(currentPaymentTag) && !paid) return acc;
 
             const { m: startMonth, y: startYear } = getStartData(curr);
             const monthsDiff = ((selectedYear - startYear) * 12) + (monthIndex - startMonth);
-            const currentInstNum = 1 + (curr.current_installment || 0) + monthsDiff;
+            
+            // 🟢 MÁQUINA DO TEMPO: Conta quantos standbys essa conta teve no passado
+            let pastStandbys = 0;
+            const standbyArr = safeArray(curr.standby_months);
+            for (let i = 0; i < monthsDiff; i++) {
+                const checkM = (startMonth + i) % 12;
+                const checkY = startYear + Math.floor((startMonth + i) / 12);
+                if (standbyArr.includes(`${MONTHS[checkM]}/${checkY}`)) pastStandbys++;
+            }
+
+            // Subtrai os meses congelados para a parcela não avançar
+            const currentInstNum = 1 + (curr.current_installment || 0) + monthsDiff - pastStandbys;
 
             if (currentInstNum >= 1 && currentInstNum <= curr.installments_count) {
                 return acc + Number(curr.value_per_month);
@@ -1848,17 +1879,32 @@ export default function FinancialDashboard() {
             if (inst.status !== 'standby' && inst.status !== 'delayed') {
                 const { m: startMonth, y: startYear } = getStartData(inst);
                 const totalMonthsDiffUntilNow = ((selectedYear - startYear) * 12) + (monthIndex - startMonth);
+                
+                // Previne erro ao ler os standbys do banco
+                const standbyArr = Array.isArray(inst.standby_months) ? inst.standby_months : JSON.parse(inst.standby_months || '[]');
 
                 for (let i = 0; i < totalMonthsDiffUntilNow; i++) {
-                    const instNum = 1 + (inst.current_installment || 0) + i;
+                    
+                    // 🟢 MÁQUINA DO TEMPO AQUI TAMBÉM
+                    let pastStandbys = 0;
+                    for (let step = 0; step < i; step++) {
+                        const stepM = (startMonth + step) % 12;
+                        const stepY = startYear + Math.floor((startMonth + step) / 12);
+                        if (standbyArr.includes(`${MONTHS[stepM]}/${stepY}`)) pastStandbys++;
+                    }
+
+                    // Subtrai os meses congelados para saber a parcela real
+                    const instNum = 1 + (inst.current_installment || 0) + i - pastStandbys;
+
                     if (instNum >= 1 && instNum <= inst.installments_count) {
                         const absMonthIndex = (startMonth + i);
                         const pYear = startYear + Math.floor(absMonthIndex / 12);
                         const pMonthName = MONTHS[absMonthIndex % 12];
 
                         const paymentTag = `${pMonthName}/${pYear}`;
+                        
                         // 🟢 Só vira Dívida Acumulada se NÃO estiver pago E NÃO estiver em Standby
-                        if (!isPaid(inst, paymentTag) && !inst.standby_months?.includes(paymentTag)) {
+                        if (!isPaid(inst, paymentTag) && !standbyArr.includes(paymentTag)) {
                             accumulatedDebt += Number(inst.value_per_month);
                         }
                     }
