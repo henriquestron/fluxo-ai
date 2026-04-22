@@ -34,9 +34,10 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: 'Configuração do servidor incompleta.' }, { status: 500 });
         }
 
+        // 🟢 MUDANÇA 1: Adicionamos o partner_phone no select
         const { data: usersSettings } = await supabase
             .from('user_settings')
-            .select('user_id, whatsapp_phone, last_whatsapp_notification')
+            .select('user_id, whatsapp_phone, partner_phone, last_whatsapp_notification')
             .eq('notify_whatsapp', true)
             .not('whatsapp_phone', 'is', null);
 
@@ -96,20 +97,30 @@ export async function GET(request: Request) {
                     
                     const message = `🔔 *Lembrete: Contas de Hoje* 🔔\n\nOlá! Você tem *${billsDueToday.length} contas* pendentes para hoje, totalizando *${totalFmt}*.\n\n${billsList}\n\nAcesse o sistema para marcar como pago! 🚀`;
 
-                    const cleanPhone = setting.whatsapp_phone.replace(/\D/g, '');
-                    const finalPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
-                    const finalJid = `${finalPhone}@s.whatsapp.net`;
+                    // 🟢 MUDANÇA 2: Monta um array com os telefones disponíveis e dispara pra todos
+                    const phonesToNotify = [setting.whatsapp_phone, setting.partner_phone].filter(Boolean); // O .filter(Boolean) remove valores nulos/vazios
+                    let successForUser = false;
 
-                    const evoResponse = await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE_NAME}`, {
-                        method: 'POST',
-                        headers: { 'apikey': EVOLUTION_API_KEY as string, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ number: finalJid, options: { delay: 1200, presence: "composing" }, textMessage: { text: message } })
-                    });
+                    for (const phone of phonesToNotify) {
+                        const cleanPhone = phone.replace(/\D/g, '');
+                        const finalPhone = cleanPhone.startsWith('55') ? cleanPhone : `55${cleanPhone}`;
+                        const finalJid = `${finalPhone}@s.whatsapp.net`;
 
-                    if (evoResponse.ok) {
-                        // Atualiza com UTC puro no banco, na hora de puxar ele formata pro BR
+                        const evoResponse = await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE_NAME}`, {
+                            method: 'POST',
+                            headers: { 'apikey': EVOLUTION_API_KEY as string, 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ number: finalJid, options: { delay: 1200, presence: "composing" }, textMessage: { text: message } })
+                        });
+
+                        if (evoResponse.ok) {
+                            successForUser = true;
+                            disparos++;
+                        }
+                    }
+
+                    // Se enviou para pelo menos um, atualiza a data de notificação
+                    if (successForUser) {
                         await supabase.from('user_settings').update({ last_whatsapp_notification: new Date().toISOString() }).eq('user_id', userId);
-                        disparos++;
                     }
                 }
             } catch (err: any) {
