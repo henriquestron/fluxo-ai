@@ -109,6 +109,7 @@ export default function FinancialDashboard() {
     const [isReportOpen, setIsReportOpen] = useState(false);
     const [consultantLogo, setConsultantLogo] = useState<string | null>(null);
     const [isAgendaOpen, setIsAgendaOpen] = useState(false);
+    const totalSavedInGoals = goals.reduce((acc, goal) => acc + Number(goal.current_amount || 0), 0);
 
     // --- AUTH & USER DATA ---
     const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
@@ -1656,60 +1657,82 @@ export default function FinancialDashboard() {
     // --- FUNÇÕES DE METAS (NOVO) ---
 
     const handleGoalSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    
-    const title = formData.get('title') as string;
-    const current_amount = parseFloat(formData.get('current_amount') as string) || 0;
-    const deadline = formData.get('deadline') as string || null;
-    const icon = formData.get('icon') as string;
-    const color = formData.get('color') as string;
-    
-    // Extrai a lista de itens
-    const itemsRaw = formData.get('items') as string;
-    const items = itemsRaw ? JSON.parse(itemsRaw) : [];
-    
-    // Pega o valor alvo
-    const target_amount = parseFloat(formData.get('target_amount') as string);
+        e.preventDefault();
+        const formData = new FormData(e.currentTarget);
+        
+        const payload = {
+            user_id: getActiveUserId(),
+            title: formData.get('title'),
+            target_amount: Number(formData.get('target_amount')),
+            current_amount: Number(formData.get('current_amount') || 0),
+            deadline: formData.get('deadline') || null,
+            icon: formData.get('icon'),
+            color: formData.get('color'),
+            items: JSON.parse(formData.get('items') as string)
+        };
 
-    const payload = {
-        user_id: user?.id,
-        title,
-        target_amount,
-        current_amount,
-        deadline,
-        icon,
-        color,
-        items
-    };
+        const activeId = getActiveUserId();
+        const todayStr = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }); // Data no formato DD/MM/YYYY
 
-    try {
-        if (editingGoal) {
-            // 🟢 CORREÇÃO: O ".select().single()" devolve os dados atualizados para atualizar a tela na hora
-            const { data, error } = await supabase.from('goals').update(payload).eq('id', editingGoal.id).select().single();
-            if (error) throw error;
-            
-            // Atualiza a meta na lista sem precisar recarregar do banco
-            setGoals(prevGoals => prevGoals.map(g => g.id === editingGoal.id ? data : g));
-            toast.success("Meta atualizada com sucesso!");
-        } else {
-            // 🟢 CORREÇÃO: Pega o ID gerado pelo Supabase para não dar erro na tela
-            const { data, error } = await supabase.from('goals').insert([payload]).select().single();
-            if (error) throw error;
-            
-            // Adiciona a nova meta no final da lista
-            setGoals(prevGoals => [...prevGoals, data]);
-            toast.success("Meta criada com sucesso!");
+        try {
+            if (editingGoal) {
+                // 1. Descobre se o valor guardado mudou
+                const oldAmount = Number(editingGoal.current_amount || 0);
+                const newAmount = payload.current_amount;
+                const diff = newAmount - oldAmount;
+
+                // 2. Se mudou, cria a transação automática no extrato!
+                if (diff !== 0) {
+                    const transType = diff > 0 ? 'expense' : 'income'; // Aumentou a meta = sai dinheiro (expense). Diminuiu = volta dinheiro (income).
+                    const transTitle = diff > 0 ? `🎯 Ida para Meta: ${payload.title}` : `↩️ Resgate da Meta: ${payload.title}`;
+                    
+                    await supabase.from('transactions').insert([{
+                        user_id: activeId,
+                        context: currentWorkspace?.id,
+                        title: transTitle,
+                        amount: Math.abs(diff),
+                        type: transType,
+                        category: 'Metas',
+                        date: todayStr,
+                        status: 'active',
+                        is_paid: true, // Já entra pago para descontar/somar no saldo na hora
+                        target_month: activeTab
+                    }]);
+                }
+                
+                // 3. Atualiza a meta no banco
+                await supabase.from('goals').update(payload).eq('id', editingGoal.id);
+                toast.success('Meta e Extrato atualizados!');
+
+            } else {
+                // Se for uma Meta NOVA e já vier com dinheiro guardado
+                if (payload.current_amount > 0) {
+                    await supabase.from('transactions').insert([{
+                        user_id: activeId,
+                        context: currentWorkspace?.id,
+                        title: `🎯 Ida para Meta: ${payload.title}`,
+                        amount: payload.current_amount,
+                        type: 'expense',
+                        category: 'Metas',
+                        date: todayStr,
+                        status: 'active',
+                        is_paid: true,
+                        target_month: activeTab
+                    }]);
+                }
+                
+                await supabase.from('goals').insert([payload]);
+                toast.success('Meta criada com sucesso!');
+            }
+
+            if (activeId) loadData(activeId, currentWorkspace?.id);
+            setIsGoalModalOpen(false);
+
+        } catch (error) {
+            console.error("Erro ao salvar meta:", error);
+            toast.error("Ocorreu um erro ao salvar a meta.");
         }
-        
-        setIsGoalModalOpen(false);
-        setEditingGoal(null);
-        
-    } catch (error: any) {
-        console.error("Erro ao salvar meta:", error);
-        toast.error("Erro ao salvar a meta.");
-    }
-};
+    };
     const handleToggleGoalItem = async (goalId: number, itemId: string) => {
     const goalIndex = goals.findIndex(g => g.id === goalId);
     if (goalIndex === -1) return;
@@ -1796,13 +1819,16 @@ export default function FinancialDashboard() {
 
         // --- CÁLCULO DE ENTRADAS ---
         const incomeFixed = activeRecurring.filter(r => r.type === 'income' && !r.skipped_months?.includes(monthName)).reduce((acc, curr) => acc + Number(curr.value), 0);
-        const incomeVariable = transactions.filter(t => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc, curr) => acc + Number(curr.amount), 0);
-        const incomeTotal = incomeFixed + incomeVariable;
+        const incomeVariableList = transactions.filter(t => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby');
+        const incomeTotal = incomeFixed + incomeVariableList.reduce((acc, curr) => acc + Number(curr.amount), 0);
+        
+        // 🟢 Camada Visual de Entradas (Ignora resgates de 'Metas')
+        const displayIncome = incomeFixed + incomeVariableList.filter(t => t.category !== 'Metas').reduce((acc, curr) => acc + Number(curr.amount), 0);
 
         // --- CÁLCULO DE SAÍDAS DO MÊS ---
         const expenseFixed = activeRecurring.filter(r => r.type === 'expense' && !r.skipped_months?.includes(monthName)).reduce((acc, curr) => acc + Number(curr.value), 0);
-
-        const expenseVariable = transactions.filter(t => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc, curr) => acc + Number(curr.amount), 0);
+        const expenseVariableList = transactions.filter(t => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby');
+        const expenseVariable = expenseVariableList.reduce((acc, curr) => acc + Number(curr.amount), 0);
 
         const installTotal = installments.reduce((acc, curr) => {
             const paid = isPaid(curr, currentPaymentTag);
@@ -1830,6 +1856,11 @@ export default function FinancialDashboard() {
             return acc;
         }, 0);
 
+        const currentMonthObligations = expenseVariable + expenseFixed + installTotal;
+
+        // 🟢 Camada Visual de Saídas (Ignora transferências para 'Metas')
+        const displayExpense = expenseFixed + installTotal + expenseVariableList.filter(t => t.category !== 'Metas').reduce((acc, curr) => acc + Number(curr.amount), 0);
+
         // --- STAND-BY GLOBAL (Mostra o total congelado em TODOS os meses) ---
         let delayedTotal = 0;
 
@@ -1838,7 +1869,6 @@ export default function FinancialDashboard() {
         });
 
         installments.forEach(i => {
-            // 🟢 PREVENÇÃO DE ERRO
             const standbyArr = Array.isArray(i.standby_months) ? i.standby_months : [];
 
             if ((i.status === 'delayed' || i.status === 'standby') && standbyArr.length === 0) {
@@ -1851,7 +1881,6 @@ export default function FinancialDashboard() {
 
         recurring.forEach(r => {
             if (r.type === 'expense') {
-                // 🟢 PREVENÇÃO DE ERRO
                 const standbyArr = Array.isArray(r.standby_months) ? r.standby_months : [];
 
                 if ((r.status === 'delayed' || r.status === 'standby') && standbyArr.length === 0) {
@@ -1880,12 +1909,10 @@ export default function FinancialDashboard() {
                 const { m: startMonth, y: startYear } = getStartData(inst);
                 const totalMonthsDiffUntilNow = ((selectedYear - startYear) * 12) + (monthIndex - startMonth);
                 
-                // Previne erro ao ler os standbys do banco
                 const standbyArr = Array.isArray(inst.standby_months) ? inst.standby_months : JSON.parse(inst.standby_months || '[]');
 
                 for (let i = 0; i < totalMonthsDiffUntilNow; i++) {
                     
-                    // 🟢 MÁQUINA DO TEMPO AQUI TAMBÉM
                     let pastStandbys = 0;
                     for (let step = 0; step < i; step++) {
                         const stepM = (startMonth + step) % 12;
@@ -1893,7 +1920,6 @@ export default function FinancialDashboard() {
                         if (standbyArr.includes(`${MONTHS[stepM]}/${stepY}`)) pastStandbys++;
                     }
 
-                    // Subtrai os meses congelados para saber a parcela real
                     const instNum = 1 + (inst.current_installment || 0) + i - pastStandbys;
 
                     if (instNum >= 1 && instNum <= inst.installments_count) {
@@ -1903,7 +1929,6 @@ export default function FinancialDashboard() {
 
                         const paymentTag = `${pMonthName}/${pYear}`;
                         
-                        // 🟢 Só vira Dívida Acumulada se NÃO estiver pago E NÃO estiver em Standby
                         if (!isPaid(inst, paymentTag) && !standbyArr.includes(paymentTag)) {
                             accumulatedDebt += Number(inst.value_per_month);
                         }
@@ -1923,7 +1948,6 @@ export default function FinancialDashboard() {
                     const checkMonthName = MONTHS[absMonthIndex % 12];
                     const checkTag = `${checkMonthName}/${checkYear}`;
 
-                    // 🟢 Mesma regra para as fixas
                     if (!isPaid(rec, checkTag) && !rec.skipped_months?.includes(checkMonthName) && !rec.standby_months?.includes(checkTag)) {
                         accumulatedDebt += Number(rec.value);
                     }
@@ -1931,11 +1955,11 @@ export default function FinancialDashboard() {
             }
         });
 
-        const currentMonthObligations = expenseVariable + expenseFixed + installTotal;
-
         return {
             income: incomeTotal,
+            displayIncome: displayIncome, // 🟢 Valor "visual" de Entradas (Sem Metas)
             expenseTotal: currentMonthObligations,
+            displayExpense: displayExpense, // 🟢 Valor "visual" de Saídas (Sem Metas)
             accumulatedDebt: accumulatedDebt,
             balance: incomeTotal - currentMonthObligations,
             delayedTotal: delayedTotal
@@ -2382,6 +2406,7 @@ export default function FinancialDashboard() {
                     clientStatus={undefined}
                 />
             ) : (
+                
                 <DashboardHeader
                     user={user}
                     userPlan={userPlan}
@@ -2416,6 +2441,7 @@ export default function FinancialDashboard() {
                     clientStatus={myConsultantLink?.status}
                     onOpenReport={() => setIsReportOpen(true)}
                     setIsAgendaOpen={setIsAgendaOpen}
+                    totalSavedAmount={totalSavedInGoals}
                 />
             )}
 
@@ -2445,7 +2471,7 @@ export default function FinancialDashboard() {
                 clients={clients}
             />
 
-
+            
             {/* --- NOVO CARD DE PENDÊNCIAS (SÓ APARECE SE TIVER DÍVIDA) --- */}
             {currentMonthData.accumulatedDebt > 0 && (
 

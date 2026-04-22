@@ -3,7 +3,7 @@ import {
     ShieldCheck, Briefcase, User, UserPlus, BarChart3, FileSpreadsheet,
     Lock, HelpCircle, ChevronDown, CreditCard, Smartphone, Palette,
     LogOut, Sparkles, Plus, Search, Calculator, Trash2, FileUp,
-    Link, FileSignature, FileText, Calendar
+    Link, FileSignature, FileText, Calendar, Wallet // 🟢 Adicionei Wallet aqui
 } from 'lucide-react';
 import NotificationBell from '@/components/dashboard/NotificationBell';
 
@@ -41,6 +41,7 @@ interface DashboardHeaderProps {
     client: any;
     setIsImportOpen: (v: boolean) => void;
     setIsAgendaOpen: (v: boolean) => void;
+    totalSavedAmount?: number; // 🟢 Nova propriedade para o Cofre
 }
 
 export default function DashboardHeader({
@@ -49,7 +50,8 @@ export default function DashboardHeader({
     setIsProfileModalOpen, handleManageSubscription, whatsappEnabled, toggleWhatsappNotification,
     setIsCustomizationOpen, handleCheckout, handleLogout,
     setIsAIOpen, setIsCreditCardModalOpen, openNewTransactionModal, setIsCalculatorOpen, handleRemoveClient, client,
-    setIsImportOpen, setIsTutorialOpen, setIsContractOpen, handleClientContractUpload, isManagedClient, clientContractUrl,setIsAgendaOpen, clientStatus, onOpenContract, onOpenReport
+    setIsImportOpen, setIsTutorialOpen, setIsContractOpen, handleClientContractUpload, isManagedClient, clientContractUrl, setIsAgendaOpen, clientStatus, onOpenContract, onOpenReport,
+    totalSavedAmount = 0 // 🟢 Valor padrão 0
 }: DashboardHeaderProps) {
 
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -66,7 +68,6 @@ export default function DashboardHeader({
 
                 <div id="menu-clientes" className="w-full mt-2 flex justify-center xl:justify-start">
                     {(userPlan === 'agent') && (
-                        /* 🟢 Barra do Consultor: Flex-wrap apenas no mobile, Min-w-max original no PC */
                         <div id="agent-bar" className="w-full max-w-md xl:max-w-none bg-purple-950/20 border border-purple-500/20 rounded-lg p-1.5 overflow-x-auto scrollbar-hide backdrop-blur-sm">
                             <div className="flex flex-wrap xl:flex-nowrap items-center justify-center xl:justify-start gap-2 xl:gap-3 px-1 xl:min-w-max">
                                 <div className="hidden sm:flex items-center gap-1.5 text-purple-400 font-bold uppercase text-[10px] tracking-wider whitespace-nowrap">
@@ -99,11 +100,8 @@ export default function DashboardHeader({
             {/* LADO DIREITO: Ações */}
             <div className="flex flex-col xl:flex-row gap-3 w-full xl:w-auto">
 
-                {/* GRUPO 1: Utilitários e Menu */}
-                {/* 🟢 Mobile inverte a ordem (order-2) para botões principais ficarem acima, PC mantém (xl:order-none) */}
                 <div className="flex flex-wrap xl:flex-nowrap items-center justify-center xl:justify-start gap-2 w-full xl:w-auto order-2 xl:order-none">
 
-                    {/* 🟢 Ícones com tamanho original size={20} e h-10 w-10 no PC */}
                     <div className="flex items-center gap-1 xl:gap-2 bg-gray-900/50 p-1 rounded-xl border border-gray-800 overflow-x-auto scrollbar-hide max-w-full">
                         <button id="btn-history" onClick={() => setIsHistoryOpen(true)} className="h-9 w-9 xl:h-10 xl:w-10 shrink-0 flex items-center justify-center rounded-lg text-gray-400 hover:text-cyan-400 hover:bg-gray-800 transition" title="Ver Gráfico Anual">
                             <BarChart3 size={20} />
@@ -142,7 +140,6 @@ export default function DashboardHeader({
                         </button>
                     </div>
 
-                    {/* BOTÕES EXCLUSIVOS DO CONSULTOR E ADMIN */}
                     {(userPlan === 'agent') && (
                         <div className="flex items-center gap-1 xl:gap-2">
                             {viewingAs?.contract_url && (
@@ -166,8 +163,21 @@ export default function DashboardHeader({
 
                     <div className="hidden xl:block w-px h-8 bg-gray-800 mx-1"></div>
 
-                    {/* 🟢 O Perfil/Sininho centraliza no mobile e fica à direita no PC */}
                     <div className="flex items-center justify-center w-full xl:w-auto gap-2 pl-0 xl:pl-2 mt-2 xl:mt-0 xl:border-none">
+                        
+                        {/* 🟢 O BALÃO DO COFRE FICARÁ AQUI */}
+                        <div className="hidden sm:flex items-center gap-2 bg-emerald-950/30 border border-emerald-500/30 px-3 h-11 rounded-xl cursor-default hover:bg-emerald-900/20 transition-colors" title="Dinheiro total guardado nas metas">
+                            <div className="bg-emerald-500/20 p-1.5 rounded-lg">
+                                <Wallet size={14} className="text-emerald-400" />
+                            </div>
+                            <div className="flex flex-col text-left justify-center">
+                                <span className="text-[9px] uppercase tracking-widest text-emerald-500/80 font-bold leading-none mb-0.5">Cofre (Metas)</span>
+                                <span className="text-emerald-400 text-sm font-bold leading-none font-mono">
+                                    R$ {totalSavedAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                </span>
+                            </div>
+                        </div>
+
                         <NotificationBell userId={user.id} />
 
                         <div id="btn-menu" className="relative z-50">
@@ -232,8 +242,6 @@ export default function DashboardHeader({
                     </div>
                 </div>
 
-                {/* GRUPO 2: Ações Principais */}
-                {/* 🟢 Mobile inverte a ordem (order-1) para botões principais ficarem acima, PC mantém (xl:order-none) */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 xl:flex gap-2 xl:gap-3 w-full xl:w-auto order-1 xl:order-none">
 
                     <button id="btn-ai" onClick={() => setIsAIOpen(true)} className={`h-11 px-3 xl:px-5 rounded-xl font-bold transition flex items-center justify-center gap-2 text-sm shadow-lg border border-white/5 whitespace-nowrap ${['premium', 'pro', 'agent', 'admin'].includes(userPlan) ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white hover:brightness-110' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>

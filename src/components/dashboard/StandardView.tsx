@@ -302,10 +302,16 @@ export default function StandardView({
             </div>
 
             {/* ... CARDS DO TOPO ... */}
+            {/* ... CARDS DO TOPO ... */}
             <div className={`grid gap-4 mb-8 ${gridClass}`}>
                 <Card elementId="card-saldo" title="Saldo Previsto" value={displayBalance} icon={Wallet} type={displayBalance >= 0 ? 'income' : 'negative'} extraLabel={previousSurplus > 0 ? `+ R$ ${previousSurplus.toFixed(2)} (Mês Passado)` : null} />
-                <Card title="Entradas" value={currentMonthData.income} icon={TrendingUp} type="income" />
-                <Card title="Saídas Totais" value={currentMonthData.expenseTotal} icon={TrendingDown} type="expense" subValueLabel={currentMonthData.accumulatedDebt > 0 ? (<span className="text-red-400 font-bold flex items-center gap-1"><AlertCircle size={12} /> + R$ {currentMonthData.accumulatedDebt.toFixed(2)} Pendente</span>) : null} />
+                
+                {/* 🟢 Trocamos .income por .displayIncome */}
+                <Card title="Entradas" value={currentMonthData.displayIncome || currentMonthData.income} icon={TrendingUp} type="income" />
+                
+                {/* 🟢 Trocamos .expenseTotal por .displayExpense */}
+                <Card title="Saídas Totais" value={currentMonthData.displayExpense || currentMonthData.expenseTotal} icon={TrendingDown} type="expense" subValueLabel={currentMonthData.accumulatedDebt > 0 ? (<span className="text-red-400 font-bold flex items-center gap-1"><AlertCircle size={12} /> + R$ {currentMonthData.accumulatedDebt.toFixed(2)} Pendente</span>) : null} />
+                
                 {hasDelayed && (<Card title="Em Stand-by" value={currentMonthData.delayedTotal} icon={Clock} type="warning" subValueLabel="Valores Adiados" />)}
             </div>
 
