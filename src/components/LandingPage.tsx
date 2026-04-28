@@ -5,7 +5,8 @@ import { createClient } from "@supabase/supabase-js";
 import { 
     ShieldCheck, Sparkles, Smartphone, BarChart3, 
     Zap, CheckCircle2, Lock, ArrowRight, 
-    LayoutDashboard, Layers, TrendingUp, Play, Briefcase, Users, Tag
+    LayoutDashboard, Layers, TrendingUp, Play, Briefcase, Users, Tag,
+    FileSignature, Calendar, Brain, RefreshCw
 } from 'lucide-react';
 
 // 🟢 Inicializa o Supabase
@@ -327,13 +328,13 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                         </div>
                     </div>
 
-                    {/* 🟢 BANNER PARA CONSULTORES (Ponte para o B2B) */}
+                    {/* 🟢 BANNER PARA CONSULTORES (Ponte para o B2B) - ATUALIZADO COM AS FUNCIONALIDADES */}
                     <div className="mt-12 bg-gradient-to-r from-amber-500/10 to-orange-500/5 border border-amber-500/20 rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-6 max-w-4xl mx-auto cursor-pointer hover:border-amber-500/40 transition" onClick={scrollToConsultant}>
                         <div className="flex items-center gap-4 text-left">
                             <div className="p-3 bg-amber-500/20 text-amber-500 rounded-xl shrink-0"><Briefcase size={24}/></div>
                             <div>
-                                <h4 className="text-white font-bold text-lg">Procurando o plano para Consultores?</h4>
-                                <p className="text-gray-400 text-sm">Gerencie múltiplos clientes, audite contas e gere relatórios com nosso painel B2B.</p>
+                                <h4 className="text-white font-bold text-lg">Solução para Consultores Financeiros</h4>
+                                <p className="text-gray-400 text-sm">Gerencie clientes, gere contratos, relatórios com IA e agenda integrada. Tudo em um só lugar.</p>
                             </div>
                         </div>
                         <button className="px-6 py-2 bg-amber-600/20 text-amber-500 font-bold rounded-lg border border-amber-500/50 hover:bg-amber-500 hover:text-black transition whitespace-nowrap">
@@ -344,83 +345,86 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                 </div>
             </section>
 
-            {/* --- ÁREA PARA CONSULTORES --- */}
+            {/* --- ÁREA PARA CONSULTORES (B2B) - FUNCIONALIDADES DETALHADAS --- */}
             <section id="consultant-section" className="py-16 md:py-24 bg-[#08080c] relative overflow-hidden border-t border-white/5 scroll-mt-20">
                 <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-5 pointer-events-none"></div>
                 <div className="absolute bottom-0 right-0 w-[300px] h-[300px] md:w-[500px] md:h-[500px] bg-amber-500/5 rounded-full blur-[80px] md:blur-[120px] pointer-events-none"></div>
 
                 <div className="max-w-6xl mx-auto px-4 sm:px-6 relative z-10">
-                    <div className="bg-[#111] border border-gray-800 rounded-3xl p-6 md:p-16 flex flex-col lg:flex-row items-center gap-12 shadow-2xl">
-                        <div className="flex-1 w-full text-center lg:text-left">
+                    <div className="bg-[#111] border border-gray-800 rounded-3xl p-6 md:p-16 shadow-2xl">
+                        <div className="text-center mb-12">
                             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-900/20 border border-amber-500/30 text-amber-500 text-xs font-bold uppercase tracking-wider mb-6">
-                                <Briefcase size={12} /> Para Profissionais
+                                <Briefcase size={12} /> Plano Consultor B2B
                             </div>
                             <h2 className="text-3xl md:text-5xl font-black text-white mb-6">
-                                Você é Contador ou <br/>Consultor Financeiro?
+                                O que você pode fazer no <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-500">Plano Consultor</span>
                             </h2>
-                            <p className="text-gray-400 text-base md:text-lg mb-8 leading-relaxed">
-                                Gerencie a carteira de múltiplos clientes em um único painel. 
-                                Ofereça o "Meu Aliado" como sua ferramenta oficial e tenha acesso administrativo em tempo real.
+                            <p className="text-gray-400 text-base md:text-lg max-w-3xl mx-auto">
+                                Ferramentas exclusivas para profissionais que querem escalar seus resultados e oferecer um serviço de alto valor.
                             </p>
-
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 text-left">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-gray-800 rounded-lg text-amber-500"><Users size={20}/></div>
-                                    <span className="text-sm font-bold text-gray-300">Gestão de Carteira</span>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-gray-800 rounded-lg text-amber-500"><Lock size={20}/></div>
-                                    <span className="text-sm font-bold text-gray-300">Acesso Administrativo</span>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-gray-800 rounded-lg text-amber-500"><Zap size={20}/></div>
-                                    <span className="text-sm font-bold text-gray-300">Automação para Clientes</span>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-gray-800 rounded-lg text-amber-500"><BarChart3 size={20}/></div>
-                                    <span className="text-sm font-bold text-gray-300">Relatórios White-label</span>
-                                </div>
-                            </div>
-
-                            <button onClick={() => handlePlanClick('agent')} className="w-full sm:w-auto px-8 py-4 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl transition shadow-lg shadow-amber-900/20">
-                                Criar Conta de Consultor
-                            </button>
                         </div>
-                        
-                        {/* Card Visual B2B */}
-                        <div className="flex-1 w-full flex justify-center">
-                            <div className="bg-[#1a1a1a] p-6 md:p-8 rounded-2xl border border-gray-700 w-full max-w-sm transform lg:rotate-3 hover:rotate-0 transition duration-500 shadow-2xl">
-                                <div className="flex items-center gap-4 mb-6 border-b border-gray-700 pb-4">
-                                    <div className="w-12 h-12 rounded-full bg-amber-500 flex items-center justify-center font-bold text-black text-xl shrink-0">VF</div>
-                                    <div>
-                                        <div className="font-bold text-white text-lg">Vitor Finanças</div>
-                                        <div className="text-xs text-amber-500 uppercase font-bold">Consultor Agent</div>
-                                    </div>
+
+                        {/* Grid de funcionalidades B2B */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+                            {/* 1. Gerenciar perfis em tempo real */}
+                            <div className="bg-[#1a1a1a] rounded-2xl p-6 border border-gray-700 hover:border-amber-500/40 transition group">
+                                <div className="w-14 h-14 bg-amber-900/20 text-amber-500 rounded-2xl flex items-center justify-center mb-5 group-hover:scale-110 transition">
+                                    <RefreshCw size={28} />
                                 </div>
-                                <div className="space-y-3">
-                                    <div className="flex justify-between items-center bg-gray-800 p-3 rounded-xl border border-gray-700">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                                            <span className="text-sm text-gray-300">Cliente A. Silva</span>
-                                        </div>
-                                        <span className="text-xs font-mono text-green-400">R$ 12k</span>
-                                    </div>
-                                    <div className="flex justify-between items-center bg-gray-800 p-3 rounded-xl border border-gray-700">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-2 h-2 rounded-full bg-red-500"></div>
-                                            <span className="text-sm text-gray-300">Padaria Central</span>
-                                        </div>
-                                        <span className="text-xs font-mono text-red-400">-R$ 2k</span>
-                                    </div>
-                                    <div className="flex justify-between items-center bg-gray-800 p-3 rounded-xl border border-gray-700">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                                            <span className="text-sm text-gray-300">Família Souza</span>
-                                        </div>
-                                        <span className="text-xs font-mono text-blue-400">R$ 5k</span>
-                                    </div>
-                                </div>
+                                <h3 className="text-xl font-bold text-white mb-2">Gestão de Perfis em Tempo Real</h3>
+                                <p className="text-gray-400 leading-relaxed">
+                                    Acesse e gerencie as contas dos seus clientes instantaneamente. Visualize saldos, movimentações e histórico financeiro sem atrasos.
+                                </p>
                             </div>
+
+                            {/* 2. Gerar contrato diretamente pelo site */}
+                            <div className="bg-[#1a1a1a] rounded-2xl p-6 border border-gray-700 hover:border-amber-500/40 transition group">
+                                <div className="w-14 h-14 bg-amber-900/20 text-amber-500 rounded-2xl flex items-center justify-center mb-5 group-hover:scale-110 transition">
+                                    <FileSignature size={28} />
+                                </div>
+                                <h3 className="text-xl font-bold text-white mb-2">Geração de Contratos</h3>
+                                <p className="text-gray-400 leading-relaxed">
+                                    Crie contratos personalizados com seus clientes diretamente pelo site. Assinatura digital integrada e armazenamento na nuvem.
+                                </p>
+                            </div>
+
+                            {/* 3. IA para relatórios financeiros */}
+                            <div className="bg-[#1a1a1a] rounded-2xl p-6 border border-gray-700 hover:border-amber-500/40 transition group">
+                                <div className="w-14 h-14 bg-amber-900/20 text-amber-500 rounded-2xl flex items-center justify-center mb-5 group-hover:scale-110 transition">
+                                    <Brain size={28} />
+                                </div>
+                                <h3 className="text-xl font-bold text-white mb-2">Relatórios com IA</h3>
+                                <p className="text-gray-400 leading-relaxed">
+                                    Utilize inteligência artificial para gerar relatórios detalhados da situação financeira dos clientes. Análises preditivas, insights e recomendações personalizadas.
+                                </p>
+                            </div>
+
+                            {/* 4. Agenda integrada */}
+                            <div className="bg-[#1a1a1a] rounded-2xl p-6 border border-gray-700 hover:border-amber-500/40 transition group">
+                                <div className="w-14 h-14 bg-amber-900/20 text-amber-500 rounded-2xl flex items-center justify-center mb-5 group-hover:scale-110 transition">
+                                    <Calendar size={28} />
+                                </div>
+                                <h3 className="text-xl font-bold text-white mb-2">Agenda Integrada</h3>
+                                <p className="text-gray-400 leading-relaxed">
+                                    Agende reuniões com seus clientes diretamente pelo site. Sincronize com Google Calendar, receba notificações e gerencie sua rotina profissional.
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Benefícios adicionais e CTA */}
+                        <div className="text-center pt-6 border-t border-gray-800">
+                            <div className="flex flex-wrap justify-center gap-4 mb-8">
+                                <span className="bg-[#1a1a1a] px-4 py-2 rounded-full text-sm text-gray-300 border border-gray-700">✔️ White Label personalizado</span>
+                                <span className="bg-[#1a1a1a] px-4 py-2 rounded-full text-sm text-gray-300 border border-gray-700">✔️ Suporte prioritário 24/7</span>
+                                <span className="bg-[#1a1a1a] px-4 py-2 rounded-full text-sm text-gray-300 border border-gray-700">✔️ Onboarding para sua equipe</span>
+                            </div>
+                            <button 
+                                onClick={() => handlePlanClick('agent')}
+                                className="px-10 py-4 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-bold rounded-xl transition shadow-lg shadow-amber-900/20 text-lg inline-flex items-center gap-2"
+                            >
+                                Criar Conta de Consultor <ArrowRight size={20} />
+                            </button>
+                            <p className="text-gray-500 text-sm mt-6">Teste grátis por 14 dias. Sem compromisso.</p>
                         </div>
                     </div>
                 </div>
