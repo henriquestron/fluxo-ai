@@ -69,6 +69,7 @@ const BANK_STYLES: any = {
         text: 'text-gray-300', 
         icon: 'https://upload.wikimedia.org/wikipedia/commons/7/77/Logo_C6_Bank.svg' 
     },
+    
     'money': { 
         label: 'Dinheiro', 
         color: 'bg-emerald-600', 

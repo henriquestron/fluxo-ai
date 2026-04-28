@@ -6,7 +6,7 @@ import {
     ShieldCheck, Sparkles, Smartphone, BarChart3,
     Zap, CheckCircle2, Lock, ArrowRight,
     LayoutDashboard, Layers, TrendingUp, Play, Briefcase, Users, Tag,
-    FileSignature, Calendar, Brain, RefreshCw
+    FileSignature, Calendar, Brain, RefreshCw, MessageSquare, Crown
 } from 'lucide-react';
 
 // 🟢 Inicializa o Supabase
@@ -284,51 +284,72 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
 
             {/* --- PRICING PESSOAL --- */}
             <section className="py-16 md:py-24 bg-[#0a0a0a] border-t border-white/5">
-                <div className="max-w-6xl mx-auto px-4 sm:px-6 text-center">
-                    <h2 className="text-3xl md:text-5xl font-black mb-4">Planos Pessoais</h2>
-                    <p className="text-gray-400 mb-12">Comece organizando sua vida grátis.</p>
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center">
+                    <h2 className="text-3xl md:text-5xl font-black mb-4">Escolha seu Poder 🚀</h2>
+                    <p className="text-gray-400 mb-12 max-w-2xl mx-auto">
+                        Do iniciante ao profissional, temos a ferramenta exata para sua evolução financeira.
+                    </p>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 text-left items-start">
-                        {/* START */}
-                        <div className="p-6 md:p-8 rounded-3xl bg-[#111] border border-gray-800 flex flex-col hover:border-gray-600 transition h-full">
-                            <h3 className="text-gray-400 font-bold mb-2">Start</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 text-left items-stretch">
+                        
+                        {/* PLANO START */}
+                        <div className="p-6 md:p-8 rounded-3xl bg-[#111] border border-gray-800 flex flex-col hover:border-gray-600 transition group relative overflow-hidden h-full">
+                            <h3 className="text-gray-400 font-bold uppercase tracking-widest mb-4 text-sm">Start</h3>
                             {renderPrice('start', '10,00')}
-                            <ul className="space-y-4 mb-8 flex-1">
-                                <li className="flex gap-3 text-sm text-gray-300"><CheckCircle2 size={18} className="text-gray-600 shrink-0" /> Lançamentos Ilimitados</li>
-                                <li className="flex gap-3 text-sm text-gray-300"><CheckCircle2 size={18} className="text-gray-600 shrink-0" /> Acesso ao Painel</li>
-                                <li className="flex gap-3 text-sm text-gray-500 line-through"><Zap size={18} className="shrink-0" /> Automação WhatsApp</li>
+                            
+                            <ul className="space-y-4 mb-8 flex-1 text-sm text-gray-400">
+                                <li className="flex gap-3"><CheckCircle2 size={18} className="text-emerald-500 shrink-0" /> Faturas com ícones personalizados</li>
+                                <li className="flex gap-3"><CheckCircle2 size={18} className="text-emerald-500 shrink-0" /> Relatórios Excel com filtros</li>
+                                <li className="flex gap-3"><CheckCircle2 size={18} className="text-emerald-500 shrink-0" /> Importação IA (Fotos e anotações)</li>
+                                <li className="flex gap-3"><CheckCircle2 size={18} className="text-emerald-500 shrink-0" /> Calculadora e Gráfico Anual</li>
+                                <li className="flex gap-3"><CheckCircle2 size={18} className="text-emerald-500 shrink-0" /> Sistema de Metas e Compras</li>
+                                <li className="flex gap-3"><CheckCircle2 size={18} className="text-emerald-500 shrink-0" /> Contas em Stand-by (Saldo Devedor)</li>
+                                <li className="flex gap-3 text-orange-400 font-bold"><Zap size={18} className="shrink-0" /> IA do Site (Uso Limitado)</li>
                             </ul>
-                            <button onClick={() => handlePlanClick('start')} className="w-full py-3 rounded-xl border border-gray-700 hover:bg-gray-800 text-white font-bold transition">Escolher Start</button>
+                            
+                            <button onClick={() => handlePlanClick('start')} className="w-full py-4 rounded-xl border border-gray-700 hover:bg-white hover:text-black font-bold transition mt-auto">Escolher Start</button>
                         </div>
 
-                        {/* PLUS (Destaque) */}
-                        <div className="p-6 md:p-8 rounded-3xl bg-[#151515] border border-cyan-500/30 relative flex flex-col shadow-2xl shadow-cyan-900/10 z-10 
-                                      transform md:scale-105 lg:scale-110 hover:scale-[1.02] md:hover:scale-[1.07] lg:hover:scale-[1.12] transition duration-300 my-4 md:my-0 h-full ring-1 ring-cyan-500/20">
-                            <div className="absolute top-0 right-0 bg-cyan-600 text-white text-[10px] md:text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-2xl">RECOMENDADO</div>
-                            <h3 className="text-cyan-500 font-bold mb-2 flex items-center gap-2"><Zap size={16} /> Plus</h3>
+                        {/* PLANO PREMIUM (PLUS) - Destaque */}
+                        <div className="p-6 md:p-8 rounded-3xl bg-[#151515] border border-cyan-500/50 relative flex flex-col shadow-2xl shadow-cyan-900/20 z-10 transform md:scale-105 hover:scale-[1.02] md:hover:scale-[1.08] transition duration-300 my-4 md:my-0 h-full ring-1 ring-cyan-500/30">
+                            <div className="absolute top-0 right-0 bg-cyan-600 text-white text-[10px] md:text-xs font-black px-4 py-1 rounded-bl-xl rounded-tr-3xl uppercase tracking-tighter">O MAIS VENDIDO</div>
+                            <h3 className="text-cyan-400 font-bold uppercase tracking-widest mb-4 flex items-center gap-2 text-sm"><Sparkles size={16} /> Premium</h3>
                             {renderPrice('premium', '29,90')}
-                            <ul className="space-y-4 mb-8 flex-1">
-                                <li className="flex gap-3 text-sm text-white"><CheckCircle2 size={18} className="text-cyan-500 shrink-0" /> Tudo do Start</li>
-                                <li className="flex gap-3 text-sm text-white"><CheckCircle2 size={18} className="text-cyan-500 shrink-0" /> WhatsApp Integrado</li>
-                                <li className="flex gap-3 text-sm text-white"><CheckCircle2 size={18} className="text-cyan-500 shrink-0" /> Leitura de Extratos</li>
+                            
+                            <ul className="space-y-4 mb-8 flex-1 text-sm text-white">
+                                <li className="flex gap-3 font-bold text-cyan-400"><CheckCircle2 size={18} className="shrink-0" /> Tudo do Plano Start</li>
+                                <li className="flex gap-3 font-black text-cyan-500 italic"><Sparkles size={18} className="shrink-0" /> IA do Site: Lançamentos & Simulações</li>
+                                <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500 shrink-0" /> Adição Automática via Texto/Foto</li>
+                                <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500 shrink-0" /> Identificação (Fixa, Variável, Parcela)</li>
+                                <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500 shrink-0" /> Personalização de Layout e Cores</li>
+                                <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500 shrink-0" /> Simulação de Cenários e Consultoria</li>
+                                <li className="flex gap-3 font-bold"><CheckCircle2 size={18} className="text-cyan-500 shrink-0" /> Criação de Múltiplos Perfis de Conta</li>
+                                <li className="flex gap-3 text-gray-500 line-through"><Smartphone size={18} className="shrink-0" /> IA integrada no WhatsApp</li>
                             </ul>
-                            <button onClick={() => handlePlanClick('premium')} className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:to-blue-500 text-white font-bold transition shadow-lg">Quero Automação</button>
+                            
+                            <button onClick={() => handlePlanClick('premium')} className="w-full py-4 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black transition shadow-lg text-lg mt-auto">Quero o Premium</button>
                         </div>
 
-                        {/* PRO */}
-                        <div className="p-6 md:p-8 rounded-3xl bg-[#111] border border-purple-500/20 flex flex-col hover:border-purple-500/40 transition h-full">
-                            <h3 className="text-purple-400 font-bold mb-2">Pro</h3>
+                        {/* PLANO PRO */}
+                        <div className="p-6 md:p-8 rounded-3xl bg-[#111] border border-purple-500/30 flex flex-col hover:border-purple-500/60 transition group relative overflow-hidden h-full">
+                            <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-purple-600 to-pink-600"></div>
+                            <h3 className="text-purple-400 font-bold uppercase tracking-widest mb-4 flex items-center gap-2 text-sm"><Crown size={16} /> Pro</h3>
                             {renderPrice('pro', '39,90')}
-                            <ul className="space-y-4 mb-8 flex-1">
-                                <li className="flex gap-3 text-sm text-gray-300"><CheckCircle2 size={18} className="text-purple-500 shrink-0" /> Tudo do Plus</li>
-                                <li className="flex gap-3 text-sm text-gray-300"><CheckCircle2 size={18} className="text-purple-500 shrink-0" /> IA Consultora (GPT-4)</li>
-                                <li className="flex gap-3 text-sm text-gray-300"><CheckCircle2 size={18} className="text-purple-500 shrink-0" /> Múltiplos Perfis</li>
+                            
+                            <ul className="space-y-4 mb-8 flex-1 text-sm text-gray-300">
+                                <li className="flex gap-3 font-bold text-purple-400"><CheckCircle2 size={18} className="shrink-0" /> Tudo do Plano Premium</li>
+                                <li className="flex gap-3 font-black text-white italic"><MessageSquare size={18} className="text-emerald-500 shrink-0" /> Notificações de Contas via WhatsApp</li>
+                                <li className="flex gap-3 font-black text-white italic"><Smartphone size={18} className="text-emerald-500 shrink-0" /> IA Integrada no WhatsApp (24h)</li>
+                                <li className="flex gap-3"><CheckCircle2 size={18} className="text-purple-500 shrink-0" /> Adição via Áudio/Foto no Zap</li>
+                                <li className="flex gap-3"><CheckCircle2 size={18} className="text-purple-500 shrink-0" /> Configuração de Perfis via WhatsApp</li>
+                                <li className="flex gap-3"><CheckCircle2 size={18} className="text-purple-500 shrink-0" /> Suporte Prioritário VIP</li>
                             </ul>
-                            <button onClick={() => handlePlanClick('pro')} className="w-full py-3 rounded-xl border border-purple-900/50 hover:bg-purple-900/20 text-white font-bold transition">Escolher Pro</button>
+                            
+                            <button onClick={() => handlePlanClick('pro')} className="w-full py-4 rounded-xl border border-purple-500/50 bg-purple-900/10 hover:bg-purple-600 text-white font-black transition shadow-lg mt-auto">Virar Pro Agora</button>
                         </div>
                     </div>
 
-                    {/* 🟢 BANNER PARA CONSULTORES (Ponte para o B2B) - ATUALIZADO COM AS FUNCIONALIDADES */}
+                    {/* 🟢 BANNER PARA CONSULTORES (Ponte para o B2B) */}
                     <div className="mt-12 bg-gradient-to-r from-amber-500/10 to-orange-500/5 border border-amber-500/20 rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-6 max-w-4xl mx-auto cursor-pointer hover:border-amber-500/40 transition" onClick={scrollToConsultant}>
                         <div className="flex items-center gap-4 text-left">
                             <div className="p-3 bg-amber-500/20 text-amber-500 rounded-xl shrink-0"><Briefcase size={24} /></div>
@@ -345,7 +366,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                 </div>
             </section>
 
-            {/* --- ÁREA PARA CONSULTORES (B2B) - FUNCIONALIDADES DETALHADAS --- */}
+            {/* --- ÁREA PARA CONSULTORES (B2B) --- */}
             <section id="consultant-section" className="py-16 md:py-24 bg-[#08080c] relative overflow-hidden border-t border-white/5 scroll-mt-20">
                 <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-5 pointer-events-none"></div>
                 <div className="absolute bottom-0 right-0 w-[300px] h-[300px] md:w-[500px] md:h-[500px] bg-amber-500/5 rounded-full blur-[80px] md:blur-[120px] pointer-events-none"></div>
@@ -354,19 +375,19 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                     <div className="bg-[#111] border border-gray-800 rounded-3xl p-6 md:p-16 shadow-2xl">
                         <div className="text-center mb-12">
                             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-900/20 border border-amber-500/30 text-amber-500 text-xs font-bold uppercase tracking-wider mb-6">
-                                <Briefcase size={12} /> Plano Consultor B2B
+                                <Briefcase size={12} /> Solução Corporativa
                             </div>
                             <h2 className="text-3xl md:text-5xl font-black text-white mb-6">
-                                O que você pode fazer no <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-500">Plano Consultor</span>
+                                O que você pode fazer no <br className="hidden md:block" />
+                                <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-500">Plano Consultor (Agent)</span>
                             </h2>
                             <p className="text-gray-400 text-base md:text-lg max-w-3xl mx-auto">
-                                Ferramentas exclusivas para profissionais que querem escalar seus resultados e oferecer um serviço de alto valor.
+                                Transforme o app na sua ferramenta de trabalho. Gerencie a vida financeira de dezenas de clientes com um painel administrativo exclusivo e recursos avançados.
                             </p>
                         </div>
 
                         {/* Grid de funcionalidades B2B */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-                            {/* 1. Gerenciar perfis em tempo real */}
                             <div className="bg-[#1a1a1a] rounded-2xl p-6 border border-gray-700 hover:border-amber-500/40 transition group">
                                 <div className="w-14 h-14 bg-amber-900/20 text-amber-500 rounded-2xl flex items-center justify-center mb-5 group-hover:scale-110 transition">
                                     <RefreshCw size={28} />
@@ -377,29 +398,26 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                                 </p>
                             </div>
 
-                            {/* 2. Gerar contrato diretamente pelo site */}
                             <div className="bg-[#1a1a1a] rounded-2xl p-6 border border-gray-700 hover:border-amber-500/40 transition group">
                                 <div className="w-14 h-14 bg-amber-900/20 text-amber-500 rounded-2xl flex items-center justify-center mb-5 group-hover:scale-110 transition">
                                     <FileSignature size={28} />
                                 </div>
-                                <h3 className="text-xl font-bold text-white mb-2">Geração de Contratos</h3>
+                                <h3 className="text-xl font-bold text-white mb-2">Geração de Contratos (White-Label)</h3>
                                 <p className="text-gray-400 leading-relaxed">
-                                    Crie contratos personalizados com seus clientes diretamente pelo site. Assinatura digital integrada e armazenamento na nuvem.
+                                    Crie contratos personalizados com seus clientes com a sua Logo diretamente pelo site. Assinatura digital integrada e armazenamento na nuvem.
                                 </p>
                             </div>
 
-                            {/* 3. IA para relatórios financeiros */}
                             <div className="bg-[#1a1a1a] rounded-2xl p-6 border border-gray-700 hover:border-amber-500/40 transition group">
                                 <div className="w-14 h-14 bg-amber-900/20 text-amber-500 rounded-2xl flex items-center justify-center mb-5 group-hover:scale-110 transition">
                                     <Brain size={28} />
                                 </div>
                                 <h3 className="text-xl font-bold text-white mb-2">Relatórios com IA</h3>
                                 <p className="text-gray-400 leading-relaxed">
-                                    Utilize inteligência artificial para gerar relatórios detalhados da situação financeira dos clientes. Análises preditivas, insights e recomendações personalizadas.
+                                    Utilize inteligência artificial para gerar relatórios detalhados da situação financeira dos clientes. Análises preditivas, insights e recomendações.
                                 </p>
                             </div>
 
-                            {/* 4. Agenda integrada */}
                             <div className="bg-[#1a1a1a] rounded-2xl p-6 border border-gray-700 hover:border-amber-500/40 transition group">
                                 <div className="w-14 h-14 bg-amber-900/20 text-amber-500 rounded-2xl flex items-center justify-center mb-5 group-hover:scale-110 transition">
                                     <Calendar size={28} />
@@ -411,21 +429,19 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                             </div>
                         </div>
 
-                        {/* Benefícios adicionais e CTA */}
-                        <div className="text-center pt-6 border-t border-gray-800">
-                            <div className="flex flex-wrap justify-center gap-4 mb-8">
-                                <span className="bg-[#1a1a1a] px-4 py-2 rounded-full text-sm text-gray-300 border border-gray-700">✔️ White Label personalizado</span>
-                                <span className="bg-[#1a1a1a] px-4 py-2 rounded-full text-sm text-gray-300 border border-gray-700">✔️ Suporte prioritário 24/7</span>
-                                <span className="bg-[#1a1a1a] px-4 py-2 rounded-full text-sm text-gray-300 border border-gray-700">✔️ Onboarding para sua equipe</span>
+                        {/* CTA Consultor com Preço Dinâmico */}
+                        <div className="text-center pt-10 border-t border-gray-800 flex flex-col items-center">
+                            <div className="mb-6">
+                                {renderPrice('agent', '99,90')}
                             </div>
                             <button
                                 onClick={() => handlePlanClick('agent')}
-                                className="px-10 py-4 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-bold rounded-xl transition shadow-lg shadow-amber-900/20 text-lg inline-flex items-center gap-2"
+                                className="px-10 py-5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-black rounded-xl transition shadow-xl shadow-amber-900/30 text-xl inline-flex items-center gap-2 hover:scale-105 active:scale-95"
                             >
-                                Criar Conta de Consultor <ArrowRight size={20} />
+                                Assinar Plano Consultor <ArrowRight size={24} />
                             </button>
-                            <p className="text-gray-500 text-sm mt-6">
-                                Após criar a conta, você terá <span className="text-amber-400 font-bold">1 dia</span> para realizar o pagamento e ativar seu plano.
+                            <p className="text-gray-500 text-sm mt-6 max-w-md mx-auto">
+                                Após criar a conta, você terá <span className="text-amber-400 font-bold">24 horas de teste grátis</span> para experimentar o painel administrativo antes do primeiro pagamento.
                             </p>
                         </div>
                     </div>
