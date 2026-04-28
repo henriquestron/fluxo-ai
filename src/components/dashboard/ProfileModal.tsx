@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Lock, Camera, Save, Loader2, Mail, Phone, Shield, Link as LinkIcon, ExternalLink, Copy, Check, Zap, AlertTriangle, Trash2, Briefcase, Bot, Sparkles, MessageSquare, Users } from 'lucide-react'; 
+import { X, User, Lock, Camera, Save, Loader2, Mail, Phone, Shield, Link as LinkIcon, ExternalLink, Copy, Check, Zap, AlertTriangle, Trash2, Briefcase, Bot, Sparkles, MessageSquare, Users, FileText, AlignLeft } from 'lucide-react'; 
 import { supabase } from '@/supabase'; 
 import { toast } from 'sonner';
 
@@ -22,13 +22,16 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
   const [fullName, setFullName] = useState(user.user_metadata?.full_name || '');
   const [avatarUrl, setAvatarUrl] = useState(user.user_metadata?.avatar_url || '');
   
+  // 🟢 STATES DO CONSULTOR (Business)
+  const [companyName, setCompanyName] = useState('');
+  const [cnpj, setCnpj] = useState('');
+  const [bio, setBio] = useState('');
+  const [companyLogo, setCompanyLogo] = useState('');
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+
   // STATES DO WHATSAPP (Modo Casal)
   const [whatsapp, setWhatsapp] = useState('');
   const [partnerWhatsapp, setPartnerWhatsapp] = useState('');
-  
-  // State da Logo
-  const [companyLogo, setCompanyLogo] = useState('');
-  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   // STATES DAS WORKSPACES PARA ROTEAMENTO DA IA
   const [workspaces, setWorkspaces] = useState<any[]>([]);
@@ -54,38 +57,38 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
   useEffect(() => {
     if (user?.id) {
       const fetchData = async () => {
+        // Busca Whatsapp
         const { data: settingsData } = await supabase
           .from('user_settings')
           .select('whatsapp_phone, partner_phone')
           .eq('user_id', user.id)
           .maybeSingle();
         
-        if (settingsData?.whatsapp_phone) {
-          setWhatsapp(settingsData.whatsapp_phone);
-        }
-        if (settingsData?.partner_phone) {
-          setPartnerWhatsapp(settingsData.partner_phone);
-        }
+        if (settingsData?.whatsapp_phone) setWhatsapp(settingsData.whatsapp_phone);
+        if (settingsData?.partner_phone) setPartnerWhatsapp(settingsData.partner_phone);
 
+        // 🟢 Busca Dados do Consultor na tabela Profiles
         const { data: profileData } = await supabase
           .from('profiles')
-          .select('company_logo')
+          .select('company_logo, company_name, cnpj, bio')
           .eq('id', user.id)
           .maybeSingle();
 
-        if (profileData?.company_logo) {
-          setCompanyLogo(profileData.company_logo);
+        if (profileData) {
+          if (profileData.company_logo) setCompanyLogo(profileData.company_logo);
+          if (profileData.company_name) setCompanyName(profileData.company_name);
+          if (profileData.cnpj) setCnpj(profileData.cnpj);
+          if (profileData.bio) setBio(profileData.bio);
         }
 
+        // Busca Workspaces
         setLoadingWorkspaces(true);
         const { data: wsData } = await supabase
           .from('workspaces') 
           .select('id, title, whatsapp_rule')
           .eq('user_id', user.id);
         
-        if (wsData) {
-            setWorkspaces(wsData);
-        }
+        if (wsData) setWorkspaces(wsData);
         setLoadingWorkspaces(false);
       };
       fetchData();
@@ -110,7 +113,6 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
       toast.success("Foto carregada! Clique em Salvar para confirmar.");
 
     } catch (error: any) {
-      // 🟢 CORREÇÃO: Erro genérico na UI, erro real no console
       console.error("Erro no upload do avatar:", error);
       toast.error("Erro ao enviar a imagem. Tente novamente.");
     } finally {
@@ -154,10 +156,25 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
   const handleUpdateProfile = async () => {
     setLoading(true);
     try {
+      // 1. Atualiza os dados básicos de Autenticação (Nome e Avatar)
       const { error: authError } = await supabase.auth.updateUser({
         data: { full_name: fullName, avatar_url: avatarUrl }
       });
       if (authError) throw authError;
+
+      // 2. 🟢 Se for consultor, atualiza os dados da Empresa na tabela profiles
+      if (isConsultant) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update({
+            company_name: companyName,
+            cnpj: cnpj,
+            bio: bio
+          })
+          .eq('id', user.id);
+          
+        if (profileError) throw profileError;
+      }
 
       toast.success("Perfil atualizado com sucesso!");
       setTimeout(() => { window.location.reload(); }, 1000);
@@ -175,7 +192,6 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
       const cleanPhone = whatsapp.replace(/\D/g, ''); 
       const cleanPartnerPhone = partnerWhatsapp.replace(/\D/g, ''); 
 
-      // 🟢 CORREÇÃO: Validação de tamanho do número do parceiro
       if (cleanPartnerPhone && cleanPartnerPhone.length < 10) {
         toast.error("Número do parceiro incompleto. Use DDD + número.");
         setSavingRules(false);
@@ -198,7 +214,7 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
             .from('workspaces')
             .update({ whatsapp_rule: ws.whatsapp_rule })
             .eq('id', ws.id)
-            .eq('user_id', user.id); // 🟢 CORREÇÃO: Garantia de Ownership (Trava IDOR)
+            .eq('user_id', user.id);
         }
       }
 
@@ -232,7 +248,6 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
     setLoading(false);
   };
 
-  // 🟢 CORREÇÃO: DeleteAccount agora chama uma API segura com Service Role
   const handleDeleteAccount = async () => {
     setIsDeleting(true);
     try {
@@ -243,9 +258,7 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
         headers: { 'Authorization': `Bearer ${session?.access_token}` }
       });
 
-      if (!res.ok) {
-          throw new Error("Falha na resposta da API.");
-      }
+      if (!res.ok) throw new Error("Falha na resposta da API.");
 
       await supabase.auth.signOut();
       toast.success("Conta e todos os dados foram excluídos.");
@@ -261,7 +274,6 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
     if (!canUseWhatsapp) return toast.error("Recurso Bloqueado 🔒", { description: "Exclusivo dos planos Pro e Agent." });
     const cleanPhone = whatsapp.replace(/\D/g, '');
     if (cleanPhone.length < 10) return toast.error("Número principal incompleto.");
-    
     if (!BOT_NUMBER) return toast.error("Erro de configuração. Contate o suporte.");
 
     const link = `https://wa.me/${BOT_NUMBER}?text=${encodeURIComponent(`Ativar ${cleanPhone}`)}`;
@@ -275,7 +287,7 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
         {/* HEADER */}
         <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-[#0a0a0a]">
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            Configurações
+            Configurações {isConsultant && <span className="bg-purple-900/30 text-purple-400 border border-purple-500/30 text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider">Consultor</span>}
           </h2>
           <button onClick={onClose} className="text-gray-500 hover:text-white transition"><X size={24}/></button>
         </div>
@@ -321,43 +333,62 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
 
               <div className="space-y-4">
                 <div>
-                  <label className="text-xs text-gray-500 font-bold ml-1 mb-1 block">Nome Completo</label>
+                  <label className="text-xs text-gray-500 font-bold ml-1 mb-1 block">Nome do Usuário</label>
                   <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-purple-500 outline-none transition" />
                 </div>
 
-                {isConsultant && (
-                  <div className="bg-cyan-900/10 p-4 rounded-xl border border-cyan-900/30">
-                    <label className="text-xs text-cyan-500 font-bold flex items-center gap-2 mb-3">
-                      <Briefcase size={14} /> Logo da sua Consultoria
-                    </label>
-                    <div className="flex items-center gap-4">
-                      {companyLogo ? (
-                        <img src={companyLogo} alt="Logo" className="w-16 h-16 object-contain bg-white rounded-lg border border-gray-700 p-1" />
-                      ) : (
-                        <div className="w-16 h-16 bg-black rounded-lg border border-gray-800 flex items-center justify-center text-gray-600 text-[10px] text-center p-2">Sem Logo</div>
-                      )}
-                      <div className="flex-1">
-                        <label className={`cursor-pointer inline-flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition border border-gray-700 ${uploadingLogo ? 'opacity-50' : ''}`}>
-                          {uploadingLogo ? <Loader2 className="animate-spin" size={16}/> : <Camera size={16}/>}
-                          {uploadingLogo ? "Enviando..." : "Escolher Logo"}
-                          <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={uploadingLogo} />
-                        </label>
-                        <p className="text-[10px] text-gray-500 mt-2 leading-tight">Aparecerá nos cabeçalhos de contratos e relatórios.</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
                 <div>
-                  <label className="text-xs text-gray-500 font-bold ml-1 mb-1 block">E-mail</label>
+                  <label className="text-xs text-gray-500 font-bold ml-1 mb-1 block">E-mail de Acesso</label>
                   <div className="w-full bg-gray-900/50 border border-gray-800 rounded-xl p-3 text-gray-500 flex items-center gap-2 cursor-not-allowed">
                     <Mail size={16}/> {user.email}
                   </div>
                 </div>
+
+                {/* 🟢 BLOCO VIP DO CONSULTOR */}
+                {isConsultant && (
+                  <div className="mt-8 bg-gradient-to-b from-purple-900/20 to-transparent border border-purple-500/20 p-5 rounded-2xl space-y-5">
+                    <div className="flex items-center gap-2 border-b border-purple-500/20 pb-3">
+                        <Briefcase className="text-purple-400" size={18} />
+                        <h3 className="text-purple-400 font-bold text-sm uppercase tracking-wider">Cartão de Visita do Consultor</h3>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-xs text-gray-400 font-bold ml-1 mb-1 block">Nome da Empresa</label>
+                            <input type="text" value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Ex: VH Consultoria" className="w-full bg-black border border-gray-800 rounded-xl p-3 text-white focus:border-purple-500 outline-none transition" />
+                        </div>
+                        <div>
+                            <label className="text-xs text-gray-400 font-bold ml-1 mb-1 block">CNPJ ou CPF</label>
+                            <input type="text" value={cnpj} onChange={(e) => setCnpj(e.target.value)} placeholder="00.000.000/0000-00" className="w-full bg-black border border-gray-800 rounded-xl p-3 text-white focus:border-purple-500 outline-none transition" />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="text-xs text-gray-400 font-bold ml-1 mb-1 block">Sua Biografia / Especialidade</label>
+                        <textarea value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Ex: Especialista em recuperação de crédito e organização financeira para autônomos..." className="w-full bg-black border border-gray-800 rounded-xl p-3 text-white focus:border-purple-500 outline-none transition resize-none h-20" />
+                    </div>
+
+                    <div className="bg-black/50 p-4 rounded-xl border border-gray-800 flex flex-col sm:flex-row items-center gap-4">
+                      {companyLogo ? (
+                        <img src={companyLogo} alt="Logo" className="w-16 h-16 object-contain bg-white rounded-lg border border-gray-700 p-1 shrink-0" />
+                      ) : (
+                        <div className="w-16 h-16 bg-gray-900 rounded-lg border border-gray-800 flex items-center justify-center text-gray-600 text-[10px] text-center p-2 shrink-0">Sem Logo</div>
+                      )}
+                      <div className="flex-1 text-center sm:text-left">
+                        <label className={`cursor-pointer inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg text-xs font-bold transition shadow-lg shadow-purple-900/20 ${uploadingLogo ? 'opacity-50' : ''}`}>
+                          {uploadingLogo ? <Loader2 className="animate-spin" size={14}/> : <Camera size={14}/>}
+                          {uploadingLogo ? "Enviando..." : "Atualizar Logomarca"}
+                          <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} disabled={uploadingLogo} />
+                        </label>
+                        <p className="text-[10px] text-gray-500 mt-2 leading-tight">Essa imagem aparecerá no topo dos contratos e nos relatórios gerados para seus clientes.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <button onClick={handleUpdateProfile} disabled={loading || uploading} className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl transition shadow-lg flex items-center justify-center gap-2 mt-4">
-                {loading ? <Loader2 className="animate-spin"/> : <><Save size={18}/> Salvar Dados</>}
+              <button onClick={handleUpdateProfile} disabled={loading || uploading} className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-3.5 rounded-xl transition shadow-lg shadow-purple-900/20 flex items-center justify-center gap-2 mt-4">
+                {loading ? <Loader2 className="animate-spin"/> : <><Save size={18}/> Salvar Dados do Perfil</>}
               </button>
             </div>
           )}
@@ -374,7 +405,6 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
                 <p className="text-gray-400 text-xs mb-4">Autorize o Bot a receber seus gastos. Você pode adicionar um número extra para compartilhar o painel com seu parceiro(a).</p>
                 
                 <div className="bg-gray-900/50 p-4 rounded-2xl border border-gray-800 space-y-4">
-                  {/* Número Principal */}
                   <div>
                     <div className="flex justify-between items-center mb-2">
                       <label className="text-xs text-gray-500 font-bold flex items-center gap-1"><User size={12}/> Seu WhatsApp</label>
@@ -387,7 +417,6 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
                     <input type="text" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="Ex: 556299999999" className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white focus:border-emerald-500 outline-none transition" />
                   </div>
 
-                  {/* Número do Parceiro */}
                   <div>
                     <label className="text-xs text-gray-500 font-bold mb-2 flex items-center gap-1"><Users size={12}/> WhatsApp do Parceiro(a) <span className="font-normal text-[10px]">(Opcional)</span></label>
                     <input type="text" value={partnerWhatsapp} onChange={(e) => setPartnerWhatsapp(e.target.value)} placeholder="Ex: 556288888888" className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white focus:border-emerald-500 outline-none transition" />
@@ -422,7 +451,6 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
                           <div className="w-5 h-5 rounded bg-cyan-900/30 text-cyan-400 flex items-center justify-center text-xs border border-cyan-500/30">{index + 1}</div>
                           {ws.title}
                         </label>
-                        {/* 🟢 CORREÇÃO: Limite de Caracteres para não quebrar a IA */}
                         <textarea 
                           maxLength={300}
                           value={ws.whatsapp_rule || ''}

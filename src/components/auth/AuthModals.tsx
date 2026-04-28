@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Lock, Mail, Loader2, Check, ShieldCheck } from 'lucide-react';
+import { X, Lock, Mail, Loader2, Check, ShieldCheck, Briefcase, FileText } from 'lucide-react';
 
 interface AuthModalsProps {
     // Estados de Visibilidade
@@ -25,7 +25,15 @@ interface AuthModalsProps {
     setTermsAccepted: (v: boolean) => void;
     showEmailCheck: boolean;
     setShowEmailCheck: (v: boolean) => void;
-    
+
+    // 🟢 NOVOS ESTADOS PARA O CONSULTOR
+    isConsultant: boolean;
+    setIsConsultant: (v: boolean) => void;
+    companyName: string;
+    setCompanyName: (v: string) => void;
+    cnpj: string;
+    setCnpj: (v: string) => void;
+
     // Funções e Status
     handleAuth: () => void;
     handleResetPassword: () => void;
@@ -45,6 +53,9 @@ export default function AuthModals({
     newPassword, setNewPassword,
     termsAccepted, setTermsAccepted,
     showEmailCheck, setShowEmailCheck,
+    isConsultant, setIsConsultant,     // 🟢 Recebendo as props
+    companyName, setCompanyName,       // 🟢 Recebendo as props
+    cnpj, setCnpj,                     // 🟢 Recebendo as props
     handleAuth, handleResetPassword, handleUpdatePassword,
     loadingAuth, authMessage
 }: AuthModalsProps) {
@@ -70,13 +81,15 @@ export default function AuthModals({
             {/* MODAL DE LOGIN / CADASTRO */}
             {isAuthModalOpen && (
                 <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[200] p-4 animate-in fade-in duration-300">
-                    <div className="bg-[#111] border border-gray-800 p-8 rounded-3xl w-full max-w-sm shadow-2xl relative text-center">
+                    <div className="bg-[#111] border border-gray-800 p-8 rounded-3xl w-full max-w-sm shadow-2xl relative text-center max-h-[90vh] overflow-y-auto scrollbar-hide">
                         <button onClick={() => setIsAuthModalOpen(false)} className="absolute top-4 right-4 text-gray-500 hover:text-white transition"><X size={24} /></button>
+
                         <div className="flex justify-center mb-6">
-                            <div className="bg-gray-900/50 p-3 rounded-2xl border border-gray-800">
-                                {showEmailCheck ? <Mail className="text-cyan-400" size={32} /> : <Lock className="text-cyan-400" size={32} />}
+                            <div className="bg-gray-900/50 p-3 rounded-2xl border border-gray-800 mt-2">
+                                {showEmailCheck ? <Mail className="text-cyan-400" size={32} /> : (isConsultant && authMode === 'signup' ? <Briefcase className="text-purple-400" size={32} /> : <Lock className="text-cyan-400" size={32} />)}
                             </div>
                         </div>
+
                         {showEmailCheck ? (
                             <div className="animate-in fade-in zoom-in duration-300">
                                 <h2 className="text-2xl font-bold mb-2 text-white">Verifique seu e-mail</h2>
@@ -86,12 +99,21 @@ export default function AuthModals({
                             </div>
                         ) : (
                             <div>
-                                <div className="flex justify-center mb-6">
+                                <div className="flex justify-center mb-4">
                                     <div className="flex bg-black p-1 rounded-xl border border-gray-800">
                                         <button onClick={() => setAuthMode('login')} className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${authMode === 'login' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>Entrar</button>
                                         <button onClick={() => setAuthMode('signup')} className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${authMode === 'signup' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>Criar Conta</button>
                                     </div>
                                 </div>
+
+                                {/* 🟢 SELETOR DE TIPO DE CONTA (Só aparece no Cadastro) */}
+                                {authMode === 'signup' && (
+                                    <div className="flex bg-gray-900 p-1 rounded-xl border border-gray-800 mb-6 animate-in fade-in duration-300">
+                                        <button onClick={() => setIsConsultant(false)} className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${!isConsultant ? 'bg-cyan-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>Para Mim</button>
+                                        <button onClick={() => setIsConsultant(true)} className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${isConsultant ? 'bg-purple-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}>Sou Consultor</button>
+                                    </div>
+                                )}
+
                                 <div className="space-y-4 text-left">
                                     <div>
                                         <label className="text-xs text-gray-500 ml-1 mb-1 block">E-mail</label>
@@ -101,27 +123,49 @@ export default function AuthModals({
                                         <label className="text-xs text-gray-500 ml-1 mb-1 block">Senha</label>
                                         <div className="relative"><Lock className="absolute left-3 top-3.5 text-gray-600" size={16} /><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && !loadingAuth && handleAuth()} placeholder="********" className="w-full bg-gray-900 border border-gray-700 rounded-xl py-3 pl-10 pr-3 text-white focus:border-cyan-500 outline-none transition" /></div>
                                     </div>
+
+                                    {/* 🟢 CAMPOS EXTRAS PARA O CONSULTOR */}
+                                    {/* 🟢 CAMPOS EXTRAS PARA O CONSULTOR - AGORA OBRIGATÓRIOS */}
+                                    {authMode === 'signup' && isConsultant && (
+                                        <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300 border-t border-gray-800 pt-4 mt-2">
+                                            <div>
+                                                <label className="text-xs text-gray-500 ml-1 mb-1 block">Nome da Empresa / Consultoria *</label>
+                                                <div className="relative">
+                                                    <Briefcase className="absolute left-3 top-3.5 text-gray-600" size={16} />
+                                                    <input type="text" value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Ex: VH Finanças" className="w-full bg-gray-900 border border-gray-700 rounded-xl py-3 pl-10 pr-3 text-white focus:border-purple-500 outline-none transition" />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="text-xs text-gray-500 ml-1 mb-1 block">CPF ou CNPJ do Consultor *</label>
+                                                <div className="relative">
+                                                    <FileText className="absolute left-3 top-3.5 text-gray-600" size={16} />
+                                                    <input type="text" value={cnpj} onChange={(e) => setCnpj(e.target.value)} placeholder="000.000.000-00 ou 00.000..." className="w-full bg-gray-900 border border-gray-700 rounded-xl py-3 pl-10 pr-3 text-white focus:border-purple-500 outline-none transition" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
+
                                 {authMessage && (<div className={`mt-4 p-3 rounded-lg text-xs flex items-center gap-2 ${authMessage.includes('❌') ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-green-500/10 text-green-400 border border-green-500/20'}`}>{authMessage}</div>)}
 
                                 {/* CHECKBOX DE TERMOS */}
                                 {authMode === 'signup' && (
                                     <div className="flex items-start gap-3 mt-4 mb-2 bg-gray-900/50 p-3 rounded-lg border border-gray-800">
-                                        <div className="relative flex items-center">
+                                        <div className="relative flex items-center mt-0.5">
                                             <input type="checkbox" id="terms" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} className="peer h-5 w-5 cursor-pointer appearance-none rounded-md border border-gray-600 bg-gray-800 transition-all checked:border-cyan-500 checked:bg-cyan-600" />
                                             <div className="pointer-events-none absolute top-2/4 left-2/4 -translate-y-2/4 -translate-x-2/4 text-white opacity-0 peer-checked:opacity-100"><Check size={14} strokeWidth={4} /></div>
                                         </div>
                                         <label htmlFor="terms" className="text-xs text-gray-400 cursor-pointer select-none leading-relaxed text-left">
-                                            Eu concordo com os <button type="button" onClick={() => setIsTermsOpen(true)} className="text-cyan-500 hover:underline font-bold">Termos de Uso</button> e <button type="button" onClick={() => setIsPrivacyOpen(true)} className="text-cyan-500 hover:underline font-bold">Política de Privacidade</button>, e autorizo o processamento dos meus dados financeiros pela IA.
+                                            Eu concordo com os <button type="button" onClick={() => setIsTermsOpen(true)} className="text-cyan-500 hover:underline font-bold">Termos de Uso</button> e <button type="button" onClick={() => setIsPrivacyOpen(true)} className="text-cyan-500 hover:underline font-bold">Política de Privacidade</button>, e autorizo o processamento dos meus dados.
                                         </label>
                                     </div>
                                 )}
 
-                                <button onClick={handleAuth} disabled={loadingAuth || (authMode === 'signup' && !termsAccepted)} className="w-full bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl transition mt-6 flex items-center justify-center gap-2 shadow-lg shadow-cyan-900/20" >
-                                    {loadingAuth ? <Loader2 className="animate-spin" size={20} /> : (authMode === 'login' ? 'Acessar Conta' : 'Criar Conta')}
+                                <button onClick={handleAuth} disabled={loadingAuth || (authMode === 'signup' && !termsAccepted) || (authMode === 'signup' && isConsultant && (!companyName.trim() || !cnpj.trim()))} className={`w-full text-white font-bold py-3.5 rounded-xl transition mt-6 flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed ${isConsultant && authMode === 'signup' ? 'bg-purple-600 hover:bg-purple-700 shadow-purple-900/20' : 'bg-cyan-600 hover:bg-cyan-700 shadow-cyan-900/20'}`} >
+                                    {loadingAuth ? <Loader2 className="animate-spin" size={20} /> : (authMode === 'login' ? 'Acessar Conta' : (isConsultant ? 'Criar Conta de Consultor' : 'Criar Conta'))}
                                 </button>
 
-                                {/* AVISO LEGAL OBRIGATÓRIO (Passo 3) */}
+                                {/* AVISO LEGAL OBRIGATÓRIO */}
                                 {authMode === 'signup' && (
                                     <p className="text-center text-[10px] text-gray-500 mt-4 leading-relaxed">
                                         Ao clicar em "Criar Conta", você declara que leu, compreendeu e concorda expressamente com os nossos{' '}

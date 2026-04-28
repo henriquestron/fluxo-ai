@@ -11,10 +11,12 @@ export default function ContractGenerator({ consultant, client, onClose, company
     const [contractValue, setContractValue] = useState('');
     const [contractDuration, setContractDuration] = useState('6');
     const [isUploading, setIsUploading] = useState(false);
-    const [consultantName, setConsultantName] = useState(consultant?.user_metadata?.full_name || consultant?.name || '');
-    const [consultantDoc, setConsultantDoc] = useState(''); 
+    
+    // 🟢 PUXANDO DADOS AUTOMÁTICOS DO CONSULTOR
+    const [consultantName, setConsultantName] = useState(consultant?.company_name || consultant?.user_metadata?.full_name || consultant?.name || '');
+    const [consultantDoc, setConsultantDoc] = useState(consultant?.cnpj || ''); 
 
-    // 🟢 Agora começam vazios e são opcionais!
+    // Opcionais
     const [paymentMethod, setPaymentMethod] = useState('a_vista');
     const [installments, setInstallments] = useState('');
     const [penaltyFee, setPenaltyFee] = useState(''); 
@@ -114,8 +116,7 @@ export default function ContractGenerator({ consultant, client, onClose, company
         }
     };
 
-    // 🟢 Validação relaxada: Exige apenas Nome do Consultor, Valor e Cidade.
-    const isFormValid = client && consultantName && contractValue && city;
+    const isFormValid = client && consultantName && consultantDoc && contractValue && city; // 🟢 Doc agora é obrigatório para salvar
 
     return (
         <div id="modal-wrapper" className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-sm overflow-y-auto p-4 sm:p-8 font-sans print:absolute print:top-0 print:left-0 print:w-full print:h-auto print:bg-white print:p-0 print:m-0 print:overflow-visible">
@@ -171,11 +172,11 @@ export default function ContractGenerator({ consultant, client, onClose, company
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="text-xs font-bold text-gray-500 uppercase">Seu Nome / Empresa</label>
+                                    <label className="text-xs font-bold text-gray-500 uppercase">Seu Nome / Empresa *</label>
                                     <input type="text" value={consultantName} onChange={(e) => setConsultantName(e.target.value)} className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none" />
                                 </div>
                                 <div>
-                                    <label className="text-xs font-bold text-gray-500 uppercase">Seu CPF / CNPJ</label>
+                                    <label className="text-xs font-bold text-gray-500 uppercase">Seu CPF / CNPJ *</label>
                                     <input type="text" value={consultantDoc} onChange={handleDocChange} placeholder="000.000.000-00" className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none" />
                                 </div>
                             </div>
@@ -184,7 +185,7 @@ export default function ContractGenerator({ consultant, client, onClose, company
                                 <h3 className="text-cyan-400 font-bold text-sm border-b border-gray-800 pb-1">2. Valores e Condições</h3>
                                 <div className="flex gap-2">
                                     <div className="w-1/2">
-                                        <label className="text-xs font-bold text-gray-500 uppercase">Valor (R$)</label>
+                                        <label className="text-xs font-bold text-gray-500 uppercase">Valor (R$) *</label>
                                         <input type="text" placeholder="1500,00" value={contractValue} onChange={(e) => setContractValue(e.target.value)} className="w-full mt-1 bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none" />
                                     </div>
                                     <div className="w-1/2">
@@ -229,7 +230,7 @@ export default function ContractGenerator({ consultant, client, onClose, company
                                 </div>
 
                                 <div>
-                                    <label className="text-xs font-bold text-gray-500 uppercase">Estado e Cidade de Foro</label>
+                                    <label className="text-xs font-bold text-gray-500 uppercase">Estado e Cidade de Foro *</label>
                                     <div className="flex gap-2 mt-1">
                                         <select value={selectedUF} onChange={(e) => { setSelectedUF(e.target.value); setSelectedCityName(''); }} className="bg-gray-900 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none w-1/3 cursor-pointer">
                                             <option value="">UF</option>
@@ -244,7 +245,6 @@ export default function ContractGenerator({ consultant, client, onClose, company
                             </div>
                         </div>
 
-                        {/* 🟢 AVISO DO MODO "WORD" */}
                         <div className="mt-8 mb-2 bg-cyan-900/20 border border-cyan-500/30 p-4 rounded-xl flex items-start sm:items-center gap-3 text-cyan-400 text-sm">
                             <Pencil className="shrink-0 mt-0.5 sm:mt-0" size={20} />
                             <p><strong>Truque do Consultor:</strong> O contrato abaixo funciona como o Word! Preencha os dados acima e, se precisar de regras específicas, <strong>clique no texto branco abaixo para reescrever, adicionar ou apagar cláusulas livremente</strong> antes de salvar o PDF.</p>
@@ -291,7 +291,6 @@ export default function ContractGenerator({ consultant, client, onClose, company
                     </div>
                 </div>
 
-                {/* 🟢 O CORPO DO CONTRATO AGORA É 100% EDITÁVEL! */}
                 <div 
                     contentEditable={true}
                     suppressContentEditableWarning={true}
@@ -334,7 +333,6 @@ export default function ContractGenerator({ consultant, client, onClose, company
                             <li>( {paymentMethod === 'parcelado' ? 'X' : ' '} ) Parcelado em <strong>{paymentMethod === 'parcelado' ? (installments || '___') : '___'}</strong> vezes</li>
                         </ul>
                         
-                        {/* 🟢 Oculta essa parte inteira se o consultor deixar Juros E Multa vazios */}
                         {(penaltyFee || interestRate) && (
                             <>
                                 <p className="mt-1">Em caso de atraso no pagamento, será aplicada:</p>

@@ -42,6 +42,7 @@ import ZenView from '@/components/dashboard/ZenView';
 import CalendarView from '@/components/dashboard/CalendarView';
 import GoalModal from '@/components/dashboard/GoalModal';
 import ModernView from '@/components/dashboard/ModernView';
+import ConsultantPricingModal from '@/components/dashboard/ConsultantPricingModal';
 
 import { Transaction, Installment, Recurring, Goal, ClientUser } from '@/types';
 import ContractGenerator from '@/components/dashboard/agent/contratos/ContractGenerator';
@@ -110,6 +111,7 @@ export default function FinancialDashboard() {
     const [consultantLogo, setConsultantLogo] = useState<string | null>(null);
     const [isAgendaOpen, setIsAgendaOpen] = useState(false);
     const totalSavedInGoals = goals.reduce((acc, goal) => acc + Number(goal.current_amount || 0), 0);
+    const [isTrialExpired, setIsTrialExpired] = useState(false);
 
     // --- AUTH & USER DATA ---
     const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
@@ -121,6 +123,9 @@ export default function FinancialDashboard() {
     const [authMessage, setAuthMessage] = useState('');
     const [userPlan, setUserPlan] = useState<string>('free');
     const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
+    const [isConsultant, setIsConsultant] = useState(false);
+    const [companyName, setCompanyName] = useState('');
+    const [cnpj, setCnpj] = useState('');
 
     // --- DADOS FINANCEIROS ---
     const [transactions, setTransactions] = useState<any[]>([]);
@@ -567,13 +572,29 @@ export default function FinancialDashboard() {
     };
 
     const fetchUserProfile = async (userId: string) => {
-        const { data } = await supabase.from('profiles').select('plan_tier, preferred_layout, theme_color').eq('id', userId).single();
+        // 1. Buscamos o trial_expires_at e stripe_subscription_id no banco
+        const { data } = await supabase.from('profiles').select('plan_tier, preferred_layout, theme_color, stripe_subscription_id, trial_expires_at').eq('id', userId).single();
         const plan = data?.plan_tier || 'free';
 
         setUserPlan(plan);
         if (data?.preferred_layout) setCurrentLayout(data.preferred_layout as any);
         if (data?.theme_color) setCurrentTheme(data.theme_color);
-        if (plan === 'agent') fetchClients(userId);
+
+        if (plan === 'agent') {
+            fetchClients(userId);
+
+            // 🟢 LÓGICA DA TRAVA DO CONSULTOR VAI AQUI!
+            const hasPaid = !!data?.stripe_subscription_id;
+            if (!hasPaid && data?.trial_expires_at) {
+                const now = new Date().getTime();
+                const trialEnd = new Date(data.trial_expires_at).getTime();
+
+                // Se o momento atual for maior que a data de expiração, bloqueia a tela!
+                if (now > trialEnd) {
+                    setIsTrialExpired(true);
+                }
+            }
+        }
     };
 
     const handleSavePreferences = async (type: 'layout' | 'theme', value: string) => {
@@ -959,7 +980,7 @@ export default function FinancialDashboard() {
                 const standbyArr = Array.isArray(inst.standby_months) ? inst.standby_months : JSON.parse(inst.standby_months || '[]');
 
                 for (let i = 0; i <= totalMonthsDiffUntilNow; i++) {
-                    
+
                     // 🟢 MÁQUINA DO TEMPO: Verifica quantos meses foram pulados ANTES deste mês 'i'
                     let pastStandbys = 0;
                     for (let step = 0; step < i; step++) {
@@ -1047,9 +1068,28 @@ export default function FinancialDashboard() {
                 setTimeout(() => { setIsAuthModalOpen(false); window.location.reload(); }, 1000);
             }
         } else {
-            const { error } = await supabase.auth.signUp({ email, password });
-            if (error) setAuthMessage("❌ " + error.message);
-            else setShowEmailCheck(true);
+            // 🟢 MUDANÇA: Agora extraímos o 'data' para poder pegar o ID do usuário
+            const { data, error } = await supabase.auth.signUp({ email, password });
+
+            if (error) {
+                setAuthMessage("❌ " + error.message);
+            } else if (data?.user) {
+
+                // 🟢 INJEÇÃO DE DADOS NA TABELA PROFILES (Consultor ou Usuário Comum)
+                const trialDate = new Date();
+                trialDate.setHours(trialDate.getHours() + 24); // Adiciona 24 horas pro teste do Consultor
+
+                await supabase.from('profiles').upsert({
+                    id: data.user.id,
+                    email: email, // 🟢 Adicionado para bater com a sua tabela
+                    plan_tier: isConsultant ? 'agent' : 'free', // 🟢 Mudamos de 'plan' para 'plan_tier'
+                    company_name: isConsultant ? companyName : null,
+                    cnpj: isConsultant ? cnpj : null,
+                    trial_expires_at: isConsultant ? trialDate.toISOString() : null,
+                });
+
+                setShowEmailCheck(true);
+            }
         }
         setLoadingAuth(false);
     };
@@ -1659,7 +1699,7 @@ export default function FinancialDashboard() {
     const handleGoalSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
-        
+
         const payload = {
             user_id: getActiveUserId(),
             title: formData.get('title'),
@@ -1685,7 +1725,7 @@ export default function FinancialDashboard() {
                 if (diff !== 0) {
                     const transType = diff > 0 ? 'expense' : 'income'; // Aumentou a meta = sai dinheiro (expense). Diminuiu = volta dinheiro (income).
                     const transTitle = diff > 0 ? `🎯 Ida para Meta: ${payload.title}` : `↩️ Resgate da Meta: ${payload.title}`;
-                    
+
                     await supabase.from('transactions').insert([{
                         user_id: activeId,
                         context: currentWorkspace?.id,
@@ -1699,7 +1739,7 @@ export default function FinancialDashboard() {
                         target_month: activeTab
                     }]);
                 }
-                
+
                 // 3. Atualiza a meta no banco
                 await supabase.from('goals').update(payload).eq('id', editingGoal.id);
                 toast.success('Meta e Extrato atualizados!');
@@ -1720,7 +1760,7 @@ export default function FinancialDashboard() {
                         target_month: activeTab
                     }]);
                 }
-                
+
                 await supabase.from('goals').insert([payload]);
                 toast.success('Meta criada com sucesso!');
             }
@@ -1734,44 +1774,44 @@ export default function FinancialDashboard() {
         }
     };
     const handleToggleGoalItem = async (goalId: number, itemId: string) => {
-    const goalIndex = goals.findIndex(g => g.id === goalId);
-    if (goalIndex === -1) return;
-    
-    const goal = goals[goalIndex];
-    if (!goal.items) return;
+        const goalIndex = goals.findIndex(g => g.id === goalId);
+        if (goalIndex === -1) return;
 
-    // 1. Guarda o estado original como um "Backup"
-    const previousGoals = [...goals];
+        const goal = goals[goalIndex];
+        if (!goal.items) return;
 
-    // 2. Inverte o status de comprado (is_bought)
-    // 🟢 Repare no (item: any) aqui, isso mata o erro do TypeScript!
-    const updatedItems = goal.items.map((item: any) => { 
-        if (item.id === itemId) {
-            return { ...item, is_bought: !item.is_bought };
+        // 1. Guarda o estado original como um "Backup"
+        const previousGoals = [...goals];
+
+        // 2. Inverte o status de comprado (is_bought)
+        // 🟢 Repare no (item: any) aqui, isso mata o erro do TypeScript!
+        const updatedItems = goal.items.map((item: any) => {
+            if (item.id === itemId) {
+                return { ...item, is_bought: !item.is_bought };
+            }
+            return item;
+        });
+
+        // 3. Atualiza a tela NA HORA (Efeito otimista)
+        const updatedGoals = [...goals];
+        updatedGoals[goalIndex] = { ...goal, items: updatedItems };
+        setGoals(updatedGoals);
+
+        // 4. Tenta salvar no banco de dados
+        try {
+            const { error } = await supabase
+                .from('goals')
+                .update({ items: updatedItems })
+                .eq('id', goalId);
+
+            if (error) throw error;
+        } catch (error: any) {
+            console.error("Erro ao atualizar item da meta:", error);
+            toast.error("Sem conexão. Desfazendo a marcação...");
+            // 🟢 CORREÇÃO: Em vez de fetchGoals(), a gente só devolve o Backup pra tela!
+            setGoals(previousGoals);
         }
-        return item;
-    });
-
-    // 3. Atualiza a tela NA HORA (Efeito otimista)
-    const updatedGoals = [...goals];
-    updatedGoals[goalIndex] = { ...goal, items: updatedItems };
-    setGoals(updatedGoals);
-
-    // 4. Tenta salvar no banco de dados
-    try {
-        const { error } = await supabase
-            .from('goals')
-            .update({ items: updatedItems })
-            .eq('id', goalId);
-        
-        if (error) throw error;
-    } catch (error: any) {
-        console.error("Erro ao atualizar item da meta:", error);
-        toast.error("Sem conexão. Desfazendo a marcação...");
-        // 🟢 CORREÇÃO: Em vez de fetchGoals(), a gente só devolve o Backup pra tela!
-        setGoals(previousGoals); 
-    }
-};
+    };
 
     const handleDeleteGoal = async (id: number) => {
         if (!confirm("Excluir esta meta?")) return;
@@ -1821,7 +1861,7 @@ export default function FinancialDashboard() {
         const incomeFixed = activeRecurring.filter(r => r.type === 'income' && !r.skipped_months?.includes(monthName)).reduce((acc, curr) => acc + Number(curr.value), 0);
         const incomeVariableList = transactions.filter(t => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby');
         const incomeTotal = incomeFixed + incomeVariableList.reduce((acc, curr) => acc + Number(curr.amount), 0);
-        
+
         // 🟢 Camada Visual de Entradas (Ignora resgates de 'Metas')
         const displayIncome = incomeFixed + incomeVariableList.filter(t => t.category !== 'Metas').reduce((acc, curr) => acc + Number(curr.amount), 0);
 
@@ -1837,7 +1877,7 @@ export default function FinancialDashboard() {
 
             const { m: startMonth, y: startYear } = getStartData(curr);
             const monthsDiff = ((selectedYear - startYear) * 12) + (monthIndex - startMonth);
-            
+
             // 🟢 MÁQUINA DO TEMPO: Conta quantos standbys essa conta teve no passado
             let pastStandbys = 0;
             const standbyArr = safeArray(curr.standby_months);
@@ -1908,11 +1948,11 @@ export default function FinancialDashboard() {
             if (inst.status !== 'standby' && inst.status !== 'delayed') {
                 const { m: startMonth, y: startYear } = getStartData(inst);
                 const totalMonthsDiffUntilNow = ((selectedYear - startYear) * 12) + (monthIndex - startMonth);
-                
+
                 const standbyArr = Array.isArray(inst.standby_months) ? inst.standby_months : JSON.parse(inst.standby_months || '[]');
 
                 for (let i = 0; i < totalMonthsDiffUntilNow; i++) {
-                    
+
                     let pastStandbys = 0;
                     for (let step = 0; step < i; step++) {
                         const stepM = (startMonth + step) % 12;
@@ -1928,7 +1968,7 @@ export default function FinancialDashboard() {
                         const pMonthName = MONTHS[absMonthIndex % 12];
 
                         const paymentTag = `${pMonthName}/${pYear}`;
-                        
+
                         if (!isPaid(inst, paymentTag) && !standbyArr.includes(paymentTag)) {
                             accumulatedDebt += Number(inst.value_per_month);
                         }
@@ -2241,8 +2281,56 @@ export default function FinancialDashboard() {
                     showEmailCheck={showEmailCheck} setShowEmailCheck={setShowEmailCheck}
                     handleAuth={handleAuth} handleResetPassword={handleResetPassword} handleUpdatePassword={handleUpdatePassword}
                     loadingAuth={loadingAuth} authMessage={authMessage}
+                    isConsultant={isConsultant}
+                    setIsConsultant={setIsConsultant}
+                    companyName={companyName}
+                    setCompanyName={setCompanyName}
+                    cnpj={cnpj}
+                    setCnpj={setCnpj}
+
                 />
             </>
+        );
+    }
+
+    // 🟢 A TELA DE BLOQUEIO DO CONSULTOR (PAYWALL) VEM AQUI!
+    if (isTrialExpired) {
+        return (
+            <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center p-4 text-center font-sans">
+                <div className="bg-[#111] border border-amber-500/30 p-8 sm:p-10 rounded-3xl w-full max-w-lg shadow-2xl shadow-amber-900/20 animate-in fade-in zoom-in duration-500">
+                    <div className="bg-amber-500/10 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6 border border-amber-500/20">
+                        <Lock className="text-amber-500" size={48} />
+                    </div>
+
+                    <h2 className="text-2xl sm:text-3xl font-black text-white mb-4">Seu período de teste expirou</h2>
+
+                    <p className="text-gray-400 mb-8 leading-relaxed text-sm sm:text-base">
+                        As 24 horas de acesso gratuito ao seu Escritório Virtual chegaram ao fim. Para continuar gerenciando sua carteira de clientes, gerando contratos e utilizando a IA, ative sua assinatura profissional.
+                    </p>
+
+                    <button
+                        // 👇 AQUI: Mudamos para setIsPricingOpen
+                        onClick={() => setIsPricingOpen(true)}
+                        className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-4 rounded-xl transition shadow-lg shadow-amber-900/20 flex items-center justify-center gap-2"
+                    >
+                        <Briefcase size={20} /> Ver Planos e Assinar
+                    </button>
+
+                    <button
+                        onClick={async () => { await supabase.auth.signOut(); window.location.reload(); }}
+                        className="mt-6 text-sm text-gray-600 hover:text-white transition underline decoration-gray-800 hover:decoration-gray-400 underline-offset-4"
+                    >
+                        Sair da conta
+                    </button>
+                </div>
+
+                {/* 👇 AQUI: Mudamos para isPricingOpen e setIsPricingOpen */}
+                <ConsultantPricingModal
+                    isOpen={isPricingOpen}
+                    onClose={() => setIsPricingOpen(false)}
+                    handleCheckout={handleCheckout}
+                />
+            </div>
         );
     }
 
@@ -2365,6 +2453,11 @@ export default function FinancialDashboard() {
                 activeTab={activeTab}
                 selectedYear={selectedYear}
             />
+            <ConsultantPricingModal
+                isOpen={isPricingOpen}
+                onClose={() => setIsPricingOpen(false)}
+                handleCheckout={handleCheckout}
+            />
 
             {/* RENDERIZAÇÃO DO HEADER */}
             {userPlan === 'agent' ? (
@@ -2406,7 +2499,7 @@ export default function FinancialDashboard() {
                     clientStatus={undefined}
                 />
             ) : (
-                
+
                 <DashboardHeader
                     user={user}
                     userPlan={userPlan}
@@ -2471,7 +2564,7 @@ export default function FinancialDashboard() {
                 clients={clients}
             />
 
-            
+
             {/* --- NOVO CARD DE PENDÊNCIAS (SÓ APARECE SE TIVER DÍVIDA) --- */}
             {currentMonthData.accumulatedDebt > 0 && (
 
@@ -2717,6 +2810,12 @@ export default function FinancialDashboard() {
                 showEmailCheck={showEmailCheck} setShowEmailCheck={setShowEmailCheck}
                 handleAuth={handleAuth} handleResetPassword={handleResetPassword} handleUpdatePassword={handleUpdatePassword}
                 loadingAuth={loadingAuth} authMessage={authMessage}
+                isConsultant={isConsultant}
+                setIsConsultant={setIsConsultant}
+                companyName={companyName}
+                setCompanyName={setCompanyName}
+                cnpj={cnpj}
+                setCnpj={setCnpj}
             />
 
 

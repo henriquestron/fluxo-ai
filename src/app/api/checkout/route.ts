@@ -20,7 +20,8 @@ const ratelimit = new Ratelimit({
 
 // 🟡 3. Validação Rigorosa de Input (Zod)
 const checkoutSchema = z.object({
-    planType: z.enum(['start', 'premium', 'pro', 'agent'])
+    planType: z.enum(['start', 'premium', 'pro', 'agent', 'START', 'PREMIUM', 'PRO', 'AGENT'])
+        .transform(val => val.toLowerCase())
 });
 
 export async function POST(req: Request) {
