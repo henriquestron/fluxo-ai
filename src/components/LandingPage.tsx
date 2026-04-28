@@ -2,17 +2,17 @@
 
 import React, { useEffect, useState } from 'react';
 import { createClient } from "@supabase/supabase-js";
-import { 
-    ShieldCheck, Sparkles, Smartphone, BarChart3, 
-    Zap, CheckCircle2, Lock, ArrowRight, 
+import {
+    ShieldCheck, Sparkles, Smartphone, BarChart3,
+    Zap, CheckCircle2, Lock, ArrowRight,
     LayoutDashboard, Layers, TrendingUp, Play, Briefcase, Users, Tag,
     FileSignature, Calendar, Brain, RefreshCw
 } from 'lucide-react';
 
 // 🟢 Inicializa o Supabase
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
 interface LandingPageProps {
@@ -47,7 +47,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
     // 🟢 Helper para renderizar preços com lógica de promoção e "R$" fixo
     const renderPrice = (prefix: string, fallback: string) => {
         if (!settings) return <div className="text-3xl font-black text-white mb-6">R$ {fallback}<span className="text-sm font-normal text-gray-500">/mês</span></div>;
-        
+
         const isPromo = settings.is_promo_active;
         const normal = settings[`price_${prefix}_normal`];
         const promo = settings[`price_${prefix}_promo`];
@@ -77,7 +77,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
 
     return (
         <div className="min-h-screen bg-[#050505] text-white font-sans selection:bg-cyan-500 selection:text-black overflow-x-hidden">
-            
+
             {/* --- NAVBAR --- */}
             <nav className="fixed top-0 left-0 right-0 z-50 bg-[#050505]/80 backdrop-blur-md border-b border-white/10 supports-[backdrop-filter]:bg-[#050505]/60">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 md:h-20 flex items-center justify-between">
@@ -89,7 +89,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                         <button onClick={scrollToConsultant} className="hidden md:block text-sm text-gray-400 hover:text-white font-bold transition">
                             Sou Consultor
                         </button>
-                        <button 
+                        <button
                             onClick={handleGenericLogin}
                             className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 md:px-6 md:py-2.5 rounded-full text-sm md:text-base font-bold transition border border-gray-700 hover:border-gray-500 shadow-lg shadow-gray-900/20"
                         >
@@ -102,47 +102,47 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
             {/* --- HERO SECTION --- */}
             <section className="relative pt-32 pb-12 md:pt-48 md:pb-24 px-4 sm:px-6 overflow-hidden text-center">
                 <div className="absolute top-20 left-1/2 -translate-x-1/2 w-[300px] h-[300px] md:w-[600px] md:h-[600px] bg-cyan-500/10 rounded-full blur-[80px] md:blur-[120px] pointer-events-none"></div>
-                
+
                 <div className="max-w-5xl mx-auto relative z-10">
                     {/* Badge Dinâmico de Promoção */}
                     {settings?.is_promo_active && (
                         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] md:text-xs font-bold uppercase tracking-wider mb-6 animate-pulse">
-                            <Tag size={12}/> {settings.promo_text || "Oferta Especial"}
+                            <Tag size={12} /> {settings.promo_text || "Oferta Especial"}
                         </div>
                     )}
-                    
+
                     {!settings?.is_promo_active && (
                         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-900/80 border border-gray-700 text-gray-300 text-[10px] md:text-xs font-bold uppercase tracking-wider mb-6 animate-in fade-in slide-in-from-bottom-4 backdrop-blur-sm">
-                            <LayoutDashboard size={12} className="text-cyan-500"/> Gestão Financeira Inteligente
+                            <LayoutDashboard size={12} className="text-cyan-500" /> Gestão Financeira Inteligente
                         </div>
                     )}
-                    
+
                     <h1 className="text-4xl sm:text-5xl md:text-7xl font-black tracking-tight mb-6 leading-[1.1] animate-in fade-in slide-in-from-bottom-6 duration-700">
-                        O Sistema Operacional <br className="hidden md:block"/>
+                        O Sistema Operacional <br className="hidden md:block" />
                         da sua <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600">Vida Financeira.</span>
                     </h1>
-                    
+
                     <p className="text-base sm:text-lg md:text-xl text-gray-400 mb-8 md:mb-10 max-w-2xl mx-auto leading-relaxed animate-in fade-in slide-in-from-bottom-8 duration-1000 px-2">
-                        Centralize contas, cartões e investimentos em um painel unificado. 
+                        Centralize contas, cartões e investimentos em um painel unificado.
                         Use a <span className="text-white font-bold">Inteligência Artificial</span> para lançar gastos pelo WhatsApp e prever seu futuro financeiro.
                     </p>
-                    
+
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-in fade-in slide-in-from-bottom-10 duration-1000 px-4">
-                        <button 
+                        <button
                             onClick={handleGenericLogin}
                             className="w-full sm:w-auto px-8 py-4 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-bold text-lg shadow-xl shadow-cyan-900/20 transition hover:scale-105 active:scale-95 flex items-center justify-center gap-2"
                         >
                             Começar Grátis <ArrowRight size={20} />
                         </button>
                         <button onClick={scrollToDemo} className="w-full sm:w-auto px-8 py-4 bg-gray-900/50 border border-gray-800 hover:bg-gray-800 text-gray-300 rounded-xl font-bold text-lg transition flex items-center justify-center gap-2 backdrop-blur-sm">
-                            <Sparkles size={20} className="text-purple-500"/> Ver Demonstração
+                            <Sparkles size={20} className="text-purple-500" /> Ver Demonstração
                         </button>
                     </div>
 
                     <div className="mt-8 flex flex-wrap items-center justify-center gap-4 md:gap-8 text-sm text-gray-500 font-medium animate-in fade-in slide-in-from-bottom-12 duration-1000">
-                        <span className="flex items-center gap-2"><ShieldCheck size={16} className="text-emerald-500"/> Criptografia Bancária</span>
-                        <span className="flex items-center gap-2"><Lock size={16} className="text-cyan-500"/> LGPD Compliant</span>
-                        <span className="flex items-center gap-2"><Users size={16} className="text-purple-500"/> +1000 Contas Gerenciadas</span>
+                        <span className="flex items-center gap-2"><ShieldCheck size={16} className="text-emerald-500" /> Criptografia Bancária</span>
+                        <span className="flex items-center gap-2"><Lock size={16} className="text-cyan-500" /> LGPD Compliant</span>
+                        <span className="flex items-center gap-2"><Users size={16} className="text-purple-500" /> +1000 Contas Gerenciadas</span>
                     </div>
                 </div>
             </section>
@@ -153,9 +153,9 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                     <div className="relative rounded-2xl md:rounded-3xl p-1 bg-gradient-to-b from-gray-700 to-gray-900 shadow-2xl shadow-cyan-900/20 group">
                         <div className="absolute inset-0 bg-cyan-500/20 blur-3xl opacity-20 group-hover:opacity-30 transition duration-1000 rounded-3xl"></div>
                         <div className="relative bg-[#050505] rounded-xl md:rounded-[22px] overflow-hidden aspect-video flex items-center justify-center border border-white/5 cursor-pointer group">
-                            <img 
-                                src="https://images.unsplash.com/photo-1642543492481-44e81e3914a7?q=80&w=2670&auto=format&fit=crop" 
-                                alt="Dashboard Preview" 
+                            <img
+                                src="https://images.unsplash.com/photo-1642543492481-44e81e3914a7?q=80&w=2670&auto=format&fit=crop"
+                                alt="Dashboard Preview"
                                 className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-40 transition duration-500"
                             />
                             <div className="w-16 h-16 md:w-24 md:h-24 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center border border-white/20 shadow-2xl group-hover:scale-110 transition duration-300 z-10 relative">
@@ -182,7 +182,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                                 Junte Nubank, Inter, Caixa e dinheiro vivo em um dashboard unificado. Pare de somar saldos de cabeça.
                             </p>
                         </div>
-                        
+
                         <div className="p-6 md:p-8 rounded-3xl bg-[#111] border border-gray-800 relative group hover:border-purple-500/30 transition hover:-translate-y-1 duration-300">
                             <div className="w-12 h-12 md:w-14 md:h-14 bg-purple-900/20 text-purple-400 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition">
                                 <BarChart3 size={24} className="md:w-7 md:h-7" />
@@ -213,13 +213,13 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                     <div className="bg-gradient-to-b from-gray-900 to-black border border-gray-800 rounded-3xl p-1 md:p-4 overflow-hidden shadow-2xl relative">
                         <div className="absolute top-0 left-0 w-full h-full bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10 pointer-events-none"></div>
                         <div className="bg-[#050505] rounded-2xl p-6 md:p-12 text-center lg:text-left relative z-10 flex flex-col lg:flex-row items-center gap-12">
-                            
+
                             <div className="flex-1 w-full lg:w-auto">
                                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-900/30 border border-purple-500/30 text-purple-400 text-xs font-bold uppercase tracking-wider mb-6 mx-auto lg:mx-0">
                                     <Sparkles size={12} /> Tecnologia Exclusiva
                                 </div>
                                 <h3 className="text-3xl md:text-4xl font-bold mb-6">
-                                    Um Dashboard vivo que <br/>
+                                    Um Dashboard vivo que <br />
                                     <span className="text-gray-500">conversa com você.</span>
                                 </h3>
                                 <p className="text-gray-400 text-base md:text-lg mb-8 leading-relaxed">
@@ -253,7 +253,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                                     </button>
                                 </div>
                             </div>
-                            
+
                             <div className="flex-1 w-full relative max-w-md lg:max-w-full">
                                 <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/20 to-purple-500/20 blur-3xl rounded-full"></div>
                                 <div className="relative bg-[#111] border border-gray-800 rounded-2xl p-6 shadow-2xl">
@@ -262,7 +262,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                                             <div className="text-xs text-gray-500 uppercase font-bold">Saldo Previsto</div>
                                             <div className="text-2xl md:text-3xl font-mono font-bold text-white">R$ 4.250,00</div>
                                         </div>
-                                        <div className="p-3 bg-green-500/10 rounded-xl text-green-500"><TrendingUp size={24}/></div>
+                                        <div className="p-3 bg-green-500/10 rounded-xl text-green-500"><TrendingUp size={24} /></div>
                                     </div>
                                     <div className="h-40 flex items-end gap-2 md:gap-4">
                                         <div className="flex-1 bg-gray-800 rounded-t-lg h-[40%]"></div>
@@ -294,9 +294,9 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                             <h3 className="text-gray-400 font-bold mb-2">Start</h3>
                             {renderPrice('start', '10,00')}
                             <ul className="space-y-4 mb-8 flex-1">
-                                <li className="flex gap-3 text-sm text-gray-300"><CheckCircle2 size={18} className="text-gray-600 shrink-0"/> Lançamentos Ilimitados</li>
-                                <li className="flex gap-3 text-sm text-gray-300"><CheckCircle2 size={18} className="text-gray-600 shrink-0"/> Acesso ao Painel</li>
-                                <li className="flex gap-3 text-sm text-gray-500 line-through"><Zap size={18} className="shrink-0"/> Automação WhatsApp</li>
+                                <li className="flex gap-3 text-sm text-gray-300"><CheckCircle2 size={18} className="text-gray-600 shrink-0" /> Lançamentos Ilimitados</li>
+                                <li className="flex gap-3 text-sm text-gray-300"><CheckCircle2 size={18} className="text-gray-600 shrink-0" /> Acesso ao Painel</li>
+                                <li className="flex gap-3 text-sm text-gray-500 line-through"><Zap size={18} className="shrink-0" /> Automação WhatsApp</li>
                             </ul>
                             <button onClick={() => handlePlanClick('start')} className="w-full py-3 rounded-xl border border-gray-700 hover:bg-gray-800 text-white font-bold transition">Escolher Start</button>
                         </div>
@@ -305,12 +305,12 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                         <div className="p-6 md:p-8 rounded-3xl bg-[#151515] border border-cyan-500/30 relative flex flex-col shadow-2xl shadow-cyan-900/10 z-10 
                                       transform md:scale-105 lg:scale-110 hover:scale-[1.02] md:hover:scale-[1.07] lg:hover:scale-[1.12] transition duration-300 my-4 md:my-0 h-full ring-1 ring-cyan-500/20">
                             <div className="absolute top-0 right-0 bg-cyan-600 text-white text-[10px] md:text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-2xl">RECOMENDADO</div>
-                            <h3 className="text-cyan-500 font-bold mb-2 flex items-center gap-2"><Zap size={16}/> Plus</h3>
+                            <h3 className="text-cyan-500 font-bold mb-2 flex items-center gap-2"><Zap size={16} /> Plus</h3>
                             {renderPrice('premium', '29,90')}
                             <ul className="space-y-4 mb-8 flex-1">
-                                <li className="flex gap-3 text-sm text-white"><CheckCircle2 size={18} className="text-cyan-500 shrink-0"/> Tudo do Start</li>
-                                <li className="flex gap-3 text-sm text-white"><CheckCircle2 size={18} className="text-cyan-500 shrink-0"/> WhatsApp Integrado</li>
-                                <li className="flex gap-3 text-sm text-white"><CheckCircle2 size={18} className="text-cyan-500 shrink-0"/> Leitura de Extratos</li>
+                                <li className="flex gap-3 text-sm text-white"><CheckCircle2 size={18} className="text-cyan-500 shrink-0" /> Tudo do Start</li>
+                                <li className="flex gap-3 text-sm text-white"><CheckCircle2 size={18} className="text-cyan-500 shrink-0" /> WhatsApp Integrado</li>
+                                <li className="flex gap-3 text-sm text-white"><CheckCircle2 size={18} className="text-cyan-500 shrink-0" /> Leitura de Extratos</li>
                             </ul>
                             <button onClick={() => handlePlanClick('premium')} className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:to-blue-500 text-white font-bold transition shadow-lg">Quero Automação</button>
                         </div>
@@ -320,9 +320,9 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                             <h3 className="text-purple-400 font-bold mb-2">Pro</h3>
                             {renderPrice('pro', '39,90')}
                             <ul className="space-y-4 mb-8 flex-1">
-                                <li className="flex gap-3 text-sm text-gray-300"><CheckCircle2 size={18} className="text-purple-500 shrink-0"/> Tudo do Plus</li>
-                                <li className="flex gap-3 text-sm text-gray-300"><CheckCircle2 size={18} className="text-purple-500 shrink-0"/> IA Consultora (GPT-4)</li>
-                                <li className="flex gap-3 text-sm text-gray-300"><CheckCircle2 size={18} className="text-purple-500 shrink-0"/> Múltiplos Perfis</li>
+                                <li className="flex gap-3 text-sm text-gray-300"><CheckCircle2 size={18} className="text-purple-500 shrink-0" /> Tudo do Plus</li>
+                                <li className="flex gap-3 text-sm text-gray-300"><CheckCircle2 size={18} className="text-purple-500 shrink-0" /> IA Consultora (GPT-4)</li>
+                                <li className="flex gap-3 text-sm text-gray-300"><CheckCircle2 size={18} className="text-purple-500 shrink-0" /> Múltiplos Perfis</li>
                             </ul>
                             <button onClick={() => handlePlanClick('pro')} className="w-full py-3 rounded-xl border border-purple-900/50 hover:bg-purple-900/20 text-white font-bold transition">Escolher Pro</button>
                         </div>
@@ -331,7 +331,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                     {/* 🟢 BANNER PARA CONSULTORES (Ponte para o B2B) - ATUALIZADO COM AS FUNCIONALIDADES */}
                     <div className="mt-12 bg-gradient-to-r from-amber-500/10 to-orange-500/5 border border-amber-500/20 rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-6 max-w-4xl mx-auto cursor-pointer hover:border-amber-500/40 transition" onClick={scrollToConsultant}>
                         <div className="flex items-center gap-4 text-left">
-                            <div className="p-3 bg-amber-500/20 text-amber-500 rounded-xl shrink-0"><Briefcase size={24}/></div>
+                            <div className="p-3 bg-amber-500/20 text-amber-500 rounded-xl shrink-0"><Briefcase size={24} /></div>
                             <div>
                                 <h4 className="text-white font-bold text-lg">Solução para Consultores Financeiros</h4>
                                 <p className="text-gray-400 text-sm">Gerencie clientes, gere contratos, relatórios com IA e agenda integrada. Tudo em um só lugar.</p>
@@ -418,13 +418,15 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                                 <span className="bg-[#1a1a1a] px-4 py-2 rounded-full text-sm text-gray-300 border border-gray-700">✔️ Suporte prioritário 24/7</span>
                                 <span className="bg-[#1a1a1a] px-4 py-2 rounded-full text-sm text-gray-300 border border-gray-700">✔️ Onboarding para sua equipe</span>
                             </div>
-                            <button 
+                            <button
                                 onClick={() => handlePlanClick('agent')}
                                 className="px-10 py-4 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-bold rounded-xl transition shadow-lg shadow-amber-900/20 text-lg inline-flex items-center gap-2"
                             >
                                 Criar Conta de Consultor <ArrowRight size={20} />
                             </button>
-                            <p className="text-gray-500 text-sm mt-6">Teste grátis por 14 dias. Sem compromisso.</p>
+                            <p className="text-gray-500 text-sm mt-6">
+                                Após criar a conta, você terá <span className="text-amber-400 font-bold">1 dia</span> para realizar o pagamento e ativar seu plano.
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -433,7 +435,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
             {/* --- FOOTER --- */}
             <footer className="py-12 border-t border-white/10 text-center text-gray-500 text-sm bg-[#050505] px-4">
                 <div className="flex items-center justify-center gap-2 mb-4">
-                    <ShieldCheck size={24} className="text-gray-600"/>
+                    <ShieldCheck size={24} className="text-gray-600" />
                     <span className="font-bold text-gray-300">MeuAliado</span>
                 </div>
                 <p>&copy; 2026 Meu Aliado Tecnologia. Todos os direitos reservados.</p>
