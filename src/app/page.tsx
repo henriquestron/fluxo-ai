@@ -1152,22 +1152,27 @@ export default function FinancialDashboard() {
         if (btn) btn.innerText = "Processando...";
 
         try {
+            // 🟢 1. PEGA O CRACHÁ DO USUÁRIO LOGADO
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
+
             const response = await fetch('/api/checkout', {
-                method: 'POST', // 🟢 AGORA SIM! Ele sabe que é pra enviar dados
+                method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json' // Avisa o servidor que é um JSON
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}` // 🟢 2. ENVIA O CRACHÁ PARA O BACKEND
                 },
                 body: JSON.stringify({
                     userId: user.id,
                     email: user.email,
-                    planType: planType // 🟢 DINÂMICO! Manda exatamente o botão que o cara clicou
+                    planType: planType
                 })
             });
 
             const data = await response.json();
 
             if (data.url) {
-                window.location.href = data.url; // Vai pro Stripe!
+                window.location.href = data.url;
             } else {
                 toast.error(data.error || "Erro ao criar pagamento.");
             }
@@ -1176,7 +1181,7 @@ export default function FinancialDashboard() {
             toast.error("Erro de conexão. Tente novamente.");
         }
 
-        if (btn) btn.innerText = "Assinar Agora"; // Volta o texto normal caso dê erro
+        if (btn) btn.innerText = "Assinar Agora";
     };
 
     const handleManageSubscription = async () => {

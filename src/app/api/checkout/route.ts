@@ -7,8 +7,8 @@ import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 
 // 🟡 1. Inicializa o Stripe
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { 
-    apiVersion: '2026-01-28.clover' 
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+    apiVersion: '2026-01-28.clover'
 });
 
 // 🟡 2. Inicializa o Rate Limiter (Upstash Redis)
@@ -35,6 +35,9 @@ export async function POST(req: Request) {
         }
 
         const { planType } = parsed.data;
+        const authHeader = req.headers.get('Authorization');
+        const token = authHeader?.split(' ')[1];
+
 
         // 🔴 BLINDAGEM 1: Autenticação Segura Direto no Servidor Supabase
         const cookieStore = await cookies();
@@ -49,8 +52,7 @@ export async function POST(req: Request) {
         );
 
         // Usando getUser() no lugar de getSession() para validar o token no backend!
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-
+        const { data: { user }, error: userError } = await supabase.auth.getUser(token);
         if (userError || !user) {
             return NextResponse.json({ error: 'Acesso não autorizado. Faça login novamente.' }, { status: 401 });
         }
@@ -74,7 +76,7 @@ export async function POST(req: Request) {
 
         if (existingSubscription) {
             return NextResponse.json(
-                { error: 'Você já possui uma assinatura ativa.' }, 
+                { error: 'Você já possui uma assinatura ativa.' },
                 { status: 409 }
             );
         }
@@ -92,7 +94,7 @@ export async function POST(req: Request) {
             .single();
 
         if (settingsError || !settings) {
-            throw new Error('Falha ao consultar configurações'); 
+            throw new Error('Falha ao consultar configurações');
         }
 
         // --- Lógica de Definição de Preços ---
@@ -123,7 +125,7 @@ export async function POST(req: Request) {
         // --- Cria a sessão no Stripe ---
         const stripeSession = await stripe.checkout.sessions.create({
             payment_method_types: ['card'],
-            customer_email: customerEmail, 
+            customer_email: customerEmail,
             line_items: [
                 {
                     price: stripePriceId,
@@ -135,7 +137,7 @@ export async function POST(req: Request) {
             success_url: `${APP_URL}/dashboard?success=true`,
             cancel_url: `${APP_URL}/dashboard?canceled=true`,
             metadata: {
-                userId: userId, 
+                userId: userId,
                 planType: planType
             },
         });
