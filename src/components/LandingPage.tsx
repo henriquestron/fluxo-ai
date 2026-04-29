@@ -148,7 +148,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
             </section>
 
             {/* --- VÍDEO SECTION --- */}
-            <section id="demo-video" className="px-4 sm:px-6 pb-20 scroll-mt-24">
+            {/* <section id="demo-video" className="px-4 sm:px-6 pb-20 scroll-mt-24">
                 <div className="max-w-5xl mx-auto">
                     <div className="relative rounded-2xl md:rounded-3xl p-1 bg-gradient-to-b from-gray-700 to-gray-900 shadow-2xl shadow-cyan-900/20 group">
                         <div className="absolute inset-0 bg-cyan-500/20 blur-3xl opacity-20 group-hover:opacity-30 transition duration-1000 rounded-3xl"></div>
@@ -167,7 +167,7 @@ export default function LandingPage({ onLoginClick }: LandingPageProps) {
                         </div>
                     </div>
                 </div>
-            </section>
+            </section>*/}
 
             {/* --- PILARES --- */}
             <section className="py-16 md:py-24 bg-[#0a0a0a] border-y border-white/5">
