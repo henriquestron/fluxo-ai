@@ -335,28 +335,32 @@ export default function FinancialDashboard() {
     }, [userPlan, transactions, user]);
 
     useEffect(() => {
-        // 1. Procura se tem intenção de compra
+        // 1. Procura se tem intenção de compra da Landing Page
         const intentPlan = localStorage.getItem('intent_plan');
 
         if (intentPlan) {
             console.log(`Intenção detectada: ${intentPlan}`);
 
             if (intentPlan === 'agent') {
-                // O cara quer ser consultor! 
-                // Aqui você pode abrir um modal específico de B2B ou já jogar ele pro Checkout do Agent
-                setIsPricingOpen(true);
+                // 🟢 O cara quer ser consultor!
+                // Força o modal a abrir na aba de Cadastro e já liga a chavinha de Consultor
+                setIsConsultant(true);
+                setAuthMode('signup');
+                setIsAuthModalOpen(true);
 
             } else {
-                // O cara quer um plano pago (start, premium, pro)
-                // Abre o modal de preços ou já abre o link do Stripe direto!
-                setIsPricingOpen(true);
+                // 🟢 O cara quer um plano pago normal
+                // Força o modal a abrir na aba de Cadastro normal
+                setIsConsultant(false);
+                setAuthMode('signup');
+                setIsAuthModalOpen(true);
             }
 
             // 2. RASGA O POST-IT! (Crucial para não abrir o modal de novo se ele der F5 na página)
             localStorage.removeItem('intent_plan');
         } else {
             // Se NÃO tem post-it, é um usuário normal que só clicou em "Acessar"
-            // Aqui você pode deixar rodar o tutorial gratuito normalmente
+            // Deixa a vida seguir normal...
         }
     }, []);
 
@@ -572,24 +576,27 @@ export default function FinancialDashboard() {
     };
 
     const fetchUserProfile = async (userId: string) => {
-        // 1. Buscamos o trial_expires_at e stripe_subscription_id no banco
-        const { data } = await supabase.from('profiles').select('plan_tier, preferred_layout, theme_color, stripe_subscription_id, trial_expires_at').eq('id', userId).single();
+        // 🟢 CORREÇÃO: Agora puxamos o stripe_id e o trial do banco
+        const { data } = await supabase.from('profiles')
+            .select('plan_tier, preferred_layout, theme_color, stripe_subscription_id, trial_expires_at')
+            .eq('id', userId)
+            .single();
+            
         const plan = data?.plan_tier || 'free';
-
         setUserPlan(plan);
+        
         if (data?.preferred_layout) setCurrentLayout(data.preferred_layout as any);
         if (data?.theme_color) setCurrentTheme(data.theme_color);
-
+        
         if (plan === 'agent') {
             fetchClients(userId);
-
-            // 🟢 LÓGICA DA TRAVA DO CONSULTOR VAI AQUI!
-            const hasPaid = !!data?.stripe_subscription_id;
+            
+            // 🟢 LÓGICA DA TRAVA DO CONSULTOR (PAYWALL)
+            const hasPaid = !!data?.stripe_subscription_id; 
             if (!hasPaid && data?.trial_expires_at) {
                 const now = new Date().getTime();
                 const trialEnd = new Date(data.trial_expires_at).getTime();
-
-                // Se o momento atual for maior que a data de expiração, bloqueia a tela!
+                
                 if (now > trialEnd) {
                     setIsTrialExpired(true);
                 }
@@ -1053,7 +1060,7 @@ export default function FinancialDashboard() {
         setLoadingAuth(true);
         setAuthMessage('');
 
-        // 👇 TRAVA DE SEGURANÇA NOVA
+        // 👇 TRAVA DE SEGURANÇA
         if (authMode === 'signup' && !termsAccepted) {
             setAuthMessage("⚠️ Você precisa aceitar os Termos de Uso e Privacidade.");
             setLoadingAuth(false);
@@ -1061,32 +1068,65 @@ export default function FinancialDashboard() {
         }
 
         if (authMode === 'login') {
-            const { error } = await supabase.auth.signInWithPassword({ email, password });
-            if (error) setAuthMessage("❌ " + error.message);
-            else {
+            const { data: loginData, error } = await supabase.auth.signInWithPassword({ email, password });
+            
+            if (error) {
+                setAuthMessage("❌ " + error.message);
+            } else {
+                // 🟢 O SEGREDO AQUI: Aplica o plano de Consultor se ele tiver o "Post-it" salvo do cadastro
+                const pendingSetup = localStorage.getItem('pending_consultant_setup');
+                
+                if (pendingSetup && loginData?.user) {
+                    const { companyName, cnpj } = JSON.parse(pendingSetup);
+                    const trialDate = new Date();
+                    trialDate.setHours(trialDate.getHours() + 24); // 24h de teste
+
+                    // Força a atualização do perfil com poder total de usuário logado
+                    await supabase.from('profiles').upsert({
+                        id: loginData.user.id,
+                        plan_tier: 'agent',
+                        company_name: companyName,
+                        cnpj: cnpj,
+                        trial_expires_at: trialDate.toISOString()
+                    });
+                    
+                    // Limpa o post-it depois de usar
+                    localStorage.removeItem('pending_consultant_setup');
+                }
+
                 setAuthMessage("✅ Login realizado!");
                 setTimeout(() => { setIsAuthModalOpen(false); window.location.reload(); }, 1000);
             }
         } else {
-            // 🟢 MUDANÇA: Agora extraímos o 'data' para poder pegar o ID do usuário
+            // FLUXO DE CADASTRO
             const { data, error } = await supabase.auth.signUp({ email, password });
-
+            
             if (error) {
                 setAuthMessage("❌ " + error.message);
             } else if (data?.user) {
+                
+                // 🟢 SALVA O "POST-IT" PARA GARANTIR QUE ELE VIRE CONSULTOR NO LOGIN
+                if (isConsultant) {
+                    localStorage.setItem('pending_consultant_setup', JSON.stringify({
+                        companyName,
+                        cnpj
+                    }));
+                }
 
-                // 🟢 INJEÇÃO DE DADOS NA TABELA PROFILES (Consultor ou Usuário Comum)
-                const trialDate = new Date();
-                trialDate.setHours(trialDate.getHours() + 24); // Adiciona 24 horas pro teste do Consultor
-
-                await supabase.from('profiles').upsert({
-                    id: data.user.id,
-                    email: email, // 🟢 Adicionado para bater com a sua tabela
-                    plan_tier: isConsultant ? 'agent' : 'free', // 🟢 Mudamos de 'plan' para 'plan_tier'
-                    company_name: isConsultant ? companyName : null,
-                    cnpj: isConsultant ? cnpj : null,
-                    trial_expires_at: isConsultant ? trialDate.toISOString() : null,
-                });
+                // Se o Supabase já devolveu a sessão direto (sem pedir pra verificar e-mail), tenta salvar agora
+                if (data.session) {
+                    const trialDate = new Date();
+                    trialDate.setHours(trialDate.getHours() + 24);
+                    
+                    await supabase.from('profiles').upsert({
+                        id: data.user.id,
+                        plan_tier: isConsultant ? 'agent' : 'free',
+                        company_name: isConsultant ? companyName : null,
+                        cnpj: isConsultant ? cnpj : null,
+                        trial_expires_at: isConsultant ? trialDate.toISOString() : null,
+                    });
+                    localStorage.removeItem('pending_consultant_setup');
+                }
 
                 setShowEmailCheck(true);
             }
