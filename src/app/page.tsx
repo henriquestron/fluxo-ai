@@ -574,6 +574,22 @@ export default function FinancialDashboard() {
         setTransactions([]); setInstallments([]); setRecurring([]);
         if (user) loadData(user.id, workspace.id);
     };
+    const handleDowngradeToFree = async () => {
+        // Confirma com o usuário para evitar clique acidental
+        if (!confirm("Tem certeza que deseja voltar para o plano Gratuito? Você perderá o acesso ao painel de Consultor.")) return;
+
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (user) {
+            // Rebaixa o usuário para o plano free
+            await supabase.from('profiles')
+                .update({ plan_tier: 'free' })
+                .eq('id', user.id);
+
+            // Recarrega a página. Como ele agora é 'free', a trava do paywall será ignorada.
+            window.location.reload();
+        }
+    };
 
     const fetchUserProfile = async (userId: string) => {
         // 🟢 CORREÇÃO: Agora puxamos o stripe_id e o trial do banco
@@ -581,22 +597,23 @@ export default function FinancialDashboard() {
             .select('plan_tier, preferred_layout, theme_color, stripe_subscription_id, trial_expires_at')
             .eq('id', userId)
             .single();
-            
+
         const plan = data?.plan_tier || 'free';
         setUserPlan(plan);
-        
+
         if (data?.preferred_layout) setCurrentLayout(data.preferred_layout as any);
         if (data?.theme_color) setCurrentTheme(data.theme_color);
-        
+
         if (plan === 'agent') {
             fetchClients(userId);
-            
+
+
             // 🟢 LÓGICA DA TRAVA DO CONSULTOR (PAYWALL)
-            const hasPaid = !!data?.stripe_subscription_id; 
+            const hasPaid = !!data?.stripe_subscription_id;
             if (!hasPaid && data?.trial_expires_at) {
                 const now = new Date().getTime();
                 const trialEnd = new Date(data.trial_expires_at).getTime();
-                
+
                 if (now > trialEnd) {
                     setIsTrialExpired(true);
                 }
@@ -1069,13 +1086,13 @@ export default function FinancialDashboard() {
 
         if (authMode === 'login') {
             const { data: loginData, error } = await supabase.auth.signInWithPassword({ email, password });
-            
+
             if (error) {
                 setAuthMessage("❌ " + error.message);
             } else {
                 // 🟢 O SEGREDO AQUI: Aplica o plano de Consultor se ele tiver o "Post-it" salvo do cadastro
                 const pendingSetup = localStorage.getItem('pending_consultant_setup');
-                
+
                 if (pendingSetup && loginData?.user) {
                     const { companyName, cnpj } = JSON.parse(pendingSetup);
                     const trialDate = new Date();
@@ -1089,7 +1106,7 @@ export default function FinancialDashboard() {
                         cnpj: cnpj,
                         trial_expires_at: trialDate.toISOString()
                     });
-                    
+
                     // Limpa o post-it depois de usar
                     localStorage.removeItem('pending_consultant_setup');
                 }
@@ -1100,11 +1117,11 @@ export default function FinancialDashboard() {
         } else {
             // FLUXO DE CADASTRO
             const { data, error } = await supabase.auth.signUp({ email, password });
-            
+
             if (error) {
                 setAuthMessage("❌ " + error.message);
             } else if (data?.user) {
-                
+
                 // 🟢 SALVA O "POST-IT" PARA GARANTIR QUE ELE VIRE CONSULTOR NO LOGIN
                 if (isConsultant) {
                     localStorage.setItem('pending_consultant_setup', JSON.stringify({
@@ -1117,7 +1134,7 @@ export default function FinancialDashboard() {
                 if (data.session) {
                     const trialDate = new Date();
                     trialDate.setHours(trialDate.getHours() + 24);
-                    
+
                     await supabase.from('profiles').upsert({
                         id: data.user.id,
                         plan_tier: isConsultant ? 'agent' : 'free',
@@ -2353,13 +2370,18 @@ export default function FinancialDashboard() {
                         As 24 horas de acesso gratuito ao seu Escritório Virtual chegaram ao fim. Para continuar gerenciando sua carteira de clientes, gerando contratos e utilizando a IA, ative sua assinatura profissional.
                     </p>
 
-                    <button
-                        // 👇 AQUI: Mudamos para setIsPricingOpen
-                        onClick={() => setIsPricingOpen(true)}
-                        className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-4 rounded-xl transition shadow-lg shadow-amber-900/20 flex items-center justify-center gap-2"
-                    >
-                        <Briefcase size={20} /> Ver Planos e Assinar
-                    </button>
+
+                    <div className="flex flex-col items-center gap-4 mt-8">
+                        <button onClick={openPricingModal} className="px-8 py-4 bg-amber-500 hover:bg-amber-400 text-black font-black rounded-xl text-lg w-full max-w-xs shadow-lg shadow-amber-500/20 transition">
+                            Assinar Plano Consultor
+                        </button>
+
+                        {/* 🟢 O botão de fuga discreto */}
+                        <button onClick={handleDowngradeToFree} className="text-gray-500 hover:text-white text-sm font-bold underline transition">
+                            Não quero assinar, voltar para o plano Gratuito
+                        </button>
+                    </div>
+
 
                     <button
                         onClick={async () => { await supabase.auth.signOut(); window.location.reload(); }}
