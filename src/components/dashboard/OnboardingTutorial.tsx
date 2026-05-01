@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, FolderPlus, Crown, MessageCircle, Check, Trash2, Pencil, Clock, Target, ChevronRight, FileUp, Calculator, BarChart3, ChevronLeft, CheckCircle2, PlaySquare, Sparkles, Plus, CreditCard, FileSpreadsheet, Bot, ImageIcon, Smartphone, Palette, User, Briefcase, FileSignature, FileText, UserPlus } from 'lucide-react';
+import { X, FolderPlus, Crown, MessageCircle, Check, Trash2, Pencil, Clock, Target, ChevronRight, FileUp, Calculator, BarChart3, ChevronLeft, CheckCircle2, PlaySquare, Sparkles, Plus, CreditCard, FileSpreadsheet, Bot, ImageIcon, Smartphone, Palette, User, Briefcase, FileSignature, FileText, UserPlus, ArrowLeft, Play } from 'lucide-react';
 
 // 🟢 1. TUTORIAIS GERAIS (Para todo mundo)
 const TUTORIAL_STEPS = [
@@ -71,7 +71,7 @@ const TUTORIAL_STEPS = [
                 Precisa separar as finanças de casa de outras responsabilidades? Crie um <span className="inline-flex items-center gap-1 bg-[#111] border border-gray-800 text-white px-2 py-0.5 rounded-md text-[11px] font-bold mx-1 whitespace-nowrap"><FolderPlus size={12} className="text-cyan-500" /> Novo Perfil</span> para manter tudo organizado em espaços diferentes. Além disso, você pode definir seus objetivos clicando em <span className="inline-flex items-center gap-1 bg-[#111] border border-gray-800 text-white px-2 py-0.5 rounded-md text-[11px] font-bold mx-1 whitespace-nowrap"><Target size={12} className="text-orange-500" /> Nova Meta</span> e acompanhar de perto suas maiores conquistas financeiras!
             </>
         ),
-        media: "https://res.cloudinary.com/ddkbqzobz/video/upload/v1773709796/Workspace_e_Metas_sq7knz.mp4"
+        media: "https://res.cloudinary.com/ddkbqzobz/video/upload/v1777665947/Workspace_e_Metas_sot1ox.mp4"
     },
     {
         id: 8,
@@ -105,7 +105,7 @@ const CONSULTANT_TUTORIAL_STEPS = [
                 Como consultor, você possui a barra roxa no topo da tela. Clique em <span className="inline-flex items-center gap-1 bg-purple-600/20 text-purple-300 px-2 py-0.5 rounded-md text-[11px] font-bold mx-1 whitespace-nowrap"><UserPlus size={10} /> Add</span> para enviar um convite por e-mail para seu cliente. Assim que ele aceitar, o nome dele aparecerá na barra. Basta clicar no nome para entrar na conta dele e gerenciar todas as finanças!
             </>
         ),
-        media: "https://res.cloudinary.com/ddkbqzobz/video/upload/v1774399083/Video_1_Consultoria_goe35b.mp4" // 🔴 COLOQUE AQUI O LINK DO VÍDEO NO CLOUDINARY
+        media: "https://res.cloudinary.com/ddkbqzobz/video/upload/v1774399083/Video_1_Consultoria_goe35b.mp4" 
     },
     {
         id: 2,
@@ -115,7 +115,7 @@ const CONSULTANT_TUTORIAL_STEPS = [
                 Fechou negócio? Clique no botão <span className="inline-flex items-center justify-center bg-cyan-500/10 border border-cyan-500/20 text-cyan-500 p-1 rounded-md mx-0.5"><FileSignature size={12} /></span> para abrir o Gerador de Contrato. Preencha os dados, gere o PDF, assine no Gov.br e faça o upload da versão final. O seu cliente receberá uma notificação na hora para visualizar o documento!
             </>
         ),
-        media: "" // 🔴 COLOQUE AQUI O LINK DO VÍDEO NO CLOUDINARY
+        media: "" 
     },
     {
         id: 3,
@@ -125,12 +125,11 @@ const CONSULTANT_TUTORIAL_STEPS = [
                 Mostre valor para o seu cliente gerando diagnósticos rápidos! Selecione um cliente e clique no botão <span className="inline-flex items-center justify-center bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 p-1 rounded-md mx-0.5"><FileText size={12} /></span>. Nossa Inteligência Artificial vai analisar o saldo e os gastos do mês, criando um relatório visual e profissional, pronto para imprimir em PDF e enviar no WhatsApp dele.
             </>
         ),
-        media: "" // 🔴 COLOQUE AQUI O LINK DO VÍDEO NO CLOUDINARY
+        media: "" 
     }
 ];
 
 
-// 🟢 3. ATUALIZAMOS A INTERFACE PARA RECEBER O PLANO DO USUÁRIO
 interface TutorialProps {
     isOpen?: boolean;
     onClose?: () => void;
@@ -138,27 +137,26 @@ interface TutorialProps {
 }
 
 export default function OnboardingTutorial({ isOpen, onClose, userPlan }: TutorialProps) {
-    const [viewState, setViewState] = useState<'hidden' | 'prompt' | 'tour'>('hidden');
-    const [currentStep, setCurrentStep] = useState(0);
-
-    // 🟢 CONTROLE DAS ABAS (Geral vs Consultor)
+    // 🟢 NOVA LÓGICA DE ESTADOS: prompt -> menu -> video
+    const [viewState, setViewState] = useState<'hidden' | 'prompt' | 'menu' | 'video'>('hidden');
+    const [currentStep, setCurrentStep] = useState<number | null>(null);
     const [activeTab, setActiveTab] = useState<'general' | 'consultant'>('general');
 
-    // Define qual lista de vídeos usar com base na aba selecionada
     const activeSteps = activeTab === 'general' ? TUTORIAL_STEPS : CONSULTANT_TUTORIAL_STEPS;
     const isConsultant = ['agent', 'admin'].includes(userPlan || '');
 
     useEffect(() => {
         if (isOpen) {
-            setViewState('tour');
-            setCurrentStep(0);
+            setViewState('menu'); // Se ele clicou no botão "Tutorial" do site, vai direto pro menu
+            setCurrentStep(null);
         } else {
-            if (viewState === 'tour') setViewState('hidden');
+            if (viewState !== 'hidden') setViewState('hidden');
         }
     }, [isOpen]);
 
     useEffect(() => {
         const hasSeenTutorial = localStorage.getItem('meualiado_tutorial_seen');
+        // Se for a primeira vez, mostra a pergunta inicial
         if (!hasSeenTutorial && !isOpen) {
             const timer = setTimeout(() => setViewState('prompt'), 1000);
             return () => clearTimeout(timer);
@@ -171,22 +169,14 @@ export default function OnboardingTutorial({ isOpen, onClose, userPlan }: Tutori
         if (onClose) onClose();
     };
 
-    const startTour = () => {
-        setViewState('tour');
+    const openMenu = () => {
+        setViewState('menu');
+        localStorage.setItem('meualiado_tutorial_seen', 'true'); // Já salva que ele passou da tela inicial
     };
 
-    const handleNext = () => {
-        if (currentStep < activeSteps.length - 1) {
-            setCurrentStep(prev => prev + 1);
-        } else {
-            finishTutorial();
-        }
-    };
-
-    const handlePrev = () => {
-        if (currentStep > 0) {
-            setCurrentStep(prev => prev - 1);
-        }
+    const playVideo = (index: number) => {
+        setCurrentStep(index);
+        setViewState('video');
     };
 
     if (viewState === 'hidden') return null;
@@ -206,12 +196,12 @@ export default function OnboardingTutorial({ isOpen, onClose, userPlan }: Tutori
 
                     <h2 className="text-2xl font-black text-white mb-3">Bem-vindo ao Meu Aliado!</h2>
                     <p className="text-gray-400 text-sm mb-8 leading-relaxed">
-                        Preparamos um tour rápido de 1 minuto para te mostrar onde ficam os botões principais. Deseja ver agora?
+                        Preparamos uma central de vídeos curtos para te ensinar a usar cada botão do painel. Deseja ver os tutoriais agora?
                     </p>
 
                     <div className="flex flex-col gap-3">
-                        <button onClick={startTour} className="w-full bg-white text-black font-bold py-3.5 rounded-xl hover:bg-gray-200 transition shadow-lg shadow-white/10 flex items-center justify-center gap-2">
-                            <PlaySquare size={18} /> Sim, ver tutorial rápido
+                        <button onClick={openMenu} className="w-full bg-white text-black font-bold py-3.5 rounded-xl hover:bg-gray-200 transition shadow-lg shadow-white/10 flex items-center justify-center gap-2">
+                            <PlaySquare size={18} /> Sim, abrir Central de Tutoriais
                         </button>
                         <button onClick={finishTutorial} className="w-full bg-transparent text-gray-500 font-bold py-3 rounded-xl hover:text-white hover:bg-gray-900 transition">
                             Não, eu me viro sozinho
@@ -223,91 +213,106 @@ export default function OnboardingTutorial({ isOpen, onClose, userPlan }: Tutori
     }
 
     // ==========================================
-    // TELA 2: O CARROSSEL DE VÍDEOS (COM ABAS PARA CONSULTORES)
+    // TELA 2: MENU DE TUTORIAIS (SUMÁRIO)
     // ==========================================
-    const step = activeSteps[currentStep];
-    const isLastStep = currentStep === activeSteps.length - 1;
+    if (viewState === 'menu') {
+        return (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
+                <div className="bg-[#0a0a0a] border border-gray-800 rounded-3xl w-full max-w-5xl p-6 md:p-8 relative shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
+                    <button onClick={finishTutorial} className="absolute top-4 right-4 z-20 w-8 h-8 flex items-center justify-center rounded-full bg-black/50 text-gray-400 hover:text-white hover:bg-gray-800 transition backdrop-blur-md">
+                        <X size={18} />
+                    </button>
 
-    return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-500">
-            <div className="bg-[#0a0a0a] border border-gray-800 rounded-3xl w-full max-w-4xl p-6 md:p-8 relative shadow-2xl animate-in zoom-in-95 duration-500 flex flex-col max-h-[90vh] overflow-y-auto scrollbar-hide">
-                <button onClick={finishTutorial} className="absolute top-4 right-4 z-20 w-8 h-8 flex items-center justify-center rounded-full bg-black/50 text-gray-400 hover:text-white hover:bg-gray-800 transition backdrop-blur-md">
-                    <X size={18} />
-                </button>
-
-                {/* 🟢 ABAS DE NAVEGAÇÃO (Aparecem apenas se for consultor/admin) */}
-                {isConsultant && (
-                    <div className="flex border-b border-gray-800 mb-6 mt-2 mx-auto w-full max-w-sm">
-                        <button
-                            onClick={() => { setActiveTab('general'); setCurrentStep(0); }}
-                            className={`flex-1 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition flex items-center justify-center gap-2 ${activeTab === 'general' ? 'border-cyan-500 text-cyan-400 bg-cyan-500/5' : 'border-transparent text-gray-500 hover:text-gray-300'}`}
-                        >
-                            <Sparkles size={16} /> Básicos
-                        </button>
-                        <button
-                            onClick={() => { setActiveTab('consultant'); setCurrentStep(0); }}
-                            className={`flex-1 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition flex items-center justify-center gap-2 ${activeTab === 'consultant' ? 'border-purple-500 text-purple-400 bg-purple-500/5' : 'border-transparent text-gray-500 hover:text-gray-300'}`}
-                        >
-                            <Briefcase size={16} /> Consultor
-                        </button>
+                    <div className="text-center mb-6">
+                        <h2 className="text-2xl font-black text-white mb-2">Central de Tutoriais</h2>
+                        <p className="text-gray-400 text-sm">Escolha qual ferramenta você deseja aprender a usar hoje.</p>
                     </div>
-                )}
 
-                {/* Textos no Topo */}
-                <div className="text-center mb-6">
-                    <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider mb-3 ${activeTab === 'consultant' ? 'bg-purple-500/10 border border-purple-500/20 text-purple-400' : 'bg-cyan-500/10 border border-cyan-500/20 text-cyan-400'}`}>
-                        Passo {currentStep + 1} de {activeSteps.length}
-                    </div>
-                    <h2 className="text-xl md:text-2xl font-black text-white mb-2">{step.title}</h2>
+                    {isConsultant && (
+                        <div className="flex border-b border-gray-800 mb-6 mx-auto w-full max-w-sm shrink-0">
+                            <button
+                                onClick={() => setActiveTab('general')}
+                                className={`flex-1 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition flex items-center justify-center gap-2 ${activeTab === 'general' ? 'border-cyan-500 text-cyan-400 bg-cyan-500/5' : 'border-transparent text-gray-500 hover:text-gray-300'}`}
+                            >
+                                <Sparkles size={16} /> Básicos
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('consultant')}
+                                className={`flex-1 py-2.5 text-xs sm:text-sm font-bold border-b-2 transition flex items-center justify-center gap-2 ${activeTab === 'consultant' ? 'border-purple-500 text-purple-400 bg-purple-500/5' : 'border-transparent text-gray-500 hover:text-gray-300'}`}
+                            >
+                                <Briefcase size={16} /> Consultor
+                            </button>
+                        </div>
+                    )}
 
-                    <p className="text-gray-400 text-xs md:text-sm max-w-2xl mx-auto leading-relaxed">
-                        {step.description}
-                    </p>
-                </div>
-
-                <div className="w-full aspect-video bg-black rounded-2xl overflow-hidden mb-6 border border-gray-800/80 shadow-inner relative flex items-center justify-center flex-shrink-0">                    {step.media ? (
-                    <video key={step.media} autoPlay loop muted playsInline className="w-full h-full object-contain">
-                        <source src={step.media} type="video/mp4" />
-                    </video>
-                ) : (
-                    <div className="text-gray-600 flex flex-col items-center gap-2">
-                        <PlaySquare size={48} className="opacity-50" />
-                        <p className="text-sm">Vídeo em breve</p>
-                    </div>
-                )}
-                </div>
-
-                {/* Controles na Base */}
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-6 mt-auto">
-                    <div className="flex items-center gap-2 order-2 sm:order-1">
-                        {activeSteps.map((_, idx) => (
-                            <div key={idx} className={`h-1.5 rounded-full transition-all duration-300 ${idx === currentStep ? (activeTab === 'consultant' ? 'w-6 bg-purple-500' : 'w-6 bg-cyan-500') : 'w-1.5 bg-gray-800'}`}></div>
+                    {/* GRADE DE VÍDEOS */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-2 pb-4">
+                        {activeSteps.map((step, idx) => (
+                            <button 
+                                key={step.id} 
+                                onClick={() => playVideo(idx)} 
+                                className="bg-[#111] hover:bg-gray-900 border border-gray-800 hover:border-gray-700 transition p-5 rounded-2xl flex flex-col items-start text-left group"
+                            >
+                                <div className="w-10 h-10 rounded-xl bg-gray-800/50 flex items-center justify-center text-cyan-400 mb-4 group-hover:scale-110 group-hover:text-cyan-300 transition-transform">
+                                    <Play size={20} className="ml-1" fill="currentColor" />
+                                </div>
+                                <h3 className="font-bold text-white mb-1 group-hover:text-cyan-400 transition-colors">{step.title}</h3>
+                                <p className="text-xs text-gray-500 line-clamp-2">Clique para assistir ao passo a passo.</p>
+                            </button>
                         ))}
                     </div>
+                </div>
+            </div>
+        );
+    }
 
-                    <div className="flex items-center gap-3 w-full sm:w-auto order-1 sm:order-2">
-                        <button
-                            onClick={handlePrev}
-                            disabled={currentStep === 0}
-                            className={`px-4 py-2.5 rounded-xl font-bold text-sm transition ${currentStep === 0 ? 'opacity-0 pointer-events-none' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}
-                        >
-                            Voltar
+    // ==========================================
+    // TELA 3: O VÍDEO SELECIONADO
+    // ==========================================
+    if (viewState === 'video' && currentStep !== null) {
+        const step = activeSteps[currentStep];
+
+        return (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-300">
+                <div className="bg-[#0a0a0a] border border-gray-800 rounded-3xl w-full max-w-4xl p-6 md:p-8 relative shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
+                    
+                    {/* BOTÕES DO TOPO */}
+                    <div className="flex justify-between items-center mb-6 shrink-0">
+                        <button onClick={() => setViewState('menu')} className="flex items-center gap-2 text-gray-400 hover:text-white bg-gray-900 hover:bg-gray-800 px-4 py-2 rounded-xl transition font-bold text-sm">
+                            <ArrowLeft size={16} /> Voltar ao Menu
                         </button>
-
-                        <button
-                            onClick={handleNext}
-                            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-8 py-2.5 rounded-xl font-bold text-sm transition shadow-lg ${isLastStep ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/20' : 'bg-white hover:bg-gray-200 text-black shadow-white/10'}`}
-                        >
-                            {isLastStep ? (
-                                <>Concluir <CheckCircle2 size={16} /></>
-                            ) : (
-                                <>Próximo <ChevronRight size={16} /></>
-                            )}
+                        <button onClick={finishTutorial} className="w-8 h-8 flex items-center justify-center rounded-full bg-black/50 text-gray-400 hover:text-white hover:bg-gray-800 transition backdrop-blur-md">
+                            <X size={18} />
                         </button>
                     </div>
-                </div>
 
+                    <div className="overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-2">
+                        {/* TÍTULO E DESCRIÇÃO */}
+                        <div className="mb-6 text-center sm:text-left">
+                            <h2 className="text-xl md:text-2xl font-black text-white mb-3">{step.title}</h2>
+                            <p className="text-gray-400 text-sm leading-relaxed max-w-3xl">
+                                {step.description}
+                            </p>
+                        </div>
+
+                        {/* VÍDEO */}
+                        <div className="w-full aspect-video bg-black rounded-2xl overflow-hidden border border-gray-800/80 shadow-inner flex items-center justify-center">
+                            {step.media ? (
+                                <video key={step.media} autoPlay controls playsInline className="w-full h-full object-contain outline-none">
+                                    <source src={step.media} type="video/mp4" />
+                                </video>
+                            ) : (
+                                <div className="text-gray-600 flex flex-col items-center gap-3">
+                                    <PlaySquare size={48} className="opacity-50" />
+                                    <p className="text-sm font-bold">Vídeo em breve</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>
-    );
+        );
+    }
+
+    return null;
 }
