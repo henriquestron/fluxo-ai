@@ -89,7 +89,7 @@ export async function POST(req: Request) {
             throw new Error('ID do preço não encontrado para: ' + planType);
         }
 
-        const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+        const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://usealiado.com.br/';
 
         const stripeSession = await stripe.checkout.sessions.create({
             payment_method_types: ['card'],
