@@ -167,29 +167,51 @@ export default function StandardView({
     );
 
     // --- FILTRO RECORRENTES (Salário/Fixas) ---
+    // --- FILTRO RECORRENTES (Salário/Fixas) ---
     const activeRecurring = recurring.filter(r => {
         const paid = isPaidThisMonth(r);
         if ((r.status === 'delayed' || r.status === 'standby') && !paid) return false;
         if (r.standby_months?.includes(currentTag) && !paid) return false;
+
+        // 🟢 NOVA REGRA (SOFT DELETE): Verifica se a conta foi cancelada deste mês em diante
+        if (r.cancelled_from) {
+            const currentYYYYMM = `${selectedYear}-${String(monthIndex + 1).padStart(2, '0')}`;
+            if (currentYYYYMM >= r.cancelled_from) return false; // Esconde do painel!
+        }
 
         const { m: startM, y: startY } = getStartData(r);
 
         if (selectedYear > startY) return true;
         if (selectedYear === startY && monthIndex >= startM) return true;
         return false;
+    }).map(r => {
+        // 🟢 NOVA REGRA (AJUSTE MENSAL): Puxa o valor editado só daquele mês, se existir
+        let finalValue = r.value;
+        if (r.custom_values) {
+            const parsedCustom = typeof r.custom_values === 'string' ? JSON.parse(r.custom_values) : r.custom_values;
+            if (parsedCustom[currentTag]) {
+                finalValue = parsedCustom[currentTag];
+            }
+        }
+        return { ...r, value: finalValue }; // Devolve a conta com o valor alterado
     });
 
-    // --- FILTRO PARCELAS ---
     // --- FILTRO PARCELAS ---
     const groupedInstallments = installments.reduce((acc: any, curr: any) => {
         const paid = isPaidThisMonth(curr);
         if ((curr.status === 'delayed' || curr.status === 'standby') && !paid) return acc;
         if (curr.standby_months?.includes(currentTag) && !paid) return acc;
 
+        // 🟢 NOVA REGRA (SOFT DELETE) PARA PARCELAS
+        if (curr.cancelled_from) {
+            const currentYYYYMM = `${selectedYear}-${String(monthIndex + 1).padStart(2, '0')}`;
+            if (currentYYYYMM >= curr.cancelled_from) return acc;
+        }
+
         const { m: startM, y: startY } = getStartData(curr);
         const monthsDiff = ((selectedYear - startY) * 12) + (monthIndex - startM);
         
-        // 🟢 MÁQUINA DO TEMPO: Conta quantos standbys essa conta teve no passado
+        // MÁQUINA DO TEMPO: Conta quantos standbys essa conta teve no passado
         let pastStandbys = 0;
         const standbyArr = Array.isArray(curr.standby_months) ? curr.standby_months : JSON.parse(curr.standby_months || '[]');
         
@@ -208,7 +230,15 @@ export default function StandardView({
         const bank = curr.payment_method || 'outros';
         if (!acc[bank]) acc[bank] = { items: [], total: 0 };
 
-        const baseValue = Number(curr.value_per_month || 0);
+        // 🟢 NOVA REGRA (AJUSTE MENSAL): Verifica se a parcela sofreu ajuste neste mês
+        let baseValue = Number(curr.value_per_month || 0);
+        if (curr.custom_values) {
+            const parsedCustom = typeof curr.custom_values === 'string' ? JSON.parse(curr.custom_values) : curr.custom_values;
+            if (parsedCustom[currentTag]) {
+                baseValue = Number(parsedCustom[currentTag]);
+            }
+        }
+
         acc[bank].items.push({ ...curr, actualInstallment, value_per_month: baseValue });
         acc[bank].total += baseValue;
 

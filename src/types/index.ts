@@ -35,6 +35,8 @@ export interface Installment {
     icon?: string;
     standby_months?: string[];
     context?: string;
+    cancelled_from?: string | null;
+    custom_values?: any;
 }
 
 export interface Recurring {
@@ -54,6 +56,8 @@ export interface Recurring {
     icon?: string;
     standby_months?: string[];
     context?: string;
+    cancelled_from?: string | null;
+    custom_values?: any;
 }
 export interface GoalItem {
     id: string;

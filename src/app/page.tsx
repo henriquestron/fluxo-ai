@@ -112,6 +112,7 @@ export default function FinancialDashboard() {
     const [isAgendaOpen, setIsAgendaOpen] = useState(false);
     const totalSavedInGoals = goals.reduce((acc, goal) => acc + Number(goal.current_amount || 0), 0);
     const [isTrialExpired, setIsTrialExpired] = useState(false);
+    const [actionModal, setActionModal] = useState({ isOpen: false, type: '', title: '', message: '', btnSingle: '', btnAll: '', payload: null as any });
 
     // --- AUTH & USER DATA ---
     const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
@@ -1258,26 +1259,48 @@ export default function FinancialDashboard() {
     const getActiveUserId = () => viewingAs ? viewingAs.client_id : user?.id;
 
     const handleDelete = async (table: string, id: number) => {
-        if (!confirm("Tem certeza?")) return;
+        // 🟢 SE FOR FIXA/PARCELA, ABRE O MODAL BONITO E PARA AQUI!
+        if (table === 'recurring' || table === 'installments') {
+             setActionModal({
+                isOpen: true,
+                type: 'delete',
+                title: 'Cancelar Conta',
+                message: `Deseja cancelar as cobranças futuras ou apagar todo o histórico desta conta?`,
+                btnSingle: `Apagar APENAS deste mês em diante`,
+                btnAll: 'Apagar o Histórico INTEIRO',
+                payload: { table, id } // Guarda quem vamos apagar
+            });
+            return;
+        }
 
-        // 🧪 SEQUESTRO DA SIMULAÇÃO (Não deixa excluir de verdade)
+        if (!confirm("Tem certeza que deseja excluir esta movimentação?")) return;
+        finalizeDelete(table, id, 'all');
+    };
+
+    // 🟢 A CONTINUAÇÃO DO DELETE:
+    const finalizeDelete = async (table: string, id: number, deleteScope: string) => {
+        setActionModal(prev => ({ ...prev, isOpen: false })); // Fecha o modal
+
         if (isSimulationMode) {
             if (table === 'transactions') setTransactions(prev => prev.filter(t => t.id !== id));
             else if (table === 'installments') setInstallments(prev => prev.filter(i => i.id !== id));
             else if (table === 'recurring') setRecurring(prev => prev.filter(r => r.id !== id));
-
-            toast.success("Excluído apenas na simulação! 🧪");
-            return; // 🛑 Impede que o código continue e delete no banco!
+            toast.success("Excluído na simulação! 🧪");
+            return;
         }
 
         const activeId = getActiveUserId();
         if (user && activeId) {
-            await supabase.from(table).delete().eq('id', id);
+            if (deleteScope === 'single') {
+                const monthMap: Record<string, string> = { 'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04', 'Mai': '05', 'Jun': '06', 'Jul': '07', 'Ago': '08', 'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12' };
+                const currentYYYYMM = `${selectedYear}-${monthMap[activeTab]}`;
+                await supabase.from(table).update({ cancelled_from: currentYYYYMM }).eq('id', id);
+                toast.success("Cancelado daqui pra frente!");
+            } else {
+                await supabase.from(table).delete().eq('id', id);
+                toast.success("Conta apagada do histórico!");
+            }
             loadData(activeId, currentWorkspace?.id);
-        } else {
-            if (table === 'transactions') saveDataLocal(transactions.filter(t => t.id !== id), installments, recurring);
-            else if (table === 'installments') saveDataLocal(transactions, installments.filter(i => i.id !== id), recurring);
-            else saveDataLocal(transactions, installments, recurring.filter(r => r.id !== id));
         }
     };
     const togglePaid = async (table: string, id: number, currentStatus: boolean) => {
@@ -1535,226 +1558,154 @@ export default function FinancialDashboard() {
         // Se tiver o estado de upload, mantenha:
         // setUploadingFile(false); 
     };
-    const handleSubmit = async () => {
-        // 1. Validação Inicial
-        if (!formData.title) {
-            toast.error("Preencha a descrição.");
-            return;
+    const handleSubmit = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        if (!formData.title) { toast.error("Preencha a descrição."); return; }
+
+        let originalTable: string | null = null;
+        if (editingId) {
+            if (transactions.find(t => t.id === editingId)) originalTable = 'transactions';
+            else if (installments.find(i => i.id === editingId)) originalTable = 'installments';
+            else if (recurring.find(r => r.id === editingId)) originalTable = 'recurring';
         }
+
+        // 🟢 MUDAMOS O TEXTO: Agora reflete perfeitamente a realidade
+        if (editingId && originalTable !== 'transactions') {
+            setActionModal({
+                isOpen: true,
+                type: 'edit',
+                title: 'Ajuste de Valor',
+                message: `Você alterou os dados desta conta. Como deseja aplicar esta mudança?`,
+                btnSingle: `Exceção APENAS em ${formData.targetMonth}/${selectedYear}`,
+                btnAll: `Deste mês em diante (Preserva o passado)`, // 🟢 Texto Corrigido!
+                payload: null
+            });
+            return; 
+        }
+
+        finalizeSubmit('future'); // Comportamento padrão se não abrir o modal
+    };
+
+    const finalizeSubmit = async (updateScope: string) => {
+        setActionModal(prev => ({ ...prev, isOpen: false })); 
 
         const activeId = getActiveUserId();
         const context = currentWorkspace?.id;
-
-        // Converte valores para número (tratando vírgula e ponto)
         const amountVal = formData.amount ? parseFloat(formData.amount.toString().replace(',', '.')) : 0;
         const fixedVal = formData.fixedMonthlyValue ? parseFloat(formData.fixedMonthlyValue.toString().replace(',', '.')) : 0;
 
-        // Mapa de meses para construir a data ISO
-        const monthMapNums: Record<string, string> = {
-            'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04', 'Mai': '05', 'Jun': '06',
-            'Jul': '07', 'Ago': '08', 'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12'
-        };
-
-        // 🟢 CORREÇÃO DO "DIA 01": Verifica qual campo de dia usar dependendo do tipo de lançamento
-        let baseDay = '01';
-        if (formMode === 'income' || formMode === 'expense') {
-            // Se estiver vazio, pega o dia de hoje como segurança
-            baseDay = formData.day ? formData.day.toString() : String(new Date().getDate());
-        } else {
-            baseDay = formData.dueDay ? formData.dueDay.toString() : '01';
-        }
-
+        const monthMapNums: Record<string, string> = { 'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04', 'Mai': '05', 'Jun': '06', 'Jul': '07', 'Ago': '08', 'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12' };
+        
+        let baseDay = (formMode === 'income' || formMode === 'expense') ? (formData.day ? formData.day.toString() : String(new Date().getDate())) : (formData.dueDay ? formData.dueDay.toString() : '01');
         const dayValue = baseDay.padStart(2, '0');
         const monthValue = monthMapNums[formData.targetMonth] || '01';
-
-        // Criamos uma data no formato ISO (YYYY-MM-DD) para o banco aceitar no created_at
-        // Usamos 12:00:00 para evitar problemas de fuso horário
         const isoDateForDatabase = `${selectedYear}-${monthValue}-${dayValue}T12:00:00Z`;
         const dateStringBR = `${dayValue}/${monthValue}/${selectedYear}`;
 
-        // 2. Lógica de Comprovantes (Preservando o que você já tem)
-        // 2. Lógica de Comprovantes (Corrigida para Exclusão)
         let originalItem: any = null;
+        let originalTable: string | null = null;
         if (editingId) {
-            originalItem = transactions.find(t => t.id === editingId) ||
-                installments.find(i => i.id === editingId) ||
-                recurring.find(r => r.id === editingId);
+            if (transactions.find(t => t.id === editingId)) { originalItem = transactions.find(t => t.id === editingId); originalTable = 'transactions'; }
+            else if (installments.find(i => i.id === editingId)) { originalItem = installments.find(i => i.id === editingId); originalTable = 'installments'; }
+            else if (recurring.find(r => r.id === editingId)) { originalItem = recurring.find(r => r.id === editingId); originalTable = 'recurring'; }
         }
 
-        let updatedReceipts = { ...(originalItem?.receipts || {}) };
         const tag = `${formData.targetMonth}/${selectedYear}`;
-
-        // 🟢 A MÁGICA DA EXCLUSÃO: Se formData.receiptUrl for vazio, manda "null" pro banco!
+        let updatedReceipts = { ...(originalItem?.receipts || {}) };
         let finalReceiptUrl = originalItem?.receipt_url || null;
 
-        if (formData.receiptUrl === '') {
-            delete updatedReceipts[tag]; // Tira do histórico
-            finalReceiptUrl = null;      // Zera o comprovante principal
-        } else if (formData.receiptUrl) {
-            updatedReceipts[tag] = formData.receiptUrl;
-            finalReceiptUrl = formData.receiptUrl;
-        }
+        if (formData.receiptUrl === '') { delete updatedReceipts[tag]; finalReceiptUrl = null; } 
+        else if (formData.receiptUrl) { updatedReceipts[tag] = formData.receiptUrl; finalReceiptUrl = formData.receiptUrl; }
 
-        // 3. Montagem do Payload por Tipo de Lançamento
+        let customValues: Record<string, any> = {};
+        if (originalItem?.custom_values) customValues = typeof originalItem.custom_values === 'string' ? JSON.parse(originalItem.custom_values) : originalItem.custom_values;
+
+        // 🟢 A MÁQUINA DO TEMPO: Congela os valores passados para não quebrar o histórico
+        const applyBackfill = (oldValue: number) => {
+            const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+            let dDate = new Date(originalItem.created_at || isoDateForDatabase);
+            let startY = dDate.getFullYear();
+            let startM = dDate.getMonth();
+            let currY = selectedYear;
+            let currM = parseInt(monthValue) - 1;
+            let tempY = startY; let tempM = startM; let loops = 0;
+            
+            while ((tempY < currY || (tempY === currY && tempM < currM)) && loops < 200) {
+                const pastTag = `${monthNames[tempM]}/${tempY}`;
+                if (customValues[pastTag] === undefined) {
+                    customValues[pastTag] = oldValue; // Salva o valor antigo nos meses que já passaram
+                }
+                tempM++; if (tempM > 11) { tempM = 0; tempY++; } loops++;
+            }
+        };
+
         const getPayload = () => {
-            const base = {
-                user_id: activeId,
-                title: formData.title,
-                context: context,
-                icon: formData.icon,
-                payment_method: formData.paymentMethod || 'outros',
-                receipts: updatedReceipts,
-                receipt_url: finalReceiptUrl // 🟢 Agora envia 'null' corretamente!
-            };
-
+            const base = { user_id: activeId, title: formData.title, context: context, icon: formData.icon, payment_method: formData.paymentMethod || 'outros', receipts: updatedReceipts, receipt_url: finalReceiptUrl };
             const safeCreatedAt = (editingId && originalItem?.created_at) ? originalItem.created_at : isoDateForDatabase;
 
-            // --- RECEITAS ---
             if (formMode === 'income') {
-                return formData.isFixedIncome
-                    ? { table: 'recurring', data: { ...base, value: amountVal, due_day: parseInt(dayValue), category: 'Salário', type: 'income', status: 'active', start_date: editingId && originalItem?.start_date ? originalItem.start_date : isoDateForDatabase, created_at: safeCreatedAt } }
-                    : { table: 'transactions', data: { ...base, amount: amountVal, type: 'income', date: dateStringBR, category: 'Receita', target_month: formData.targetMonth, status: 'active', created_at: safeCreatedAt } };
+                if (formData.isFixedIncome) {
+                    let finalValue = amountVal;
+                    if (updateScope === 'single' && originalItem) { finalValue = originalItem.value; customValues[tag] = amountVal; }
+                    else if (updateScope === 'future' && originalItem) { applyBackfill(originalItem.value); } // 🟢 Viaja no tempo!
+                    
+                    return { table: 'recurring', data: { ...base, value: finalValue, custom_values: customValues, due_day: parseInt(dayValue), category: 'Salário', type: 'income', status: 'active', start_date: editingId && originalItem?.start_date ? originalItem.start_date : isoDateForDatabase, created_at: safeCreatedAt } };
+                } else return { table: 'transactions', data: { ...base, amount: amountVal, type: 'income', date: dateStringBR, category: 'Receita', target_month: formData.targetMonth, status: 'active', created_at: safeCreatedAt } };
             }
 
-            // --- DESPESAS AVULSAS ---
-            if (formMode === 'expense') {
-                return {
-                    table: 'transactions',
-                    data: {
-                        ...base,
-                        amount: amountVal,
-                        type: 'expense',
-                        date: dateStringBR,
-                        category: formData.category,
-                        target_month: formData.targetMonth,
-                        status: 'active',
-                        created_at: safeCreatedAt,
-                        is_paid: editingId && originalItem !== undefined ? originalItem.is_paid : true
-                    }
-                };
-            }
+            if (formMode === 'expense') return { table: 'transactions', data: { ...base, amount: amountVal, type: 'expense', date: dateStringBR, category: formData.category, target_month: formData.targetMonth, status: 'active', created_at: safeCreatedAt, is_paid: editingId && originalItem !== undefined ? originalItem.is_paid : true } };
 
-            // --- PARCELAMENTOS ---
             if (formMode === 'installment') {
                 const qtd = parseInt(formData.installments.toString()) || 1;
-                const valuePerMonth = fixedVal > 0 ? fixedVal : (amountVal / qtd);
-                const totalValue = amountVal > 0 ? amountVal : (valuePerMonth * qtd);
+                let valuePerMonth = fixedVal > 0 ? fixedVal : (amountVal / qtd);
+                let totalValue = amountVal > 0 ? amountVal : (valuePerMonth * qtd);
 
-                return {
-                    table: 'installments',
-                    data: {
-                        ...base,
-                        total_value: totalValue,
-                        installments_count: qtd,
-                        current_installment: editingId && originalItem ? originalItem.current_installment : 0,
-                        value_per_month: valuePerMonth,
-                        due_day: parseInt(dayValue) || 10,
-                        status: 'active',
-                        created_at: safeCreatedAt
-                    }
-                };
+                if (updateScope === 'single' && originalItem) { customValues[tag] = valuePerMonth; valuePerMonth = originalItem.value_per_month; totalValue = originalItem.total_value; }
+                else if (updateScope === 'future' && originalItem) { applyBackfill(originalItem.value_per_month); } // 🟢 Viaja no tempo!
+
+                return { table: 'installments', data: { ...base, total_value: totalValue, installments_count: qtd, current_installment: editingId && originalItem ? originalItem.current_installment : 0, value_per_month: valuePerMonth, custom_values: customValues, due_day: parseInt(dayValue) || 10, status: 'active', created_at: safeCreatedAt } };
             }
 
-            // --- DESPESAS FIXAS ---
-            return {
-                table: 'recurring',
-                data: {
-                    ...base,
-                    value: amountVal,
-                    due_day: parseInt(dayValue) || 10,
-                    category: formData.category || 'Fixa',
-                    type: 'expense',
-                    status: 'active',
-                    start_date: editingId && originalItem?.start_date ? originalItem.start_date : isoDateForDatabase,
-                    created_at: safeCreatedAt
-                }
-            };
+            let finalValue = amountVal;
+            if (updateScope === 'single' && originalItem) { finalValue = originalItem.value; customValues[tag] = amountVal; }
+            else if (updateScope === 'future' && originalItem) { applyBackfill(originalItem.value); } // 🟢 Viaja no tempo!
+
+            return { table: 'recurring', data: { ...base, value: finalValue, custom_values: customValues, due_day: parseInt(dayValue), category: formData.category || 'Fixa', type: 'expense', status: 'active', start_date: editingId && originalItem?.start_date ? originalItem.start_date : isoDateForDatabase, created_at: safeCreatedAt } };
         };
 
         const { table, data } = getPayload();
 
-        // 🧪 SEQUESTRO DA SIMULAÇÃO (Não deixa salvar no banco)
         if (isSimulationMode) {
-            // Cria um ID falso só para a tela conseguir renderizar
             const fakeItem = { ...data, id: editingId ? editingId : Date.now() };
-
-            if (table === 'transactions') {
-                if (editingId) setTransactions(prev => prev.map(t => t.id === editingId ? fakeItem : t));
-                else setTransactions(prev => [...prev, fakeItem]);
-            } else if (table === 'installments') {
-                if (editingId) setInstallments(prev => prev.map(i => i.id === editingId ? fakeItem : i));
-                else setInstallments(prev => [...prev, fakeItem]);
-            } else if (table === 'recurring') {
-                if (editingId) setRecurring(prev => prev.map(r => r.id === editingId ? fakeItem : r));
-                else setRecurring(prev => [...prev, fakeItem]);
-            }
-
+            if (table === 'transactions') { if (editingId) setTransactions(prev => prev.map(t => t.id === editingId ? fakeItem : t)); else setTransactions(prev => [...prev, fakeItem]); } 
+            else if (table === 'installments') { if (editingId) setInstallments(prev => prev.map(i => i.id === editingId ? fakeItem : i)); else setInstallments(prev => [...prev, fakeItem]); } 
+            else if (table === 'recurring') { if (editingId) setRecurring(prev => prev.map(r => r.id === editingId ? fakeItem : r)); else setRecurring(prev => [...prev, fakeItem]); }
             toast.success("Salvo no laboratório! 🧪");
-
-            // Fecha o form e limpa os dados
-            setIsFormOpen(false);
-            setEditingId(null);
-            const diaDeHoje = String(new Date().getDate()).padStart(2, '0');
-            setFormData({
-                title: '', amount: '', targetMonth: activeTab, icon: 'dollar-sign',
-                paymentMethod: 'outros', isFixedIncome: false, category: 'Outros',
-                installments: '1', fixedMonthlyValue: '', dueDay: '10', day: diaDeHoje, receiptUrl: ''
-            });
-
-            return; // 🛑 Para a função aqui e não envia pro Supabase!
+            setIsFormOpen(false); setEditingId(null);
+            setFormData({ title: '', amount: '', targetMonth: activeTab, icon: 'dollar-sign', paymentMethod: 'outros', isFixedIncome: false, category: 'Outros', installments: '1', fixedMonthlyValue: '', dueDay: '10', day: String(new Date().getDate()).padStart(2, '0'), receiptUrl: '' });
+            return; 
         }
 
-        // 4. Execução no Supabase (Com lógica robusta de Update/Insert)
         try {
             let error = null;
-
-            if (editingId) {
-                // Descobre em qual tabela o item estava originalmente
-                const originalTable = transactions.find(t => t.id === editingId) ? 'transactions'
-                    : installments.find(i => i.id === editingId) ? 'installments'
-                        : recurring.find(r => r.id === editingId) ? 'recurring'
-                            : null;
-
-                if (originalTable && originalTable !== table) {
-                    // MUDANÇA DE TIPO: Deleta da antiga -> Insere na nova
-                    const { error: delError } = await supabase.from(originalTable).delete().eq('id', editingId);
-                    if (delError) throw delError;
-
-                    const { error: insError } = await supabase.from(table).insert([data]);
-                    error = insError;
+            if (editingId && originalTable) {
+                if (originalTable !== table) {
+                    const { error: delError } = await supabase.from(originalTable).delete().eq('id', editingId); if (delError) throw delError;
+                    const { error: insError } = await supabase.from(table).insert([data]); error = insError;
                 } else {
-                    // MESMA TABELA: Apenas atualiza
-                    const { error: updError } = await supabase.from(table).update(data).eq('id', editingId);
-                    error = updError;
+                    const { error: updError } = await supabase.from(table).update(data).eq('id', editingId); error = updError;
                 }
             } else {
-                // NOVO ITEM: Insere
-                const { error: insError } = await supabase.from(table).insert([data]);
-                error = insError;
+                const { error: insError } = await supabase.from(table).insert([data]); error = insError;
             }
 
             if (error) throw error;
+            toast.success(updateScope === 'single' ? "Exceção salva apenas para este mês!" : "Alteração salva deste mês em diante!");
 
-            toast.success("Dados salvos com sucesso!");
-
-            // Limpa o formulário e fecha o modal usando o NOME CERTO
-            setIsFormOpen(false); // <--- AQUI ESTAVA O ERRO!
-            setEditingId(null);
-
-            // Limpa o form, agora o TypeScript já conhece o 'day'
-            setFormData({
-                title: '', amount: '', targetMonth: activeTab, icon: 'dollar-sign',
-                paymentMethod: 'outros', isFixedIncome: false, category: 'Outros',
-                installments: '1', fixedMonthlyValue: '', dueDay: '10', day: '', receiptUrl: ''
-            });
-
-            // Recarrega os dados
+            setIsFormOpen(false); setEditingId(null);
+            setFormData({ title: '', amount: '', targetMonth: activeTab, icon: 'dollar-sign', paymentMethod: 'outros', isFixedIncome: false, category: 'Outros', installments: '1', fixedMonthlyValue: '', dueDay: '10', day: String(new Date().getDate()).padStart(2, '0'), receiptUrl: '' });
             if (activeId) loadData(activeId, context);
-
-        } catch (error: any) {
-            console.error("Erro ao salvar:", error);
-            toast.error("Erro ao salvar: " + (error.message || "Erro desconhecido"));
-        }
+        } catch (error: any) { toast.error("Erro ao salvar: " + (error.message || "")); }
     };
     // --- FUNÇÕES DE METAS (NOVO) ---
 
@@ -1887,6 +1838,9 @@ export default function FinancialDashboard() {
 
         const dateFilter = `${monthMap[monthName]}/${selectedYear}`;
         const currentPaymentTag = `${monthName}/${selectedYear}`;
+        
+        // Formato para comparar o cancelled_from (ex: "2026-05")
+        const currentYYYYMM = `${selectedYear}-${String(monthIndex + 1).padStart(2, '0')}`;
 
         const getStartData = (item: any) => {
             if (item.start_date && item.start_date.includes('/')) {
@@ -1901,17 +1855,26 @@ export default function FinancialDashboard() {
             return { d: 1, m: 0, y: new Date().getFullYear() };
         };
 
-        // 🟢 HELPER DA IMUNIDADE: Conta paga não pode sumir!
         const isPaid = (item: any, tag: string) => {
             if (!item.paid_months) return false;
             return item.paid_months.includes(tag) || item.paid_months.includes(tag.split('/')[0]);
         };
 
-        // 1. RECORRENTES ATIVOS NO MÊS
+        // 🟢 HELPER DE AJUSTE MENSAL: Lê o json de exceções se existir
+        const getCustomValue = (item: any, tag: string, baseValue: number) => {
+            if (!item.custom_values) return baseValue;
+            const parsedCustom = typeof item.custom_values === 'string' ? JSON.parse(item.custom_values) : item.custom_values;
+            return parsedCustom[tag] !== undefined ? Number(parsedCustom[tag]) : baseValue;
+        };
+
+        // 1. RECORRENTES ATIVOS NO MÊS (Agora ignora os cancelados!)
         const activeRecurring = recurring.filter(r => {
             const paid = isPaid(r, currentPaymentTag);
             if ((r.status === 'delayed' || r.status === 'standby') && !paid) return false;
             if (r.standby_months?.includes(currentPaymentTag) && !paid) return false;
+
+            // 🟢 MATADOR DE FANTASMAS: Ignora se a conta foi cancelada neste mês ou antes
+            if (r.cancelled_from && currentYYYYMM >= r.cancelled_from) return false;
 
             const { m: startMonth, y: startYear } = getStartData(r);
             if (selectedYear > startYear) return true;
@@ -1920,76 +1883,75 @@ export default function FinancialDashboard() {
         });
 
         // --- CÁLCULO DE ENTRADAS ---
-        const incomeFixed = activeRecurring.filter(r => r.type === 'income' && !r.skipped_months?.includes(monthName)).reduce((acc, curr) => acc + Number(curr.value), 0);
+        // 🟢 Aplica a leitura dos valores customizados
+        const incomeFixed = activeRecurring.filter(r => r.type === 'income' && !r.skipped_months?.includes(monthName)).reduce((acc, curr) => acc + getCustomValue(curr, currentPaymentTag, Number(curr.value)), 0);
         const incomeVariableList = transactions.filter(t => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby');
         const incomeTotal = incomeFixed + incomeVariableList.reduce((acc, curr) => acc + Number(curr.amount), 0);
-
-        // 🟢 Camada Visual de Entradas (Ignora resgates de 'Metas')
         const displayIncome = incomeFixed + incomeVariableList.filter(t => t.category !== 'Metas').reduce((acc, curr) => acc + Number(curr.amount), 0);
 
         // --- CÁLCULO DE SAÍDAS DO MÊS ---
-        const expenseFixed = activeRecurring.filter(r => r.type === 'expense' && !r.skipped_months?.includes(monthName)).reduce((acc, curr) => acc + Number(curr.value), 0);
+        // 🟢 Aplica a leitura dos valores customizados
+        const expenseFixed = activeRecurring.filter(r => r.type === 'expense' && !r.skipped_months?.includes(monthName)).reduce((acc, curr) => acc + getCustomValue(curr, currentPaymentTag, Number(curr.value)), 0);
         const expenseVariableList = transactions.filter(t => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby');
         const expenseVariable = expenseVariableList.reduce((acc, curr) => acc + Number(curr.amount), 0);
 
         const installTotal = installments.reduce((acc, curr) => {
             const paid = isPaid(curr, currentPaymentTag);
             if ((curr.status === 'delayed' || curr.status === 'standby') && !paid) return acc;
-            if (safeArray(curr.standby_months).includes(currentPaymentTag) && !paid) return acc;
+            const standbyArr = Array.isArray(curr.standby_months) ? curr.standby_months : JSON.parse(curr.standby_months || '[]');
+            if (standbyArr.includes(currentPaymentTag) && !paid) return acc;
+
+            // 🟢 MATADOR DE FANTASMAS (Parcelas): Ignora se a parcela foi cancelada
+            if (curr.cancelled_from && currentYYYYMM >= curr.cancelled_from) return acc;
 
             const { m: startMonth, y: startYear } = getStartData(curr);
             const monthsDiff = ((selectedYear - startYear) * 12) + (monthIndex - startMonth);
 
-            // 🟢 MÁQUINA DO TEMPO: Conta quantos standbys essa conta teve no passado
             let pastStandbys = 0;
-            const standbyArr = safeArray(curr.standby_months);
             for (let i = 0; i < monthsDiff; i++) {
                 const checkM = (startMonth + i) % 12;
                 const checkY = startYear + Math.floor((startMonth + i) / 12);
                 if (standbyArr.includes(`${MONTHS[checkM]}/${checkY}`)) pastStandbys++;
             }
 
-            // Subtrai os meses congelados para a parcela não avançar
             const currentInstNum = 1 + (curr.current_installment || 0) + monthsDiff - pastStandbys;
 
             if (currentInstNum >= 1 && currentInstNum <= curr.installments_count) {
-                return acc + Number(curr.value_per_month);
+                // 🟢 Aplica a leitura dos valores customizados nas parcelas também
+                return acc + getCustomValue(curr, currentPaymentTag, Number(curr.value_per_month));
             }
             return acc;
         }, 0);
 
         const currentMonthObligations = expenseVariable + expenseFixed + installTotal;
-
-        // 🟢 Camada Visual de Saídas (Ignora transferências para 'Metas')
         const displayExpense = expenseFixed + installTotal + expenseVariableList.filter(t => t.category !== 'Metas').reduce((acc, curr) => acc + Number(curr.amount), 0);
 
-        // --- STAND-BY GLOBAL (Mostra o total congelado em TODOS os meses) ---
+        // --- STAND-BY GLOBAL (Lógica mantida) ---
         let delayedTotal = 0;
-
-        transactions.forEach(t => {
-            if ((t.status === 'delayed' || t.status === 'standby') && !t.is_paid) delayedTotal += Number(t.amount);
-        });
-
+        transactions.forEach(t => { if ((t.status === 'delayed' || t.status === 'standby') && !t.is_paid) delayedTotal += Number(t.amount); });
+        
         installments.forEach(i => {
-            const standbyArr = Array.isArray(i.standby_months) ? i.standby_months : [];
+            // Se foi cancelado, nem entra no standby
+            if (i.cancelled_from && currentYYYYMM >= i.cancelled_from) return;
 
-            if ((i.status === 'delayed' || i.status === 'standby') && standbyArr.length === 0) {
-                delayedTotal += Number(i.value_per_month);
-            }
+            const standbyArr = Array.isArray(i.standby_months) ? i.standby_months : JSON.parse(i.standby_months || '[]');
+            if ((i.status === 'delayed' || i.status === 'standby') && standbyArr.length === 0) delayedTotal += getCustomValue(i, currentPaymentTag, Number(i.value_per_month));
+            
             standbyArr.forEach((tag: string) => {
-                if (!isPaid(i, tag)) delayedTotal += Number(i.value_per_month);
+                if (!isPaid(i, tag)) delayedTotal += getCustomValue(i, tag, Number(i.value_per_month));
             });
         });
 
         recurring.forEach(r => {
             if (r.type === 'expense') {
-                const standbyArr = Array.isArray(r.standby_months) ? r.standby_months : [];
+                // Se foi cancelado, nem entra no standby
+                if (r.cancelled_from && currentYYYYMM >= r.cancelled_from) return;
 
-                if ((r.status === 'delayed' || r.status === 'standby') && standbyArr.length === 0) {
-                    delayedTotal += Number(r.value);
-                }
+                const standbyArr = Array.isArray(r.standby_months) ? r.standby_months : JSON.parse(r.standby_months || '[]');
+                if ((r.status === 'delayed' || r.status === 'standby') && standbyArr.length === 0) delayedTotal += getCustomValue(r, currentPaymentTag, Number(r.value));
+                
                 standbyArr.forEach((tag: string) => {
-                    if (!isPaid(r, tag)) delayedTotal += Number(r.value);
+                    if (!isPaid(r, tag)) delayedTotal += getCustomValue(r, tag, Number(r.value));
                 });
             }
         });
@@ -2008,13 +1970,14 @@ export default function FinancialDashboard() {
 
         installments.forEach(inst => {
             if (inst.status !== 'standby' && inst.status !== 'delayed') {
+                // Se a parcela foi cancelada de vez e o mês que estamos olhando já passou da data de cancelamento, ignora a dívida
+                if (inst.cancelled_from && currentYYYYMM >= inst.cancelled_from) return;
+
                 const { m: startMonth, y: startYear } = getStartData(inst);
                 const totalMonthsDiffUntilNow = ((selectedYear - startYear) * 12) + (monthIndex - startMonth);
-
                 const standbyArr = Array.isArray(inst.standby_months) ? inst.standby_months : JSON.parse(inst.standby_months || '[]');
 
                 for (let i = 0; i < totalMonthsDiffUntilNow; i++) {
-
                     let pastStandbys = 0;
                     for (let step = 0; step < i; step++) {
                         const stepM = (startMonth + step) % 12;
@@ -2028,11 +1991,10 @@ export default function FinancialDashboard() {
                         const absMonthIndex = (startMonth + i);
                         const pYear = startYear + Math.floor(absMonthIndex / 12);
                         const pMonthName = MONTHS[absMonthIndex % 12];
-
                         const paymentTag = `${pMonthName}/${pYear}`;
 
                         if (!isPaid(inst, paymentTag) && !standbyArr.includes(paymentTag)) {
-                            accumulatedDebt += Number(inst.value_per_month);
+                            accumulatedDebt += getCustomValue(inst, paymentTag, Number(inst.value_per_month));
                         }
                     }
                 }
@@ -2041,6 +2003,9 @@ export default function FinancialDashboard() {
 
         recurring.forEach(rec => {
             if (rec.type === 'expense' && rec.status !== 'standby' && rec.status !== 'delayed') {
+                 // Se foi cancelado, ignora dívidas deste mês pra frente
+                if (rec.cancelled_from && currentYYYYMM >= rec.cancelled_from) return;
+
                 const { m: startMonth, y: startYear } = getStartData(rec);
                 const totalMonthsSinceStart = ((selectedYear - startYear) * 12) + (monthIndex - startMonth);
 
@@ -2051,7 +2016,7 @@ export default function FinancialDashboard() {
                     const checkTag = `${checkMonthName}/${checkYear}`;
 
                     if (!isPaid(rec, checkTag) && !rec.skipped_months?.includes(checkMonthName) && !rec.standby_months?.includes(checkTag)) {
-                        accumulatedDebt += Number(rec.value);
+                        accumulatedDebt += getCustomValue(rec, checkTag, Number(rec.value));
                     }
                 }
             }
@@ -2059,9 +2024,9 @@ export default function FinancialDashboard() {
 
         return {
             income: incomeTotal,
-            displayIncome: displayIncome, // 🟢 Valor "visual" de Entradas (Sem Metas)
+            displayIncome: displayIncome,
             expenseTotal: currentMonthObligations,
-            displayExpense: displayExpense, // 🟢 Valor "visual" de Saídas (Sem Metas)
+            displayExpense: displayExpense,
             accumulatedDebt: accumulatedDebt,
             balance: incomeTotal - currentMonthObligations,
             delayedTotal: delayedTotal
@@ -3068,6 +3033,7 @@ export default function FinancialDashboard() {
             )}
 
 
+
             {/* MODAL IA */}
             {/* MODAL DE CRIAR NOVA WORKSPACE (PERFIL) */}
             {isNewProfileModalOpen && (
@@ -3103,6 +3069,44 @@ export default function FinancialDashboard() {
                         >
                             {isSavingWorkspace ? <Loader2 className="animate-spin" size={18} /> : "Criar Perfil"}
                         </button>
+                    </div>
+                </div>
+            )}
+            {/* 🟢 MODAL DE AÇÃO CUSTOMIZADO (SUBSTITUI O CONFIRM) */}
+            {actionModal.isOpen && (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                    <div className="bg-[#12141a] border border-gray-800 rounded-3xl p-6 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200">
+                        
+                        <div className="flex items-center justify-center w-12 h-12 rounded-full bg-cyan-500/10 text-cyan-400 mb-4">
+                            {actionModal.type === 'delete' ? <Trash2 size={24} className="text-red-400"/> : <Pencil size={24} />}
+                        </div>
+
+                        <h3 className="text-xl font-black text-white mb-2">{actionModal.title}</h3>
+                        <p className="text-gray-400 text-sm mb-8 leading-relaxed">{actionModal.message}</p>
+                        
+                        <div className="flex flex-col gap-3">
+                            <button 
+                                onClick={() => actionModal.type === 'edit' ? finalizeSubmit('single') : finalizeDelete(actionModal.payload.table, actionModal.payload.id, 'single')} 
+                                className="w-full py-4 px-4 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-bold transition flex justify-between items-center shadow-lg"
+                            >
+                                <span>{actionModal.btnSingle}</span>
+                                <span className="text-[10px] uppercase tracking-wider text-cyan-100 bg-black/20 px-2 py-1 rounded-md">Recomendado</span>
+                            </button>
+                            
+                            <button 
+                                onClick={() => actionModal.type === 'edit' ? finalizeSubmit('future') : finalizeDelete(actionModal.payload.table, actionModal.payload.id, 'all')} 
+                                className="w-full py-4 px-4 bg-gray-900/50 hover:bg-emerald-500/10 text-gray-300 hover:text-emerald-400 rounded-xl font-bold transition flex justify-center items-center border border-gray-800 hover:border-emerald-500/30"
+                            >
+                                <span>{actionModal.btnAll}</span>
+                            </button>
+
+                            <button 
+                                onClick={() => setActionModal(prev => ({ ...prev, isOpen: false }))} 
+                                className="w-full py-3 px-4 text-gray-500 hover:text-white rounded-xl font-bold transition mt-2"
+                            >
+                                Cancelar Operação
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
