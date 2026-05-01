@@ -2896,7 +2896,6 @@ export default function FinancialDashboard() {
                 isOpen={isChangelogOpen} 
                 onClose={() => setIsChangelogOpen(false)} 
                 data={changelogData} 
-                userId={user?.id} // Certifique-se de passar a variável do ID do usuário ativo
             />
 
             <AiAssistantModal
