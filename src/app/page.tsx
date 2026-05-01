@@ -49,6 +49,7 @@ import ContractGenerator from '@/components/dashboard/agent/contratos/ContractGe
 import ReportGenerator from '@/components/dashboard/agent/contratos/ReportGenerator';
 import ConsultantAgendaModal from '@/components/dashboard/ConsultantAgendaModal';
 import ConsultantHeader from '@/components/dashboard/ConsultantHeader';
+import ChangelogModal from '@/components/dashboard/ChangelogModal';
 
 
 
@@ -113,7 +114,8 @@ export default function FinancialDashboard() {
     const totalSavedInGoals = goals.reduce((acc, goal) => acc + Number(goal.current_amount || 0), 0);
     const [isTrialExpired, setIsTrialExpired] = useState(false);
     const [actionModal, setActionModal] = useState({ isOpen: false, type: '', title: '', message: '', btnSingle: '', btnAll: '', payload: null as any });
-
+    const [isChangelogOpen, setIsChangelogOpen] = useState(false);
+    const [changelogData, setChangelogData] = useState<any>(null);  
     // --- AUTH & USER DATA ---
     const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
     const [showEmailCheck, setShowEmailCheck] = useState(false);
@@ -594,9 +596,9 @@ export default function FinancialDashboard() {
     };
 
     const fetchUserProfile = async (userId: string) => {
-        // 🟢 CORREÇÃO: Agora puxamos o stripe_id e o trial do banco
+        // 🟢 1. Busca os dados do perfil (Agora incluindo o last_seen_changelog)
         const { data } = await supabase.from('profiles')
-            .select('plan_tier, preferred_layout, theme_color, stripe_subscription_id, trial_expires_at')
+            .select('plan_tier, preferred_layout, theme_color, stripe_subscription_id, trial_expires_at, last_seen_changelog')
             .eq('id', userId)
             .single();
 
@@ -609,8 +611,7 @@ export default function FinancialDashboard() {
         if (plan === 'agent') {
             fetchClients(userId);
 
-
-            // 🟢 LÓGICA DA TRAVA DO CONSULTOR (PAYWALL)
+            // LÓGICA DA TRAVA DO CONSULTOR (PAYWALL)
             const hasPaid = !!data?.stripe_subscription_id;
             if (!hasPaid && data?.trial_expires_at) {
                 const now = new Date().getTime();
@@ -620,6 +621,31 @@ export default function FinancialDashboard() {
                     setIsTrialExpired(true);
                 }
             }
+        }
+
+        // 🟢 2. SISTEMA DE ATUALIZAÇÕES (CHANGELOG) - O pulo do gato!
+
+        try {
+            const { data: latestChangelog } = await supabase
+                .from('changelogs')
+                .select('*')
+                .order('created_at', { ascending: false }) // Pega do mais novo pro mais velho
+                .limit(1)
+                .maybeSingle();
+
+            // Se existe uma nota, e a versão dela é diferente da que o usuário viu...
+            if (latestChangelog && data?.last_seen_changelog !== latestChangelog.version) {
+                // Adaptamos os dados da tabela nova para o formato que o Modal espera ler
+                setChangelogData({
+                    latest_changelog_version: latestChangelog.version,
+                    changelog_title: latestChangelog.title,
+                    changelog_text: latestChangelog.content,
+                    changelog_video_url: latestChangelog.video_url
+                });
+                setIsChangelogOpen(true);
+            }
+        } catch (error) {
+            console.error("Erro ao buscar atualizações do sistema:", error);
         }
     };
 
@@ -2864,6 +2890,13 @@ export default function FinancialDashboard() {
                 userPlan={userPlan}
 
                 goals={goalsComGastoDoMes}
+            />
+            {/* 🟢 MODAL DE ATUALIZAÇÕES */}
+            <ChangelogModal 
+                isOpen={isChangelogOpen} 
+                onClose={() => setIsChangelogOpen(false)} 
+                data={changelogData} 
+                userId={user?.id} // Certifique-se de passar a variável do ID do usuário ativo
             />
 
             <AiAssistantModal
