@@ -155,6 +155,7 @@ export default function FinancialDashboard() {
         isFixedIncome: false,
         fixedMonthlyValue: '',
         receiptUrl: '',
+        linkedGoalId: null,
         icon: '',
         paymentMethod: ''
     };
@@ -663,6 +664,29 @@ export default function FinancialDashboard() {
             setIsContractOpen(true);
         }
     };
+    // Substitua aquele bloco goalsComGastoDoMes por este:
+    const goalsComGastoDoMes = goals.map(goal => {
+        if (goal.type === 'wallet') {
+            const gastoNoMes = transactions
+                .filter(t => t.linked_goal_id === goal.id && t.target_month === activeTab)
+                .reduce((sum, t) => sum + Number(t.amount), 0);
+
+            // 🟢 Mantém o "current_amount" intacto e envia o "spent_amount"
+            return { ...goal, spent_amount: gastoNoMes };
+        }
+        return goal;
+    });
+    // 🟢 MATEMÁTICA DOS CARDS DO TOPO: Separando Sonhos de Caixinhas
+    const totalSonhosGuardado = goalsComGastoDoMes
+        .filter(g => g.type !== 'wallet')
+        .reduce((acc, g) => acc + Number(g.current_amount || 0), 0);
+
+    // Na Caixinha, o dinheiro REAL que você ainda tem é o Guardado menos o que já Gastou no mês:
+    const totalCaixinhasDisponivel = goalsComGastoDoMes
+        .filter(g => g.type === 'wallet')
+        .reduce((acc, g) => acc + (Number(g.current_amount || 0) - Number(g.spent_amount || 0)), 0);
+    // 🟢 MATEMÁTICA DOS CARDS DO TOPO: Separando Sonhos de Caixinhas
+
 
     const checkUpcomingBills = async (userId: string) => {
         if (!userId) return;
@@ -1261,7 +1285,7 @@ export default function FinancialDashboard() {
     const handleDelete = async (table: string, id: number) => {
         // 🟢 SE FOR FIXA/PARCELA, ABRE O MODAL BONITO E PARA AQUI!
         if (table === 'recurring' || table === 'installments') {
-             setActionModal({
+            setActionModal({
                 isOpen: true,
                 type: 'delete',
                 title: 'Cancelar Conta',
@@ -1505,6 +1529,7 @@ export default function FinancialDashboard() {
             fixedMonthlyValue: item.fixed_monthly_value || '',
             receiptUrl: currentReceipt || '',
             day: '',
+            linkedGoalId: null,
             icon: item.icon || '',
             paymentMethod: item.payment_method || 'outros'
         });
@@ -1550,6 +1575,7 @@ export default function FinancialDashboard() {
             isFixedIncome: false,
             fixedMonthlyValue: '',
             receiptUrl: '',
+            linkedGoalId: null,
             icon: '',
             paymentMethod: ''
         });
@@ -1580,14 +1606,14 @@ export default function FinancialDashboard() {
                 btnAll: `Deste mês em diante (Preserva o passado)`, // 🟢 Texto Corrigido!
                 payload: null
             });
-            return; 
+            return;
         }
 
         finalizeSubmit('future'); // Comportamento padrão se não abrir o modal
     };
 
     const finalizeSubmit = async (updateScope: string) => {
-        setActionModal(prev => ({ ...prev, isOpen: false })); 
+        setActionModal(prev => ({ ...prev, isOpen: false }));
 
         const activeId = getActiveUserId();
         const context = currentWorkspace?.id;
@@ -1595,7 +1621,7 @@ export default function FinancialDashboard() {
         const fixedVal = formData.fixedMonthlyValue ? parseFloat(formData.fixedMonthlyValue.toString().replace(',', '.')) : 0;
 
         const monthMapNums: Record<string, string> = { 'Jan': '01', 'Fev': '02', 'Mar': '03', 'Abr': '04', 'Mai': '05', 'Jun': '06', 'Jul': '07', 'Ago': '08', 'Set': '09', 'Out': '10', 'Nov': '11', 'Dez': '12' };
-        
+
         let baseDay = (formMode === 'income' || formMode === 'expense') ? (formData.day ? formData.day.toString() : String(new Date().getDate())) : (formData.dueDay ? formData.dueDay.toString() : '01');
         const dayValue = baseDay.padStart(2, '0');
         const monthValue = monthMapNums[formData.targetMonth] || '01';
@@ -1614,7 +1640,7 @@ export default function FinancialDashboard() {
         let updatedReceipts = { ...(originalItem?.receipts || {}) };
         let finalReceiptUrl = originalItem?.receipt_url || null;
 
-        if (formData.receiptUrl === '') { delete updatedReceipts[tag]; finalReceiptUrl = null; } 
+        if (formData.receiptUrl === '') { delete updatedReceipts[tag]; finalReceiptUrl = null; }
         else if (formData.receiptUrl) { updatedReceipts[tag] = formData.receiptUrl; finalReceiptUrl = formData.receiptUrl; }
 
         let customValues: Record<string, any> = {};
@@ -1629,7 +1655,7 @@ export default function FinancialDashboard() {
             let currY = selectedYear;
             let currM = parseInt(monthValue) - 1;
             let tempY = startY; let tempM = startM; let loops = 0;
-            
+
             while ((tempY < currY || (tempY === currY && tempM < currM)) && loops < 200) {
                 const pastTag = `${monthNames[tempM]}/${tempY}`;
                 if (customValues[pastTag] === undefined) {
@@ -1640,7 +1666,7 @@ export default function FinancialDashboard() {
         };
 
         const getPayload = () => {
-            const base = { user_id: activeId, title: formData.title, context: context, icon: formData.icon, payment_method: formData.paymentMethod || 'outros', receipts: updatedReceipts, receipt_url: finalReceiptUrl };
+            const base = { user_id: activeId, title: formData.title, context: context, linked_goal_id: formData.linkedGoalId || null, icon: formData.icon, payment_method: formData.paymentMethod || 'outros', receipts: updatedReceipts, receipt_url: finalReceiptUrl };
             const safeCreatedAt = (editingId && originalItem?.created_at) ? originalItem.created_at : isoDateForDatabase;
 
             if (formMode === 'income') {
@@ -1648,7 +1674,7 @@ export default function FinancialDashboard() {
                     let finalValue = amountVal;
                     if (updateScope === 'single' && originalItem) { finalValue = originalItem.value; customValues[tag] = amountVal; }
                     else if (updateScope === 'future' && originalItem) { applyBackfill(originalItem.value); } // 🟢 Viaja no tempo!
-                    
+
                     return { table: 'recurring', data: { ...base, value: finalValue, custom_values: customValues, due_day: parseInt(dayValue), category: 'Salário', type: 'income', status: 'active', start_date: editingId && originalItem?.start_date ? originalItem.start_date : isoDateForDatabase, created_at: safeCreatedAt } };
                 } else return { table: 'transactions', data: { ...base, amount: amountVal, type: 'income', date: dateStringBR, category: 'Receita', target_month: formData.targetMonth, status: 'active', created_at: safeCreatedAt } };
             }
@@ -1677,13 +1703,13 @@ export default function FinancialDashboard() {
 
         if (isSimulationMode) {
             const fakeItem = { ...data, id: editingId ? editingId : Date.now() };
-            if (table === 'transactions') { if (editingId) setTransactions(prev => prev.map(t => t.id === editingId ? fakeItem : t)); else setTransactions(prev => [...prev, fakeItem]); } 
-            else if (table === 'installments') { if (editingId) setInstallments(prev => prev.map(i => i.id === editingId ? fakeItem : i)); else setInstallments(prev => [...prev, fakeItem]); } 
+            if (table === 'transactions') { if (editingId) setTransactions(prev => prev.map(t => t.id === editingId ? fakeItem : t)); else setTransactions(prev => [...prev, fakeItem]); }
+            else if (table === 'installments') { if (editingId) setInstallments(prev => prev.map(i => i.id === editingId ? fakeItem : i)); else setInstallments(prev => [...prev, fakeItem]); }
             else if (table === 'recurring') { if (editingId) setRecurring(prev => prev.map(r => r.id === editingId ? fakeItem : r)); else setRecurring(prev => [...prev, fakeItem]); }
             toast.success("Salvo no laboratório! 🧪");
             setIsFormOpen(false); setEditingId(null);
-            setFormData({ title: '', amount: '', targetMonth: activeTab, icon: 'dollar-sign', paymentMethod: 'outros', isFixedIncome: false, category: 'Outros', installments: '1', fixedMonthlyValue: '', dueDay: '10', day: String(new Date().getDate()).padStart(2, '0'), receiptUrl: '' });
-            return; 
+            setFormData({ title: '', amount: '', linkedGoalId: null, targetMonth: activeTab, icon: 'dollar-sign', paymentMethod: 'outros', isFixedIncome: false, category: 'Outros', installments: '1', fixedMonthlyValue: '', dueDay: '10', day: String(new Date().getDate()).padStart(2, '0'), receiptUrl: '' });
+            return;
         }
 
         try {
@@ -1703,7 +1729,7 @@ export default function FinancialDashboard() {
             toast.success(updateScope === 'single' ? "Exceção salva apenas para este mês!" : "Alteração salva deste mês em diante!");
 
             setIsFormOpen(false); setEditingId(null);
-            setFormData({ title: '', amount: '', targetMonth: activeTab, icon: 'dollar-sign', paymentMethod: 'outros', isFixedIncome: false, category: 'Outros', installments: '1', fixedMonthlyValue: '', dueDay: '10', day: String(new Date().getDate()).padStart(2, '0'), receiptUrl: '' });
+            setFormData({ title: '', amount: '', linkedGoalId: null, targetMonth: activeTab, icon: 'dollar-sign', paymentMethod: 'outros', isFixedIncome: false, category: 'Outros', installments: '1', fixedMonthlyValue: '', dueDay: '10', day: String(new Date().getDate()).padStart(2, '0'), receiptUrl: '' });
             if (activeId) loadData(activeId, context);
         } catch (error: any) { toast.error("Erro ao salvar: " + (error.message || "")); }
     };
@@ -1712,6 +1738,7 @@ export default function FinancialDashboard() {
     const handleGoalSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         const formData = new FormData(e.currentTarget);
+        const type = formData.get('type') as string;
 
         const payload = {
             user_id: getActiveUserId(),
@@ -1721,22 +1748,24 @@ export default function FinancialDashboard() {
             deadline: formData.get('deadline') || null,
             icon: formData.get('icon'),
             color: formData.get('color'),
-            items: JSON.parse(formData.get('items') as string)
+            items: JSON.parse(formData.get('items') as string || '[]'),
+            whatsapp_rule: formData.get('whatsapp_rule') || null,
+            ai_enabled: formData.get('ai_enabled'),
+            type: type || 'saving'
         };
 
         const activeId = getActiveUserId();
-        const todayStr = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }); // Data no formato DD/MM/YYYY
+        const todayStr = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 
         try {
             if (editingGoal) {
-                // 1. Descobre se o valor guardado mudou
                 const oldAmount = Number(editingGoal.current_amount || 0);
                 const newAmount = payload.current_amount;
                 const diff = newAmount - oldAmount;
 
-                // 2. Se mudou, cria a transação automática no extrato!
+                // 🟢 AGORA ELE GERA O EXTRATO PARA CAIXINHAS TAMBÉM!
                 if (diff !== 0) {
-                    const transType = diff > 0 ? 'expense' : 'income'; // Aumentou a meta = sai dinheiro (expense). Diminuiu = volta dinheiro (income).
+                    const transType = diff > 0 ? 'expense' : 'income';
                     const transTitle = diff > 0 ? `🎯 Ida para Meta: ${payload.title}` : `↩️ Resgate da Meta: ${payload.title}`;
 
                     await supabase.from('transactions').insert([{
@@ -1748,17 +1777,16 @@ export default function FinancialDashboard() {
                         category: 'Metas',
                         date: todayStr,
                         status: 'active',
-                        is_paid: true, // Já entra pago para descontar/somar no saldo na hora
+                        is_paid: true,
                         target_month: activeTab
                     }]);
                 }
 
-                // 3. Atualiza a meta no banco
                 await supabase.from('goals').update(payload).eq('id', editingGoal.id);
-                toast.success('Meta e Extrato atualizados!');
+                toast.success(payload.type === 'wallet' ? 'Caixinha atualizada!' : 'Meta e Extrato atualizados!');
 
             } else {
-                // Se for uma Meta NOVA e já vier com dinheiro guardado
+                // 🟢 GERA O EXTRATO NA CRIAÇÃO DA CAIXINHA
                 if (payload.current_amount > 0) {
                     await supabase.from('transactions').insert([{
                         user_id: activeId,
@@ -1766,7 +1794,7 @@ export default function FinancialDashboard() {
                         title: `🎯 Ida para Meta: ${payload.title}`,
                         amount: payload.current_amount,
                         type: 'expense',
-                        category: 'Metas',
+                        category: 'Metas', // ⚠️ Dica: Isso não aumenta o visual de "Saídas" pra não parecer que vc gastou, mas DERRUBA seu Saldo Previsto!
                         date: todayStr,
                         status: 'active',
                         is_paid: true,
@@ -1775,15 +1803,14 @@ export default function FinancialDashboard() {
                 }
 
                 await supabase.from('goals').insert([payload]);
-                toast.success('Meta criada com sucesso!');
+                toast.success(payload.type === 'wallet' ? 'Caixinha criada com sucesso!' : 'Meta criada com sucesso!');
             }
 
             if (activeId) loadData(activeId, currentWorkspace?.id);
             setIsGoalModalOpen(false);
 
         } catch (error) {
-            console.error("Erro ao salvar meta:", error);
-            toast.error("Ocorreu um erro ao salvar a meta.");
+            toast.error("Ocorreu um erro ao salvar.");
         }
     };
     const handleToggleGoalItem = async (goalId: number, itemId: string) => {
@@ -1838,7 +1865,7 @@ export default function FinancialDashboard() {
 
         const dateFilter = `${monthMap[monthName]}/${selectedYear}`;
         const currentPaymentTag = `${monthName}/${selectedYear}`;
-        
+
         // Formato para comparar o cancelled_from (ex: "2026-05")
         const currentYYYYMM = `${selectedYear}-${String(monthIndex + 1).padStart(2, '0')}`;
 
@@ -1884,18 +1911,29 @@ export default function FinancialDashboard() {
 
         // --- CÁLCULO DE ENTRADAS ---
         // 🟢 Aplica a leitura dos valores customizados
-        const incomeFixed = activeRecurring.filter(r => r.type === 'income' && !r.skipped_months?.includes(monthName)).reduce((acc, curr) => acc + getCustomValue(curr, currentPaymentTag, Number(curr.value)), 0);
+        const incomeFixed = activeRecurring.filter(r => r.type === 'income' && !r.skipped_months?.includes(monthName)).reduce((acc: number, curr: any) => acc + getCustomValue(curr, currentPaymentTag, Number(curr.value)), 0);
         const incomeVariableList = transactions.filter(t => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby');
-        const incomeTotal = incomeFixed + incomeVariableList.reduce((acc, curr) => acc + Number(curr.amount), 0);
-        const displayIncome = incomeFixed + incomeVariableList.filter(t => t.category !== 'Metas').reduce((acc, curr) => acc + Number(curr.amount), 0);
+        const incomeTotal = incomeFixed + incomeVariableList.reduce((acc: number, curr: any) => acc + Number(curr.amount), 0);
+        const displayIncome = incomeFixed + incomeVariableList.filter(t => t.category !== 'Metas').reduce((acc: number, curr: any) => acc + Number(curr.amount), 0);
 
         // --- CÁLCULO DE SAÍDAS DO MÊS ---
         // 🟢 Aplica a leitura dos valores customizados
-        const expenseFixed = activeRecurring.filter(r => r.type === 'expense' && !r.skipped_months?.includes(monthName)).reduce((acc, curr) => acc + getCustomValue(curr, currentPaymentTag, Number(curr.value)), 0);
-        const expenseVariableList = transactions.filter(t => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby');
-        const expenseVariable = expenseVariableList.reduce((acc, curr) => acc + Number(curr.amount), 0);
+        const expenseFixed = activeRecurring.filter(r => r.type === 'expense' && !r.skipped_months?.includes(monthName)).reduce((acc: number, curr: any) => acc + getCustomValue(curr, currentPaymentTag, Number(curr.value)), 0);
 
-        const installTotal = installments.reduce((acc, curr) => {
+        // 🟢 1. Pega todas as saídas variáveis do mês
+        const allVariableExpenses = transactions.filter(t =>
+            t.type === 'expense' &&
+            t.date?.includes(dateFilter) &&
+            t.status !== 'delayed' &&
+            t.status !== 'standby'
+        );
+
+        // 🟢 2. SALDO BANCÁRIO: Desconta tudo, MENOS os gastos de caixinha (pq o dinheiro já saiu do saldo na hora de criar a caixinha)
+        const expenseVariable = allVariableExpenses
+            .filter(t => !t.linked_goal_id)
+            .reduce((acc: number, curr: any) => acc + Number(curr.amount), 0);
+
+        const installTotal = installments.reduce((acc: number, curr: any) => {
             const paid = isPaid(curr, currentPaymentTag);
             if ((curr.status === 'delayed' || curr.status === 'standby') && !paid) return acc;
             const standbyArr = Array.isArray(curr.standby_months) ? curr.standby_months : JSON.parse(curr.standby_months || '[]');
@@ -1924,19 +1962,23 @@ export default function FinancialDashboard() {
         }, 0);
 
         const currentMonthObligations = expenseVariable + expenseFixed + installTotal;
-        const displayExpense = expenseFixed + installTotal + expenseVariableList.filter(t => t.category !== 'Metas').reduce((acc, curr) => acc + Number(curr.amount), 0);
+
+        // 🟢 3. VISUAL DO PAINEL (Saídas Totais): Mostra os gastos da caixinha (todos os expense variables), mas esconde "Ida para Meta"
+        const displayExpense = expenseFixed + installTotal + allVariableExpenses
+            .filter(t => t.category !== 'Metas')
+            .reduce((acc: number, curr: any) => acc + Number(curr.amount), 0);
 
         // --- STAND-BY GLOBAL (Lógica mantida) ---
         let delayedTotal = 0;
         transactions.forEach(t => { if ((t.status === 'delayed' || t.status === 'standby') && !t.is_paid) delayedTotal += Number(t.amount); });
-        
+
         installments.forEach(i => {
             // Se foi cancelado, nem entra no standby
             if (i.cancelled_from && currentYYYYMM >= i.cancelled_from) return;
 
             const standbyArr = Array.isArray(i.standby_months) ? i.standby_months : JSON.parse(i.standby_months || '[]');
             if ((i.status === 'delayed' || i.status === 'standby') && standbyArr.length === 0) delayedTotal += getCustomValue(i, currentPaymentTag, Number(i.value_per_month));
-            
+
             standbyArr.forEach((tag: string) => {
                 if (!isPaid(i, tag)) delayedTotal += getCustomValue(i, tag, Number(i.value_per_month));
             });
@@ -1949,7 +1991,7 @@ export default function FinancialDashboard() {
 
                 const standbyArr = Array.isArray(r.standby_months) ? r.standby_months : JSON.parse(r.standby_months || '[]');
                 if ((r.status === 'delayed' || r.status === 'standby') && standbyArr.length === 0) delayedTotal += getCustomValue(r, currentPaymentTag, Number(r.value));
-                
+
                 standbyArr.forEach((tag: string) => {
                     if (!isPaid(r, tag)) delayedTotal += getCustomValue(r, tag, Number(r.value));
                 });
@@ -2003,7 +2045,7 @@ export default function FinancialDashboard() {
 
         recurring.forEach(rec => {
             if (rec.type === 'expense' && rec.status !== 'standby' && rec.status !== 'delayed') {
-                 // Se foi cancelado, ignora dívidas deste mês pra frente
+                // Se foi cancelado, ignora dívidas deste mês pra frente
                 if (rec.cancelled_from && currentYYYYMM >= rec.cancelled_from) return;
 
                 const { m: startMonth, y: startYear } = getStartData(rec);
@@ -2566,7 +2608,8 @@ export default function FinancialDashboard() {
                     clientStatus={myConsultantLink?.status}
                     onOpenReport={() => setIsReportOpen(true)}
                     setIsAgendaOpen={setIsAgendaOpen}
-                    totalSavedAmount={totalSavedInGoals}
+                    totalSonhosGuardado={totalSonhosGuardado}
+                    totalCaixinhasDisponivel={totalCaixinhasDisponivel}
                 />
             )}
 
@@ -2799,6 +2842,7 @@ export default function FinancialDashboard() {
                 onClose={() => setIsGoalModalOpen(false)}
                 onSubmit={handleGoalSubmit}
                 editingGoal={editingGoal}
+                userPlan={userPlan}
             />
             <PricingModal
                 isOpen={isPricingOpen}
@@ -2818,6 +2862,8 @@ export default function FinancialDashboard() {
                 handleFileUpload={handleFileUpload}
                 handleRemoveReceipt={handleRemoveReceipt}
                 userPlan={userPlan}
+
+                goals={goalsComGastoDoMes}
             />
 
             <AiAssistantModal
@@ -2857,7 +2903,8 @@ export default function FinancialDashboard() {
    ================================================================================= */}
             {activeSection === 'goals' && (
                 <GoalsView
-                    goals={goals}
+
+                    goals={goalsComGastoDoMes}
                     setIsGoalModalOpen={setIsGoalModalOpen}
                     setEditingGoal={setEditingGoal}
                     handleDeleteGoal={handleDeleteGoal}
@@ -3076,32 +3123,32 @@ export default function FinancialDashboard() {
             {actionModal.isOpen && (
                 <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
                     <div className="bg-[#12141a] border border-gray-800 rounded-3xl p-6 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200">
-                        
+
                         <div className="flex items-center justify-center w-12 h-12 rounded-full bg-cyan-500/10 text-cyan-400 mb-4">
-                            {actionModal.type === 'delete' ? <Trash2 size={24} className="text-red-400"/> : <Pencil size={24} />}
+                            {actionModal.type === 'delete' ? <Trash2 size={24} className="text-red-400" /> : <Pencil size={24} />}
                         </div>
 
                         <h3 className="text-xl font-black text-white mb-2">{actionModal.title}</h3>
                         <p className="text-gray-400 text-sm mb-8 leading-relaxed">{actionModal.message}</p>
-                        
+
                         <div className="flex flex-col gap-3">
-                            <button 
-                                onClick={() => actionModal.type === 'edit' ? finalizeSubmit('single') : finalizeDelete(actionModal.payload.table, actionModal.payload.id, 'single')} 
+                            <button
+                                onClick={() => actionModal.type === 'edit' ? finalizeSubmit('single') : finalizeDelete(actionModal.payload.table, actionModal.payload.id, 'single')}
                                 className="w-full py-4 px-4 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-bold transition flex justify-between items-center shadow-lg"
                             >
                                 <span>{actionModal.btnSingle}</span>
                                 <span className="text-[10px] uppercase tracking-wider text-cyan-100 bg-black/20 px-2 py-1 rounded-md">Recomendado</span>
                             </button>
-                            
-                            <button 
-                                onClick={() => actionModal.type === 'edit' ? finalizeSubmit('future') : finalizeDelete(actionModal.payload.table, actionModal.payload.id, 'all')} 
+
+                            <button
+                                onClick={() => actionModal.type === 'edit' ? finalizeSubmit('future') : finalizeDelete(actionModal.payload.table, actionModal.payload.id, 'all')}
                                 className="w-full py-4 px-4 bg-gray-900/50 hover:bg-emerald-500/10 text-gray-300 hover:text-emerald-400 rounded-xl font-bold transition flex justify-center items-center border border-gray-800 hover:border-emerald-500/30"
                             >
                                 <span>{actionModal.btnAll}</span>
                             </button>
 
-                            <button 
-                                onClick={() => setActionModal(prev => ({ ...prev, isOpen: false }))} 
+                            <button
+                                onClick={() => setActionModal(prev => ({ ...prev, isOpen: false }))}
                                 className="w-full py-3 px-4 text-gray-500 hover:text-white rounded-xl font-bold transition mt-2"
                             >
                                 Cancelar Operação

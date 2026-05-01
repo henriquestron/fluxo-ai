@@ -3,7 +3,7 @@ import {
     ShieldCheck, Briefcase, User, UserPlus, BarChart3, FileSpreadsheet,
     Lock, HelpCircle, ChevronDown, CreditCard, Smartphone, Palette,
     LogOut, Sparkles, Plus, Search, Calculator, Trash2, FileUp,
-    Link, FileSignature, FileText, Calendar, Wallet // 🟢 Adicionei Wallet aqui
+    Link, FileSignature, FileText, Calendar, Wallet, Target
 } from 'lucide-react';
 import NotificationBell from '@/components/dashboard/NotificationBell';
 
@@ -41,7 +41,9 @@ interface DashboardHeaderProps {
     client: any;
     setIsImportOpen: (v: boolean) => void;
     setIsAgendaOpen: (v: boolean) => void;
-    totalSavedAmount?: number; // 🟢 Nova propriedade para o Cofre
+    // 🟢 As duas novas propriedades!
+    totalSonhosGuardado?: number; 
+    totalCaixinhasDisponivel?: number; 
 }
 
 export default function DashboardHeader({
@@ -51,7 +53,8 @@ export default function DashboardHeader({
     setIsCustomizationOpen, handleCheckout, handleLogout,
     setIsAIOpen, setIsCreditCardModalOpen, openNewTransactionModal, setIsCalculatorOpen, handleRemoveClient, client,
     setIsImportOpen, setIsTutorialOpen, setIsContractOpen, handleClientContractUpload, isManagedClient, clientContractUrl, setIsAgendaOpen, clientStatus, onOpenContract, onOpenReport,
-    totalSavedAmount = 0 // 🟢 Valor padrão 0
+    totalSonhosGuardado = 0, // 🟢 Recebendo as props
+    totalCaixinhasDisponivel = 0
 }: DashboardHeaderProps) {
 
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -165,80 +168,94 @@ export default function DashboardHeader({
 
                     <div className="flex items-center justify-center w-full xl:w-auto gap-2 pl-0 xl:pl-2 mt-2 xl:mt-0 xl:border-none">
                         
-                        {/* 🟢 O BALÃO DO COFRE FICARÁ AQUI */}
-                        <div className="hidden sm:flex items-center gap-2 bg-emerald-950/30 border border-emerald-500/30 px-3 h-11 rounded-xl cursor-default hover:bg-emerald-900/20 transition-colors" title="Dinheiro total guardado nas metas">
-                            <div className="bg-emerald-500/20 p-1.5 rounded-lg">
-                                <Wallet size={14} className="text-emerald-400" />
+                        {/* 🎯 BALÃO DOS SONHOS (Metas de Longo Prazo) */}
+                        <div className="hidden sm:flex items-center gap-2 bg-indigo-950/30 border border-indigo-500/30 px-3 h-11 rounded-xl cursor-default hover:bg-indigo-900/20 transition-colors" title="Dinheiro guardado para os seus sonhos">
+                            <div className="bg-indigo-500/20 p-1.5 rounded-lg">
+                                <Target size={14} className="text-indigo-400" />
                             </div>
                             <div className="flex flex-col text-left justify-center">
-                                <span className="text-[9px] uppercase tracking-widest text-emerald-500/80 font-bold leading-none mb-0.5">Cofre (Metas)</span>
-                                <span className="text-emerald-400 text-sm font-bold leading-none font-mono">
-                                    R$ {totalSavedAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                <span className="text-[9px] uppercase tracking-widest text-indigo-400/80 font-bold leading-none mb-0.5">Metas</span>
+                                <span className="text-indigo-400 text-sm font-bold leading-none font-mono">
+                                    R$ {totalSonhosGuardado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                 </span>
                             </div>
                         </div>
 
-                        <NotificationBell userId={user.id} />
+                        {/* 👛 BALÃO DAS CAIXINHAS (Dinheiro Livre no Mês) */}
+                        <div className="hidden sm:flex items-center gap-2 bg-emerald-950/30 border border-emerald-500/30 px-3 h-11 rounded-xl cursor-default hover:bg-emerald-900/20 transition-colors" title="Dinheiro disponível para gastar nas caixinhas">
+                            <div className="bg-emerald-500/20 p-1.5 rounded-lg">
+                                <Wallet size={14} className="text-emerald-400" />
+                            </div>
+                            <div className="flex flex-col text-left justify-center">
+                                <span className="text-[9px] uppercase tracking-widest text-emerald-500/80 font-bold leading-none mb-0.5">Caixinhas</span>
+                                <span className="text-emerald-400 text-sm font-bold leading-none font-mono">
+                                    R$ {totalCaixinhasDisponivel.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                </span>
+                            </div>
+                        </div>
+                        
+                    </div>
 
-                        <div id="btn-menu" className="relative z-50">
-                            <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className={`h-11 px-3 xl:px-4 bg-gray-900 border border-gray-800 rounded-xl hover:bg-gray-800 flex items-center justify-center gap-2 transition ${isUserMenuOpen ? 'ring-2 ring-cyan-500/50 border-cyan-500/50' : ''}`}>
-                                {user.user_metadata?.avatar_url
-                                    ? (<img src={user.user_metadata.avatar_url} className="w-6 h-6 rounded-full object-cover ring-2 ring-gray-700" alt="Avatar" />)
-                                    : (<div className="w-6 h-6 rounded-full bg-gray-700 flex items-center justify-center text-gray-300"><User size={14} /></div>)
-                                }
-                                <span className="hidden md:inline text-gray-400 text-sm font-medium">Menu</span>
-                                <ChevronDown size={14} className="text-gray-500 hidden md:block" />
-                            </button>
+                    <NotificationBell userId={user?.id} />
 
-                            {isUserMenuOpen && (
-                                <>
-                                    <div className="fixed inset-0 z-40" onClick={() => setIsUserMenuOpen(false)}></div>
-                                    <div className="absolute top-full right-[-50px] sm:right-0 xl:right-0 mt-2 w-64 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                                        <div className="bg-[#0f0f0f] border border-gray-800 rounded-2xl shadow-2xl overflow-hidden ring-1 ring-white/10">
-                                            <div className="p-4 border-b border-gray-800 bg-gray-900/50">
-                                                <div className="flex items-center gap-3">
-                                                    {user.user_metadata?.avatar_url
-                                                        ? (<img src={user.user_metadata.avatar_url} className="w-10 h-10 rounded-full border border-gray-700" />)
-                                                        : (<div className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center border border-gray-700"><User size={20} className="text-gray-400" /></div>)
-                                                    }
-                                                    <div className="overflow-hidden">
-                                                        <p className="text-white text-sm font-bold truncate">{user.user_metadata?.full_name || "Usuário"}</p>
-                                                        <p className="text-gray-500 text-xs truncate">{user.email}</p>
-                                                    </div>
-                                                </div>
-                                                <div className="mt-3 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-gray-800 border border-gray-700 text-[10px] font-medium text-gray-300 uppercase tracking-wide">
-                                                    {userPlan === 'admin' ? 'CEO / Admin' : userPlan === 'agent' ? 'Consultor' : `Plano ${userPlan}`}
+                    <div id="btn-menu" className="relative z-50">
+                        <button onClick={() => setIsUserMenuOpen(!isUserMenuOpen)} className={`h-11 px-3 xl:px-4 bg-gray-900 border border-gray-800 rounded-xl hover:bg-gray-800 flex items-center justify-center gap-2 transition ${isUserMenuOpen ? 'ring-2 ring-cyan-500/50 border-cyan-500/50' : ''}`}>
+                            {user?.user_metadata?.avatar_url
+                                ? (<img src={user.user_metadata.avatar_url} className="w-6 h-6 rounded-full object-cover ring-2 ring-gray-700" alt="Avatar" />)
+                                : (<div className="w-6 h-6 rounded-full bg-gray-700 flex items-center justify-center text-gray-300"><User size={14} /></div>)
+                            }
+                            <span className="hidden md:inline text-gray-400 text-sm font-medium">Menu</span>
+                            <ChevronDown size={14} className="text-gray-500 hidden md:block" />
+                        </button>
+
+                        {isUserMenuOpen && (
+                            <>
+                                <div className="fixed inset-0 z-40" onClick={() => setIsUserMenuOpen(false)}></div>
+                                <div className="absolute top-full right-[-50px] sm:right-0 xl:right-0 mt-2 w-64 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <div className="bg-[#0f0f0f] border border-gray-800 rounded-2xl shadow-2xl overflow-hidden ring-1 ring-white/10">
+                                        <div className="p-4 border-b border-gray-800 bg-gray-900/50">
+                                            <div className="flex items-center gap-3">
+                                                {user?.user_metadata?.avatar_url
+                                                    ? (<img src={user.user_metadata.avatar_url} className="w-10 h-10 rounded-full border border-gray-700" />)
+                                                    : (<div className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center border border-gray-700"><User size={20} className="text-gray-400" /></div>)
+                                                }
+                                                <div className="overflow-hidden">
+                                                    <p className="text-white text-sm font-bold truncate">{user?.user_metadata?.full_name || "Usuário"}</p>
+                                                    <p className="text-gray-500 text-xs truncate">{user?.email}</p>
                                                 </div>
                                             </div>
-                                            <div className="p-2 space-y-1">
-
-                                                {userPlan === 'admin' && (
-                                                    <button onClick={() => { setIsUserMenuOpen(false); window.location.href = '/api/admin'; }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition">
-                                                        👨‍💼 Painel do CEO
-                                                    </button>
-                                                )}
-
-                                                <button onClick={() => { setIsUserMenuOpen(false); setIsProfileModalOpen(true); }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition"><User size={16} className="text-cyan-500" /> Meu Perfil</button>
-
-                                                {userPlan !== 'free' && (<button onClick={() => { setIsUserMenuOpen(false); handleManageSubscription(); }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition"><CreditCard size={16} className="text-emerald-500" /> Assinatura</button>)}
-
-                                                <div className="px-3 py-2.5 flex items-center justify-between group cursor-pointer hover:bg-gray-800 rounded-lg transition" onClick={(e) => { e.stopPropagation(); toggleWhatsappNotification(); }}>
-                                                    <div className="flex items-center gap-3 text-sm text-gray-300 group-hover:text-white"><Smartphone size={16} className="text-emerald-500" /> Notificações Whatsapp {(userPlan !== 'pro' && userPlan !== 'agent' && userPlan !== 'admin') && <Lock size={12} className="text-amber-500" />}</div>
-                                                    <div className={`w-9 h-5 rounded-full transition-colors relative ${whatsappEnabled ? 'bg-emerald-600' : 'bg-gray-700'}`}><div className={`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform ${whatsappEnabled ? 'translate-x-4' : 'translate-x-0'}`}></div></div>
-                                                </div>
-
-                                                {(userPlan === 'pro' || userPlan === 'agent' || userPlan === 'admin') && (<button onClick={() => { setIsUserMenuOpen(false); setIsCustomizationOpen(true); }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition"><Palette size={16} className="text-purple-500" /> Tema e Cores</button>)}
-
-                                                {(userPlan !== 'agent' && userPlan !== 'admin') && (<button onClick={() => { setIsUserMenuOpen(false); handleCheckout('AGENT'); }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition"><Briefcase size={16} className="text-amber-500" /> Virar Consultor</button>)}
-
-                                                <div className="h-px bg-gray-800 my-1 mx-2"></div>
-                                                <button onClick={handleLogout} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-red-400 hover:bg-red-950/30 transition font-medium"><LogOut size={16} /> Sair da Conta</button>
+                                            <div className="mt-3 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-gray-800 border border-gray-700 text-[10px] font-medium text-gray-300 uppercase tracking-wide">
+                                                {userPlan === 'admin' ? 'CEO / Admin' : userPlan === 'agent' ? 'Consultor' : `Plano ${userPlan}`}
                                             </div>
                                         </div>
+                                        <div className="p-2 space-y-1">
+
+                                            {userPlan === 'admin' && (
+                                                <button onClick={() => { setIsUserMenuOpen(false); window.location.href = '/api/admin'; }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition">
+                                                    👨‍💼 Painel do CEO
+                                                </button>
+                                            )}
+
+                                            <button onClick={() => { setIsUserMenuOpen(false); setIsProfileModalOpen(true); }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition"><User size={16} className="text-cyan-500" /> Meu Perfil</button>
+
+                                            {userPlan !== 'free' && (<button onClick={() => { setIsUserMenuOpen(false); handleManageSubscription(); }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition"><CreditCard size={16} className="text-emerald-500" /> Assinatura</button>)}
+
+                                            <div className="px-3 py-2.5 flex items-center justify-between group cursor-pointer hover:bg-gray-800 rounded-lg transition" onClick={(e) => { e.stopPropagation(); toggleWhatsappNotification(); }}>
+                                                <div className="flex items-center gap-3 text-sm text-gray-300 group-hover:text-white"><Smartphone size={16} className="text-emerald-500" /> Notificações Whatsapp {(userPlan !== 'pro' && userPlan !== 'agent' && userPlan !== 'admin') && <Lock size={12} className="text-amber-500" />}</div>
+                                                <div className={`w-9 h-5 rounded-full transition-colors relative ${whatsappEnabled ? 'bg-emerald-600' : 'bg-gray-700'}`}><div className={`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform ${whatsappEnabled ? 'translate-x-4' : 'translate-x-0'}`}></div></div>
+                                            </div>
+
+                                            {(userPlan === 'pro' || userPlan === 'agent' || userPlan === 'admin') && (<button onClick={() => { setIsUserMenuOpen(false); setIsCustomizationOpen(true); }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition"><Palette size={16} className="text-purple-500" /> Tema e Cores</button>)}
+
+                                            {(userPlan !== 'agent' && userPlan !== 'admin') && (<button onClick={() => { setIsUserMenuOpen(false); handleCheckout('AGENT'); }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition"><Briefcase size={16} className="text-amber-500" /> Virar Consultor</button>)}
+
+                                            <div className="h-px bg-gray-800 my-1 mx-2"></div>
+                                            <button onClick={handleLogout} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-red-400 hover:bg-red-950/30 transition font-medium"><LogOut size={16} /> Sair da Conta</button>
+                                        </div>
                                     </div>
-                                </>
-                            )}
-                        </div>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
 

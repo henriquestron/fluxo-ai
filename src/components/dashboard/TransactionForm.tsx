@@ -1,6 +1,7 @@
 import React from 'react';
-import { X, DollarSign, TrendingDown, CreditCard, CheckCircle2, Upload, FileText, Loader2, Landmark, Check, Sparkles } from 'lucide-react';
+import { X, DollarSign, TrendingDown, CreditCard, CheckCircle2, Upload, FileText, Loader2, Landmark, Check, Sparkles, Wallet } from 'lucide-react';
 import { ACCOUNTS, ICON_MAP, MONTHS } from '@/utils/constants';
+import { Goal } from '@/types'; // 🟢 Importante importar o tipo
 
 interface TransactionFormProps {
     isOpen: boolean;
@@ -15,14 +16,18 @@ interface TransactionFormProps {
     handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
     handleRemoveReceipt: (e: React.MouseEvent) => void;
     userPlan: string;
+    goals: Goal[]; // 🟢 ADICIONADO: O form precisa receber as metas/caixinhas
 }
 
 export default function TransactionForm({
     isOpen, onClose, formMode, setFormMode, formData, setFormData, onSubmit,
-    editingId, uploadingFile, handleFileUpload, handleRemoveReceipt, userPlan
+    editingId, uploadingFile, handleFileUpload, handleRemoveReceipt, userPlan, goals
 }: TransactionFormProps) {
     
     if (!isOpen) return null;
+
+    // 🟢 Filtra apenas as metas que são "Caixinhas"
+    const wallets = goals ? goals.filter(g => g.type === 'wallet') : [];
 
     return (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -88,7 +93,6 @@ export default function TransactionForm({
                         </div>
                     </div>
 
-                    {/* NOVO: Linha com DIA e VALOR */}
                     <div className="flex gap-3 mb-2">
                         {(formMode === 'income' || formMode === 'expense') && (
                             <div className="w-1/3">
@@ -105,11 +109,47 @@ export default function TransactionForm({
                             </div>
                         )}
                         <div className={(formMode === 'income' || formMode === 'expense') ? 'w-2/3' : 'w-full'}>
-                            <label className="text-xs text-gray-500 ml-1 mb-1 block">{formMode === 'installment' ? "Valor TOTAL da Compra (Opcional)" : "Valor (R$)"}</label>
+                            <label className="text-xs text-gray-500 ml-1 mb-1 block">{formMode === 'installment' ? "Valor TOTAL da Compra" : "Valor (R$)"}</label>
                             <input type="number" value={formData.amount} onChange={(e) => setFormData({ ...formData, amount: e.target.value })} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none font-mono text-lg" placeholder={formMode === 'installment' ? "Total: 1200.00" : "0.00"} />
                         </div>
                     </div>
 
+                    {/* 🟢 NOVO: CAIXINHAS / ORÇAMENTOS */}
+                    {wallets.length > 0 && formMode !== 'income' && (
+                        <div className="bg-emerald-900/10 p-4 rounded-xl border border-emerald-900/30 my-4 animate-in slide-in-from-top-2">
+                            <div className="flex items-center gap-3">
+                                <input 
+                                    type="checkbox" 
+                                    id="useWallet" 
+                                    checked={!!formData.linkedGoalId} 
+                                    onChange={(e) => setFormData({ ...formData, linkedGoalId: e.target.checked ? wallets[0].id : null })} 
+                                    className="w-5 h-5 rounded accent-emerald-500 cursor-pointer" 
+                                />
+                                <label htmlFor="useWallet" className="text-emerald-400 text-sm cursor-pointer select-none font-bold flex items-center gap-2">
+                                    <Wallet size={16} /> Abater de uma Caixinha?
+                                </label>
+                            </div>
+                            
+                            {formData.linkedGoalId && (
+                                <div className="mt-3">
+                                    <select 
+                                        value={formData.linkedGoalId} 
+                                        onChange={(e) => setFormData({ ...formData, linkedGoalId: Number(e.target.value) })}
+                                        className="w-full bg-black text-white p-3 rounded-lg border border-emerald-500/30 outline-none cursor-pointer focus:border-emerald-400 transition"
+                                    >
+                                        {wallets.map(w => (
+                                            <option key={w.id} value={w.id}>
+                                                {/* 🟢 MUDAMOS A MATEMÁTICA AQUI: Guardado - Gasto */}
+                                                {w.title} (Disp: R$ {(w.current_amount - (w.spent_amount || 0)).toFixed(2)})
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Resto do formulário */}
                     {formMode === 'installment' && (
                         <div className="bg-purple-900/10 p-4 rounded-xl border border-purple-900/30 space-y-3 mb-4 animate-in slide-in-from-top-2">
                             <p className="text-purple-400 text-xs font-bold uppercase mb-2 flex items-center gap-2"><Sparkles size={12} /> Detalhes do Parcelamento</p>

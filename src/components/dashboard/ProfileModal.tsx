@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Lock, Camera, Save, Loader2, Mail, Phone, Shield, Link as LinkIcon, ExternalLink, Copy, Check, Zap, AlertTriangle, Trash2, Briefcase, Bot, Sparkles, MessageSquare, Users, FileText, AlignLeft } from 'lucide-react'; 
+import { 
+  X, User, Lock, Camera, Save, Loader2, Mail, Phone, Link as LinkIcon, 
+  Check, Zap, AlertTriangle, Trash2, Briefcase, Bot, Sparkles, Users, 
+  Wallet, Settings, Power 
+} from 'lucide-react'; 
 import { supabase } from '@/supabase'; 
 import { toast } from 'sonner';
 
-// 🟢 CORREÇÃO: Variável de ambiente (Nunca deixar exposto no JS do cliente)
+// 🟢 Variável de ambiente
 const BOT_NUMBER = process.env.NEXT_PUBLIC_BOT_NUMBER || "";
 
 interface ProfileModalProps {
@@ -17,26 +21,29 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
   if (!isOpen || !user) return null;
 
   const [activeTab, setActiveTab] = useState<'details' | 'whatsapp' | 'security'>('details');
+  const [isAIConfigOpen, setIsAIConfigOpen] = useState(false); // 🟢 Controle do Novo Modal da IA
   
   // States Pessoais
   const [fullName, setFullName] = useState(user.user_metadata?.full_name || '');
   const [avatarUrl, setAvatarUrl] = useState(user.user_metadata?.avatar_url || '');
   
-  // 🟢 STATES DO CONSULTOR (Business)
+  // STATES DO CONSULTOR (Business)
   const [companyName, setCompanyName] = useState('');
   const [cnpj, setCnpj] = useState('');
   const [bio, setBio] = useState('');
   const [companyLogo, setCompanyLogo] = useState('');
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
-  // STATES DO WHATSAPP (Modo Casal)
+  // STATES DO WHATSAPP
   const [whatsapp, setWhatsapp] = useState('');
   const [partnerWhatsapp, setPartnerWhatsapp] = useState('');
 
-  // STATES DAS WORKSPACES PARA ROTEAMENTO DA IA
+  // STATES DO ROTEAMENTO DA IA (Cérebro)
   const [workspaces, setWorkspaces] = useState<any[]>([]);
-  const [loadingWorkspaces, setLoadingWorkspaces] = useState(false);
+  const [walletGoals, setWalletGoals] = useState<any[]>([]); // 🟢 State das Caixinhas
+  const [loadingAI, setLoadingAI] = useState(false);
   const [savingRules, setSavingRules] = useState(false);
+  const [savingPhones, setSavingPhones] = useState(false);
   
   // States de Segurança
   const [password, setPassword] = useState('');
@@ -46,7 +53,6 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
   // Status de Carregamento Gerais
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   // VERIFICAÇÃO DE PLANO
@@ -57,6 +63,8 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
   useEffect(() => {
     if (user?.id) {
       const fetchData = async () => {
+        setLoadingAI(true);
+        
         // Busca Whatsapp
         const { data: settingsData } = await supabase
           .from('user_settings')
@@ -67,7 +75,7 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
         if (settingsData?.whatsapp_phone) setWhatsapp(settingsData.whatsapp_phone);
         if (settingsData?.partner_phone) setPartnerWhatsapp(settingsData.partner_phone);
 
-        // 🟢 Busca Dados do Consultor na tabela Profiles
+        // Busca Dados do Consultor
         const { data: profileData } = await supabase
           .from('profiles')
           .select('company_logo, company_name, cnpj, bio')
@@ -82,14 +90,23 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
         }
 
         // Busca Workspaces
-        setLoadingWorkspaces(true);
         const { data: wsData } = await supabase
           .from('workspaces') 
           .select('id, title, whatsapp_rule')
           .eq('user_id', user.id);
         
         if (wsData) setWorkspaces(wsData);
-        setLoadingWorkspaces(false);
+
+        // 🟢 Busca Caixinhas (Wallets)
+        const { data: goalsData } = await supabase
+          .from('goals')
+          .select('id, title, whatsapp_rule, ai_enabled')
+          .eq('user_id', user.id)
+          .eq('type', 'wallet');
+        
+        if (goalsData) setWalletGoals(goalsData);
+
+        setLoadingAI(false);
       };
       fetchData();
     }
@@ -156,21 +173,15 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
   const handleUpdateProfile = async () => {
     setLoading(true);
     try {
-      // 1. Atualiza os dados básicos de Autenticação (Nome e Avatar)
       const { error: authError } = await supabase.auth.updateUser({
         data: { full_name: fullName, avatar_url: avatarUrl }
       });
       if (authError) throw authError;
 
-      // 2. 🟢 Se for consultor, atualiza os dados da Empresa na tabela profiles
       if (isConsultant) {
         const { error: profileError } = await supabase
           .from('profiles')
-          .update({
-            company_name: companyName,
-            cnpj: cnpj,
-            bio: bio
-          })
+          .update({ company_name: companyName, cnpj: cnpj, bio: bio })
           .eq('id', user.id);
           
         if (profileError) throw profileError;
@@ -186,15 +197,16 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
     }
   };
 
-  const handleSaveWhatsappSettings = async () => {
-    setSavingRules(true);
+  // 🟢 SALVA APENAS OS TELEFONES DA TELA PRINCIPAL DO WHATSAPP
+  const handleSavePhones = async () => {
+    setSavingPhones(true);
     try {
       const cleanPhone = whatsapp.replace(/\D/g, ''); 
       const cleanPartnerPhone = partnerWhatsapp.replace(/\D/g, ''); 
 
       if (cleanPartnerPhone && cleanPartnerPhone.length < 10) {
         toast.error("Número do parceiro incompleto. Use DDD + número.");
-        setSavingRules(false);
+        setSavingPhones(false);
         return;
       }
 
@@ -208,27 +220,37 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
       
       if (dbError) throw dbError;
 
-      if (workspaces.length > 0) {
-        for (const ws of workspaces) {
-          await supabase
-            .from('workspaces')
-            .update({ whatsapp_rule: ws.whatsapp_rule })
-            .eq('id', ws.id)
-            .eq('user_id', user.id);
-        }
-      }
-
-      toast.success("Configurações da IA salvas com sucesso! 🤖");
+      toast.success("Números de WhatsApp salvos!");
     } catch (error: any) {
-      console.error("Erro ao salvar regras da IA:", error);
-      toast.error("Não foi possível salvar as configurações. Tente novamente.");
+      toast.error("Não foi possível salvar os números.");
     } finally {
-      setSavingRules(false);
+      setSavingPhones(false);
     }
   };
 
-  const handleRuleChange = (id: any, newRule: string) => {
-      setWorkspaces(prev => prev.map(ws => ws.id === id ? { ...ws, whatsapp_rule: newRule } : ws));
+  // 🟢 SALVA AS REGRAS DA IA (MODAL DO CÉREBRO)
+  const handleSaveAIConfig = async () => {
+    setSavingRules(true);
+    try {
+      // Salva Workspaces
+      for (const ws of workspaces) {
+        await supabase.from('workspaces').update({ whatsapp_rule: ws.whatsapp_rule }).eq('id', ws.id).eq('user_id', user.id);
+      }
+      // Salva Caixinhas
+      for (const wg of walletGoals) {
+        await supabase.from('goals').update({ 
+            whatsapp_rule: wg.whatsapp_rule, 
+            ai_enabled: wg.ai_enabled 
+        }).eq('id', wg.id).eq('user_id', user.id);
+      }
+
+      toast.success("Cérebro da IA atualizado! 🧠");
+      setIsAIConfigOpen(false);
+    } catch (error) {
+      toast.error("Erro ao sincronizar regras com o servidor.");
+    } finally {
+      setSavingRules(false);
+    }
   };
 
   const handleChangePassword = async () => {
@@ -344,7 +366,7 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
                   </div>
                 </div>
 
-                {/* 🟢 BLOCO VIP DO CONSULTOR */}
+                {/* BLOCO VIP DO CONSULTOR */}
                 {isConsultant && (
                   <div className="mt-8 bg-gradient-to-b from-purple-900/20 to-transparent border border-purple-500/20 p-5 rounded-2xl space-y-5">
                     <div className="flex items-center gap-2 border-b border-purple-500/20 pb-3">
@@ -397,76 +419,50 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
           {activeTab === 'whatsapp' && (
             <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
               
-              {/* Conexão do Número */}
-              <div>
-                <h3 className="text-emerald-400 font-bold flex items-center gap-2 mb-1">
-                  <Phone size={18} /> 1. Conexão do Dispositivo
-                </h3>
-                <p className="text-gray-400 text-xs mb-4">Autorize o Bot a receber seus gastos. Você pode adicionar um número extra para compartilhar o painel com seu parceiro(a).</p>
-                
-                <div className="bg-gray-900/50 p-4 rounded-2xl border border-gray-800 space-y-4">
-                  <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <label className="text-xs text-gray-500 font-bold flex items-center gap-1"><User size={12}/> Seu WhatsApp</label>
-                      {canUseWhatsapp ? (
-                          <span className="bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"><Zap size={10} /> Liberado</span>
-                      ) : (
-                          <span className="bg-gray-800 text-gray-500 border border-gray-700 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"><Lock size={10} /> Plano Grátis</span>
-                      )}
+              <div className="bg-emerald-500/10 border border-emerald-500/20 p-5 rounded-2xl">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-5">
+                    <div>
+                        <h3 className="text-emerald-400 font-bold flex items-center gap-2">
+                            <Bot size={18} /> Cérebro da Inteligência Artificial
+                        </h3>
+                        <p className="text-gray-400 text-xs mt-1">Configure os números e ensine a IA a organizar seus gastos.</p>
                     </div>
-                    <input type="text" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="Ex: 556299999999" className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white focus:border-emerald-500 outline-none transition" />
-                  </div>
+                    <button 
+                        onClick={() => setIsAIConfigOpen(true)}
+                        className="w-full sm:w-auto flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition shadow-lg shadow-emerald-900/20 whitespace-nowrap"
+                    >
+                        <Settings size={16} /> Configurar IA
+                    </button>
+                </div>
+                
+                <div className="space-y-4 bg-black/40 p-4 rounded-xl border border-gray-800">
+                    <div>
+                        <div className="flex justify-between items-center mb-2">
+                          <label className="text-xs text-gray-500 font-bold flex items-center gap-1"><User size={12}/> Seu WhatsApp</label>
+                          {canUseWhatsapp ? (
+                              <span className="bg-emerald-500/20 text-emerald-500 border border-emerald-500/50 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"><Zap size={10} /> Liberado</span>
+                          ) : (
+                              <span className="bg-gray-800 text-gray-500 border border-gray-700 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"><Lock size={10} /> Plano Grátis</span>
+                          )}
+                        </div>
+                        <input type="text" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="Ex: 556299999999" className="w-full bg-gray-900 border border-gray-800 rounded-lg p-3 text-white outline-none focus:border-emerald-500 transition" />
+                    </div>
+                    <div>
+                        <label className="text-xs text-gray-500 font-bold mb-2 flex items-center gap-1"><Users size={12}/> WhatsApp do Parceiro(a) <span className="font-normal text-[10px]">(Opcional)</span></label>
+                        <input type="text" value={partnerWhatsapp} onChange={(e) => setPartnerWhatsapp(e.target.value)} placeholder="Ex: 556288888888" className="w-full bg-gray-900 border border-gray-800 rounded-lg p-3 text-white outline-none focus:border-emerald-500 transition" />
+                    </div>
 
-                  <div>
-                    <label className="text-xs text-gray-500 font-bold mb-2 flex items-center gap-1"><Users size={12}/> WhatsApp do Parceiro(a) <span className="font-normal text-[10px]">(Opcional)</span></label>
-                    <input type="text" value={partnerWhatsapp} onChange={(e) => setPartnerWhatsapp(e.target.value)} placeholder="Ex: 556288888888" className="w-full bg-black border border-gray-700 rounded-xl p-3 text-white focus:border-emerald-500 outline-none transition" />
-                  </div>
-                  
-                  <button onClick={handleConnectWhatsapp} className={`w-full py-2.5 rounded-xl font-bold transition flex items-center justify-center gap-2 mt-2 ${canUseWhatsapp ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-gray-800 text-gray-500 border border-gray-700'}`}>
-                      {canUseWhatsapp ? <LinkIcon size={16} /> : <Lock size={16} />} {canUseWhatsapp ? "Autenticar Conta" : "Bloqueado"}
-                  </button>
+                    <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                      <button onClick={handleSavePhones} disabled={savingPhones} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-bold py-2.5 rounded-xl transition flex items-center justify-center gap-2 border border-gray-700">
+                        {savingPhones ? <Loader2 className="animate-spin size-4"/> : <Save size={16}/>} Salvar Números
+                      </button>
+                      <button onClick={handleConnectWhatsapp} className={`flex-1 py-2.5 rounded-xl font-bold transition flex items-center justify-center gap-2 ${canUseWhatsapp ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-gray-800 text-gray-500 border border-gray-700'}`}>
+                          {canUseWhatsapp ? <LinkIcon size={16} /> : <Lock size={16} />} Autenticar
+                      </button>
+                    </div>
                 </div>
               </div>
 
-              {/* Regras de Roteamento Inteligente */}
-              <div>
-                <h3 className="text-cyan-400 font-bold flex items-center gap-2 mb-1">
-                  <Sparkles size={18} /> 2. Roteamento Inteligente
-                </h3>
-                <p className="text-gray-400 text-xs mb-4 leading-relaxed">
-                  A IA analisa suas notas fiscais e decide em qual área de trabalho salvar. Escreva regras claras (ex: "Gastos de mercado e lazer" ou "Despesas de anúncios e fornecedores").
-                </p>
-
-                {loadingWorkspaces ? (
-                  <div className="flex items-center justify-center py-6"><Loader2 className="animate-spin text-cyan-500" /></div>
-                ) : workspaces.length === 0 ? (
-                  <div className="bg-gray-900/50 border border-gray-800 p-4 rounded-xl text-center">
-                    <p className="text-sm text-gray-400">Você só possui a área de trabalho principal. A IA enviará tudo para lá automaticamente.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {workspaces.map((ws, index) => (
-                      <div key={ws.id} className="bg-gray-900 border border-gray-700 focus-within:border-cyan-500/50 rounded-xl p-4 transition">
-                        <label className="text-sm text-white font-bold flex items-center gap-2 mb-2">
-                          <div className="w-5 h-5 rounded bg-cyan-900/30 text-cyan-400 flex items-center justify-center text-xs border border-cyan-500/30">{index + 1}</div>
-                          {ws.title}
-                        </label>
-                        <textarea 
-                          maxLength={300}
-                          value={ws.whatsapp_rule || ''}
-                          onChange={(e) => handleRuleChange(ws.id, e.target.value)}
-                          placeholder="Ex: Aqui entram apenas gastos de supermercado, farmácia, combustível do meu carro pessoal e contas de casa."
-                          className="w-full bg-black border border-gray-800 rounded-lg p-3 text-sm text-gray-300 focus:border-cyan-500 outline-none resize-none h-24"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <button onClick={handleSaveWhatsappSettings} disabled={savingRules} className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 rounded-xl transition shadow-lg flex items-center justify-center gap-2 mt-4">
-                {savingRules ? <Loader2 className="animate-spin"/> : <><Save size={18}/> Salvar Configurações da IA</>}
-              </button>
             </div>
           )}
 
@@ -511,6 +507,108 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
           )}
         </div>
       </div>
+
+      {/* 🟢 SUB-MODAL: CÉREBRO DA IA */}
+      {isAIConfigOpen && (
+        <div className="fixed inset-0 bg-black/95 backdrop-blur-xl z-[400] flex items-center justify-center p-4 animate-in zoom-in duration-200">
+          <div className="bg-[#0a0a0a] border border-gray-800 w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col max-h-[85vh]">
+            <div className="p-6 border-b border-gray-800 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                    <div className="p-2 bg-cyan-500/20 rounded-lg text-cyan-400"><Sparkles size={20}/></div>
+                    <div>
+                        <h2 className="text-xl font-bold text-white leading-none">Cérebro do WhatsApp</h2>
+                        <p className="text-xs text-gray-500 mt-1">Ensine a IA onde salvar cada gasto enviado por mensagem.</p>
+                    </div>
+                </div>
+                <button onClick={() => setIsAIConfigOpen(false)} className="text-gray-500 hover:text-white"><X size={24}/></button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-8 scrollbar-hide">
+                {/* 1. SEÇÃO DE WORKSPACES */}
+                <section>
+                    <h3 className="text-cyan-400 text-xs font-black uppercase tracking-widest mb-4 flex items-center gap-2">
+                        <Users size={14}/> Áreas de Trabalho (Workspaces)
+                    </h3>
+                    {loadingAI ? (
+                       <div className="flex justify-center"><Loader2 className="animate-spin text-cyan-500" /></div>
+                    ) : workspaces.length === 0 ? (
+                        <p className="text-sm text-gray-500 bg-gray-900/50 p-4 rounded-xl border border-gray-800">A IA enviará tudo para seu painel principal.</p>
+                    ) : (
+                        <div className="grid gap-4">
+                            {workspaces.map((ws, idx) => (
+                                <div key={ws.id} className="bg-gray-900/50 border border-gray-800 p-4 rounded-2xl focus-within:border-cyan-500/30 transition">
+                                    <label className="text-sm font-bold text-gray-200 mb-2 flex items-center gap-2">
+                                        <div className="w-5 h-5 rounded bg-cyan-900/30 text-cyan-400 flex items-center justify-center text-xs border border-cyan-500/30">{idx + 1}</div>
+                                        {ws.title}
+                                    </label>
+                                    <textarea 
+                                        maxLength={300}
+                                        value={ws.whatsapp_rule || ''}
+                                        onChange={(e) => setWorkspaces(workspaces.map(w => w.id === ws.id ? {...w, whatsapp_rule: e.target.value} : w))}
+                                        placeholder="Ex: Use esta área para gastos de empresa e fornecedores..."
+                                        className="w-full bg-black border border-gray-800 rounded-xl p-3 text-sm text-gray-400 outline-none focus:border-cyan-500 h-20 resize-none"
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </section>
+
+                {/* 2. SEÇÃO DE CAIXINHAS (WALLETS) */}
+                <section>
+                    <h3 className="text-emerald-400 text-xs font-black uppercase tracking-widest mb-4 flex items-center gap-2">
+                        <Wallet size={14}/> Caixinhas Mensais (Orçamentos)
+                    </h3>
+                    {loadingAI ? (
+                       <div className="flex justify-center"><Loader2 className="animate-spin text-emerald-500" /></div>
+                    ) : walletGoals.length === 0 ? (
+                        <p className="text-sm text-gray-500 bg-gray-900/50 p-4 rounded-xl border border-gray-800">Você ainda não tem Caixinhas criadas.</p>
+                    ) : (
+                        <div className="grid gap-4">
+                            {walletGoals.map(wg => (
+                                <div key={wg.id} className={`p-4 rounded-2xl border transition ${wg.ai_enabled ? 'bg-emerald-950/10 border-emerald-500/20' : 'bg-gray-900/30 border-gray-800 opacity-60'}`}>
+                                    <div className="flex justify-between items-center mb-3">
+                                        <label className="text-sm font-bold text-white">{wg.title}</label>
+                                        <button 
+                                            onClick={() => setWalletGoals(walletGoals.map(g => g.id === wg.id ? {...g, ai_enabled: !g.ai_enabled} : g))}
+                                            className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase transition ${wg.ai_enabled ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/20' : 'bg-gray-800 text-gray-500'}`}
+                                        >
+                                            <Power size={10} /> {wg.ai_enabled ? 'Ativa' : 'Inativa'}
+                                        </button>
+                                    </div>
+                                    <textarea 
+                                        maxLength={300}
+                                        disabled={!wg.ai_enabled}
+                                        value={wg.whatsapp_rule || ''}
+                                        onChange={(e) => setWalletGoals(walletGoals.map(g => g.id === wg.id ? {...g, whatsapp_rule: e.target.value} : g))}
+                                        placeholder="Ex: Tudo que eu falar que é de mercado, açougue ou feira deve sair daqui."
+                                        className="w-full bg-black border border-gray-800 rounded-xl p-3 text-sm text-gray-400 outline-none focus:border-emerald-500 h-20 resize-none disabled:cursor-not-allowed"
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </section>
+            </div>
+
+            <div className="p-6 border-t border-gray-800 bg-[#0a0a0a] flex gap-3">
+                <button 
+                    onClick={() => setIsAIConfigOpen(false)}
+                    className="flex-1 bg-gray-900 text-white font-bold py-4 rounded-2xl hover:bg-gray-800 transition border border-gray-800"
+                >
+                    Voltar
+                </button>
+                <button 
+                    onClick={handleSaveAIConfig}
+                    disabled={savingRules}
+                    className="flex-[2] bg-white text-black font-black py-4 rounded-2xl hover:bg-gray-200 transition shadow-xl flex items-center justify-center gap-2"
+                >
+                    {savingRules ? <Loader2 className="animate-spin" /> : <><Save size={18}/> Salvar Regras da IA</>}
+                </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
       {isDeleteModalOpen && (

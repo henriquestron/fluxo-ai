@@ -77,6 +77,8 @@ export interface Goal {
     icon: string;
     color: string;
     items?: GoalItem[];
+    type?: string;
+    spent_amount?: number;
 }
 
 // --- SISTEMA & USUÁRIO ---
