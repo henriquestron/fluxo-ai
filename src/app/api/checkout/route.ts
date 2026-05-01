@@ -89,7 +89,8 @@ export async function POST(req: Request) {
             throw new Error('ID do preço não encontrado para: ' + planType);
         }
 
-        const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://usealiado.com.br/';
+        // Tira a barra do final caso ela venha na variável de ambiente e define o fallback limpo
+        const APP_URL = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || 'https://usealiado.com.br';
 
         const stripeSession = await stripe.checkout.sessions.create({
             payment_method_types: ['card'],
@@ -97,8 +98,9 @@ export async function POST(req: Request) {
             line_items: [{ price: stripePriceId, quantity: 1 }],
             mode: 'subscription',
             discounts: stripeCouponId ? [{ coupon: stripeCouponId }] : undefined,
-            success_url: `${APP_URL}/dashboard?success=true`,
-            cancel_url: `${APP_URL}/dashboard?canceled=true`,
+            // 🟢 Manda de volta para a rota raiz onde o seu page.tsx está rodando
+            success_url: `${APP_URL}/?success=true`,
+            cancel_url: `${APP_URL}/?canceled=true`,
             metadata: { userId, planType },
         });
 
