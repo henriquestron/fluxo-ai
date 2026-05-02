@@ -17,7 +17,6 @@ interface DashboardHeaderProps {
     setIsHistoryOpen: (v: boolean) => void;
     setIsExportModalOpen: (v: boolean) => void;
     openPricingModal: () => void;
-    runTour: () => void;
     setIsProfileModalOpen: (v: boolean) => void;
     handleManageSubscription: () => void;
     whatsappEnabled: boolean;
@@ -48,7 +47,7 @@ interface DashboardHeaderProps {
 
 export default function DashboardHeader({
     user, userPlan, viewingAs, clients, switchView, setIsClientModalOpen,
-    setIsHistoryOpen, setIsExportModalOpen, openPricingModal, runTour,
+    setIsHistoryOpen, setIsExportModalOpen, openPricingModal,
     setIsProfileModalOpen, handleManageSubscription, whatsappEnabled, toggleWhatsappNotification,
     setIsCustomizationOpen, handleCheckout, handleLogout,
     setIsAIOpen, setIsCreditCardModalOpen, openNewTransactionModal, setIsCalculatorOpen, handleRemoveClient, client,
