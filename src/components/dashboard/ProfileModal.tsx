@@ -21,7 +21,7 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
   if (!isOpen || !user) return null;
 
   const [activeTab, setActiveTab] = useState<'details' | 'whatsapp' | 'security'>('details');
-  const [isAIConfigOpen, setIsAIConfigOpen] = useState(false); // 🟢 Controle do Novo Modal da IA
+  const [isAIConfigOpen, setIsAIConfigOpen] = useState(false); 
   
   // States Pessoais
   const [fullName, setFullName] = useState(user.user_metadata?.full_name || '');
@@ -38,9 +38,10 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
   const [whatsapp, setWhatsapp] = useState('');
   const [partnerWhatsapp, setPartnerWhatsapp] = useState('');
 
-  // STATES DO ROTEAMENTO DA IA (Cérebro)
+  // STATES DO CÉREBRO DA IA (Regras e Humor)
+  const [botPersona, setBotPersona] = useState('humorado'); // 🟢 Agora vive aqui
   const [workspaces, setWorkspaces] = useState<any[]>([]);
-  const [walletGoals, setWalletGoals] = useState<any[]>([]); // 🟢 State das Caixinhas
+  const [walletGoals, setWalletGoals] = useState<any[]>([]); 
   const [loadingAI, setLoadingAI] = useState(false);
   const [savingRules, setSavingRules] = useState(false);
   const [savingPhones, setSavingPhones] = useState(false);
@@ -65,15 +66,16 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
       const fetchData = async () => {
         setLoadingAI(true);
         
-        // Busca Whatsapp
+        // Busca Whatsapp e Personalidade (Humor)
         const { data: settingsData } = await supabase
           .from('user_settings')
-          .select('whatsapp_phone, partner_phone')
+          .select('whatsapp_phone, partner_phone, bot_persona')
           .eq('user_id', user.id)
           .maybeSingle();
         
         if (settingsData?.whatsapp_phone) setWhatsapp(settingsData.whatsapp_phone);
         if (settingsData?.partner_phone) setPartnerWhatsapp(settingsData.partner_phone);
+        if (settingsData?.bot_persona) setBotPersona(settingsData.bot_persona);
 
         // Busca Dados do Consultor
         const { data: profileData } = await supabase
@@ -97,7 +99,7 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
         
         if (wsData) setWorkspaces(wsData);
 
-        // 🟢 Busca Caixinhas (Wallets)
+        // Busca Caixinhas (Wallets)
         const { data: goalsData } = await supabase
           .from('goals')
           .select('id, title, whatsapp_rule, ai_enabled')
@@ -197,7 +199,7 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
     }
   };
 
-  // 🟢 SALVA APENAS OS TELEFONES DA TELA PRINCIPAL DO WHATSAPP
+  // 🟢 SALVA APENAS OS NÚMEROS DE WHATSAPP (TELA PRINCIPAL)
   const handleSavePhones = async () => {
     setSavingPhones(true);
     try {
@@ -215,12 +217,12 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
         .upsert({ 
             user_id: user.id, 
             whatsapp_phone: cleanPhone,
-            partner_phone: cleanPartnerPhone || null 
+            partner_phone: cleanPartnerPhone || null
         }, { onConflict: 'user_id' });
       
       if (dbError) throw dbError;
 
-      toast.success("Números de WhatsApp salvos!");
+      toast.success("Números de conexão salvos!");
     } catch (error: any) {
       toast.error("Não foi possível salvar os números.");
     } finally {
@@ -228,15 +230,21 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
     }
   };
 
-  // 🟢 SALVA AS REGRAS DA IA (MODAL DO CÉREBRO)
+  // 🟢 SALVA O CÉREBRO DA IA (MODAL INTERNO)
   const handleSaveAIConfig = async () => {
     setSavingRules(true);
     try {
-      // Salva Workspaces
+      // 1. Salva o Humor da IA na tabela user_settings
+      await supabase.from('user_settings')
+        .update({ bot_persona: botPersona })
+        .eq('user_id', user.id);
+
+      // 2. Salva Workspaces
       for (const ws of workspaces) {
         await supabase.from('workspaces').update({ whatsapp_rule: ws.whatsapp_rule }).eq('id', ws.id).eq('user_id', user.id);
       }
-      // Salva Caixinhas
+      
+      // 3. Salva Caixinhas
       for (const wg of walletGoals) {
         await supabase.from('goals').update({ 
             whatsapp_rule: wg.whatsapp_rule, 
@@ -415,23 +423,23 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
             </div>
           )}
 
-          {/* ABA 2: WHATSAPP IA E ROTEAMENTO */}
+          {/* ABA 2: WHATSAPP E ROTEAMENTO (LIMPA) */}
           {activeTab === 'whatsapp' && (
-            <div className="space-y-8 animate-in slide-in-from-right-4 duration-300">
+            <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
               
               <div className="bg-emerald-500/10 border border-emerald-500/20 p-5 rounded-2xl">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-5">
                     <div>
                         <h3 className="text-emerald-400 font-bold flex items-center gap-2">
-                            <Bot size={18} /> Cérebro da Inteligência Artificial
+                            <Bot size={18} /> Cérebro da IA e WhatsApp
                         </h3>
-                        <p className="text-gray-400 text-xs mt-1">Configure os números e ensine a IA a organizar seus gastos.</p>
+                        <p className="text-gray-400 text-xs mt-1">Configure os números de conexão e personalize a inteligência.</p>
                     </div>
                     <button 
                         onClick={() => setIsAIConfigOpen(true)}
                         className="w-full sm:w-auto flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition shadow-lg shadow-emerald-900/20 whitespace-nowrap"
                     >
-                        <Settings size={16} /> Configurar IA
+                        <Settings size={16} /> Configurar Cérebro
                     </button>
                 </div>
                 
@@ -517,14 +525,34 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
                     <div className="p-2 bg-cyan-500/20 rounded-lg text-cyan-400"><Sparkles size={20}/></div>
                     <div>
                         <h2 className="text-xl font-bold text-white leading-none">Cérebro do WhatsApp</h2>
-                        <p className="text-xs text-gray-500 mt-1">Ensine a IA onde salvar cada gasto enviado por mensagem.</p>
+                        <p className="text-xs text-gray-500 mt-1">Configure o humor e ensine a IA onde salvar cada gasto.</p>
                     </div>
                 </div>
                 <button onClick={() => setIsAIConfigOpen(false)} className="text-gray-500 hover:text-white"><X size={24}/></button>
             </div>
 
             <div className="p-6 overflow-y-auto space-y-8 scrollbar-hide">
-                {/* 1. SEÇÃO DE WORKSPACES */}
+                
+                {/* 1. SEÇÃO DE PERSONALIDADE (HUMOR) */}
+                <section>
+                    <h3 className="text-purple-400 text-xs font-black uppercase tracking-widest mb-4 flex items-center gap-2">
+                        <Sparkles size={14} /> Personalidade da IA
+                    </h3>
+                    <div className="bg-gray-900/50 border border-gray-800 p-4 rounded-2xl focus-within:border-purple-500/30 transition">
+                        <label className="text-sm font-bold text-gray-200 mb-2 block">Estilo de Resposta (Humor)</label>
+                        <select 
+                            value={botPersona} 
+                            onChange={(e) => setBotPersona(e.target.value)} 
+                            className="w-full bg-black border border-gray-800 rounded-xl p-3 text-sm text-gray-400 outline-none focus:border-purple-500 appearance-none"
+                        >
+                            <option value="humorado">😂 Parceiro (Descontraído e Engraçado)</option>
+                            <option value="sincero">😠 Pai Bravo (Sincero e Dá Puxão de Orelha)</option>
+                            <option value="formal">👔 Executivo (Sério, Objetivo e Formal)</option>
+                        </select>
+                    </div>
+                </section>
+
+                {/* 2. SEÇÃO DE WORKSPACES */}
                 <section>
                     <h3 className="text-cyan-400 text-xs font-black uppercase tracking-widest mb-4 flex items-center gap-2">
                         <Users size={14}/> Áreas de Trabalho (Workspaces)
@@ -554,7 +582,7 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
                     )}
                 </section>
 
-                {/* 2. SEÇÃO DE CAIXINHAS (WALLETS) */}
+                {/* 3. SEÇÃO DE CAIXINHAS (WALLETS) */}
                 <section>
                     <h3 className="text-emerald-400 text-xs font-black uppercase tracking-widest mb-4 flex items-center gap-2">
                         <Wallet size={14}/> Caixinhas Mensais (Orçamentos)

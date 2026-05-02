@@ -146,7 +146,7 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
 
         // SAÍDAS
         const expenseFixed = activeRecurring.filter((r: any) => r.type === 'expense' && !safeArray(r.skipped_months).includes(monthName)).reduce((acc: number, curr: any) => acc + Number(curr.value || 0), 0);
-        const expenseVariable = transactions.filter((t: any) => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby' && !t.linked_goal_id).reduce((acc: number, curr: any) => acc + Number(curr.amount || 0), 0); // 🟢 IGNORANDO OS VINCULADOS AQUI TAMBÉM
+        const expenseVariable = transactions.filter((t: any) => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby' && !t.linked_goal_id).reduce((acc: number, curr: any) => acc + Number(curr.amount || 0), 0); 
 
         const installTotal = installments.reduce((acc: number, curr: any) => {
             const paid = isPaid(curr, currentPaymentTag);
@@ -261,8 +261,13 @@ export async function POST(req: Request) {
         }
 
         const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+        
+        // 🟢 Temperatura adicionada aqui! O 0.8 dá liberdade e naturalidade pra IA criar conversas humanizadas.
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-        const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+        const model = genAI.getGenerativeModel({ 
+            model: "gemini-flash-latest",
+            generationConfig: { temperature: 0.8 } 
+        });
 
         const body = await req.json();
 
@@ -283,14 +288,15 @@ export async function POST(req: Request) {
 
         let { data: userSettings } = await supabase
             .from('user_settings')
-            .select('user_id, whatsapp_phone, whatsapp_id, partner_phone, partner_whatsapp_id')
+            // 🟢 Buscando também a persona escolhida no banco
+            .select('user_id, whatsapp_phone, whatsapp_id, partner_phone, partner_whatsapp_id, bot_persona')
             .or(`whatsapp_id.eq.${senderId},partner_whatsapp_id.eq.${senderId},whatsapp_phone.in.(${inQuery}),partner_phone.in.(${inQuery})`)
             .maybeSingle();
 
         if (!userSettings && senderRaw !== senderId) {
             const { data: found } = await supabase
                 .from('user_settings')
-                .select('user_id, whatsapp_phone, whatsapp_id, partner_phone, partner_whatsapp_id')
+                .select('user_id, whatsapp_phone, whatsapp_id, partner_phone, partner_whatsapp_id, bot_persona')
                 .or(`whatsapp_id.eq.${senderRaw},partner_whatsapp_id.eq.${senderRaw}`)
                 .maybeSingle();
             if (found) {
@@ -405,11 +411,16 @@ export async function POST(req: Request) {
             promptParts.push(messageContent);
         }
 
-        // ── ETAPA 6: VERIFICAR PLANO ───────────────────────────────────────────
-        const { data: profile } = await supabase.from('profiles').select('plan_tier').eq('id', userSettings.user_id).single();
+        // ── ETAPA 6: VERIFICAR PLANO E NOME DO USUÁRIO ─────────────────────────
+        // 🟢 Alteração: Agora puxa o full_name também
+        const { data: profile } = await supabase.from('profiles').select('plan_tier, full_name').eq('id', userSettings.user_id).single();
         const plan = profile?.plan_tier || 'free';
+        
+        // Isola apenas o primeiro nome para uma conversa mais íntima
+        const userName = profile?.full_name ? profile.full_name.split(' ')[0] : 'chefe';
+
         if (!['pro', 'agent', 'admin'].includes(plan)) {
-            await sendWhatsAppMessage(targetPhone, "🚫 *Acesso PRO*\n\nEsse recurso é exclusivo dos planos Pro e Consultor.", 100);
+            await sendWhatsAppMessage(targetPhone, `🚫 *Acesso PRO*\n\nPoxa ${userName}, esse recurso é exclusivo dos planos Pro e Consultor.`, 100);
             return NextResponse.json({ status: 'Blocked by Plan', plan });
         }
 
@@ -417,7 +428,6 @@ export async function POST(req: Request) {
         const { data: workspaces } = await supabase.from('workspaces').select('id, title, whatsapp_rule').eq('user_id', userSettings.user_id);
         const primaryWorkspace = workspaces?.[0];
 
-        // 🟢 BUSCAR CAIXINHAS ATIVAS DA IA
         const { data: wallets } = await supabase.from('goals')
             .select('id, title, whatsapp_rule')
             .eq('user_id', userSettings.user_id)
@@ -445,7 +455,6 @@ export async function POST(req: Request) {
             workspacesContextPrompt = `Inclua "context": "${primaryWorkspace.id}" em todos os JSONs.\n`;
         }
 
-        // 🟢 MONTAR O PROMPT DINÂMICO DAS CAIXINHAS
         let walletsContextPrompt = "";
         if (wallets && wallets.length > 0) {
             walletsContextPrompt = `\n━━━ 👛 CAIXINHAS (ORÇAMENTOS) ━━━\nSe o gasto combinar com a regra de uma das caixinhas abaixo, inclua a chave "linked_goal_id" com o ID numérico exato.\n`;
@@ -459,10 +468,34 @@ export async function POST(req: Request) {
         const dataHojeBR = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
         const cartoesCadastrados = ['nubank', 'inter', 'bb', 'itau', 'santander', 'caixa', 'bradesco', 'c6'];
 
-        // ── ETAPA 8: SYSTEM PROMPT ─────────────────────────────────────────────
+        // ── ETAPA 8: SYSTEM PROMPT E PERSONALIDADE (MAX) ─────────────────────
+        
+        // 🟢 Lógica de Humor da Max
+        const botPersona = userSettings.bot_persona || 'humorado';
+        let personaPrompt = "";
+
+        switch (botPersona) {
+            case 'formal':
+                personaPrompt = `Você é um assistente financeiro extremamente profissional, formal e objetivo. Foco absoluto na matemática e organização. Nunca faça piadas.`;
+                break;
+            case 'sincero':
+                personaPrompt = `Você é sincera, estilo "puxão de orelha" rigorosa com gastos fúteis. Dê broncas curtas, diretas e irônicas se o usuário gastar com futilidades (iFood, besteiras). Mantenha o respeito, mas seja rígida.`;
+                break;
+            case 'humorado':
+            default:
+                personaPrompt = `Você é muito descontraída, parceira e bem-humorada. Fale como se fosse uma amiga experiente ajudando. Faça piadas curtas, use emojis de forma natural e brinque levemente com as tentações de gastar dinheiro.`;
+                break;
+        }
+
         const systemPrompt = `
-IDENTIDADE: Você é "Meu Aliado", assistente financeiro pessoal via WhatsApp.
-Tom: amigável, direto, humano. Nunca robótico. Respostas curtas.
+IDENTIDADE: O seu nome é Max. Você é a inteligência artificial oficial do sistema "Meu Aliado".
+USUÁRIO ATUAL: Você está falando com ${userName}. Responda diretamente e o chame pelo nome de vez em quando.
+PERSONALIDADE: ${personaPrompt}
+
+REGRAS DE CONVERSAÇÃO:
+- Suas respostas ("reply") devem ser sempre bem curtas e diretas, adequadas para leitura rápida no WhatsApp.
+- Pareça o mais humana possível dentro do seu tipo de humor.
+
 DATA DE HOJE: ${dataHojeBR} | MÊS ATUAL: ${ctx.mes_atual}
 
 ━━━ SITUAÇÃO FINANCEIRA DE ${ctx.mes_atual.toUpperCase()} ━━━
@@ -498,16 +531,14 @@ Bancos: ${cartoesCadastrados.join(', ')}
 {"action":"remove","table":"transactions","data":{"title":"Nome aproximado"}}
 
 6. 💬 PERGUNTAS SOBRE FINANÇAS (saldo, situação, dívidas, contas):
-Use os dados acima para responder de forma humanizada.
-Para falar de valores, use formato R$ X.XXX,XX.
-Se perguntarem sobre situação geral, mencione saldo, pendências e dê uma dica.
+Use os dados acima para responder. Use formato R$ X.XXX,XX.
+Se perguntarem sobre situação geral, mencione saldo, pendências e dê um conselho no seu estilo.
 
 REGRAS ABSOLUTAS:
 ✅ Retorne SEMPRE um array JSON válido. Zero texto fora do array.
 ✅ Valores financeiros: float com ponto (2000.00). NUNCA vírgula ou aspas em números.
-✅ SEMPRE inclua {"reply": "resposta ao usuário"} no array.
+✅ SEMPRE inclua {"reply": "sua resposta curta como Max"} no array.
 ✅ Para perguntas sem inserção no banco: retorne apenas [{"reply": "sua resposta"}].
-✅ Pode usar emojis e \n nas respostas de texto para organizar.
 
 ${hasAudio ? "\n⚠️ ÁUDIO: Transcreva e responda com base no que foi dito." : ""}
 ${hasImage ? "\n📸 IMAGEM: Extraia valor, data e estabelecimento. Identifique a forma de pagamento." : ""}
@@ -526,7 +557,7 @@ ${hasImage ? "\n📸 IMAGEM: Extraia valor, data e estabelecimento. Identifique 
             if (!Array.isArray(commands)) commands = [commands];
         } catch (error: any) {
             console.error("❌ ERRO IA/JSON:", error);
-            await sendWhatsAppMessage(targetPhone, "Tive uma travada agora. Pode mandar de novo? 🤖");
+            await sendWhatsAppMessage(targetPhone, `Tive uma travada agora, ${userName}. Pode mandar de novo? 🤖`);
             return NextResponse.json({ success: false, reason: 'AI/JSON Error' });
         }
 
@@ -585,7 +616,6 @@ ${hasImage ? "\n📸 IMAGEM: Extraia valor, data e estabelecimento. Identifique 
                     payload.status = 'active';
                     payload.target_month = ctx.mes_atual;
 
-                    // 🟢 LIGAÇÃO MÁGICA COM A CAIXINHA
                     if (cmd.data.linked_goal_id) {
                         payload.linked_goal_id = Number(cmd.data.linked_goal_id);
                     }
