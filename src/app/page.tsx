@@ -1,13 +1,7 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
 import {
-    CreditCard, TrendingDown, DollarSign, Plus, X, List, LayoutGrid, Sparkles, Send,
-    Trash2, AlertCircle, CheckCircle2, Pencil, Clock, AlertTriangle, Check, LogIn,
-    LogOut, User, Eye, EyeOff, CheckSquare, Square, ArrowRight, Crown, ShieldCheck, Edit2, Calendar,
-    Mail, Loader2, Lock, BarChart3, Search, Target, Upload, FileText, ExternalLink,
-    Users, ChevronDown, UserPlus, Briefcase, HelpCircle, Star, Zap, Shield, Palette,
-    Layout, MousePointerClick, FolderPlus, Layers, FileSpreadsheet, Wallet, Landmark, Rocket, Paperclip, ChevronRight, ChevronLeft,
-    ShoppingCart, Home, Car, Utensils, GraduationCap, HeartPulse, Plane, Gamepad2, Smartphone, Calculator, FileUp
+    X, Sparkles, Trash2, Pencil, Clock, AlertTriangle, LogOut, CheckSquare, ShieldCheck, Loader2, Lock, Zap, FolderPlus, Layers, 
 }
     from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -57,10 +51,8 @@ import ChangelogModal from '@/components/dashboard/ChangelogModal';
 export default function FinancialDashboard() {
     const currentSystemMonthIndex = new Date().getMonth();
     const currentSystemMonthName = MONTHS[currentSystemMonthIndex];
-
     const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
     const [newPassword, setNewPassword] = useState('');
-
     // --- ESTADOS GLOBAIS ---
     const [activeTab, setActiveTab] = useState(currentSystemMonthName);
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -78,10 +70,8 @@ export default function FinancialDashboard() {
     const [standbyModal, setStandbyModal] = useState<{ isOpen: boolean, item: any, origin: string, isRestore: boolean } | null>(null);
 
     const [newProfileName, setNewProfileName] = useState('');
-    // Adicione junto com os outros states (ex: perto de const [isAiLoading, setIsAiLoading] = useState(false);)
     const [isSimulationMode, setIsSimulationMode] = useState(false);
-    const [isImportOpen, setIsImportOpen] = useState(false);
-    const [isTutorialOpen, setIsTutorialOpen] = useState(false);
+    
     // --- MODAIS ---
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [isCreditCardModalOpen, setIsCreditCardModalOpen] = useState(false); // <--- ESTADO NOVO AQUI
@@ -116,6 +106,8 @@ export default function FinancialDashboard() {
     const [actionModal, setActionModal] = useState({ isOpen: false, type: '', title: '', message: '', btnSingle: '', btnAll: '', payload: null as any });
     const [isChangelogOpen, setIsChangelogOpen] = useState(false);
     const [changelogData, setChangelogData] = useState<any>(null);  
+    const [isImportOpen, setIsImportOpen] = useState(false);
+    const [isTutorialOpen, setIsTutorialOpen] = useState(false);
     // --- AUTH & USER DATA ---
     const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
     const [showEmailCheck, setShowEmailCheck] = useState(false);
@@ -178,145 +170,7 @@ export default function FinancialDashboard() {
     };
 
 
-    const runTour = () => {
-        // Verifica se a biblioteca driver.js foi carregada
-        const driverLib = (window as any).driver?.js?.driver;
-        if (!driverLib) return;
-
-        // --- 1. DEFINIÇÃO DOS PASSOS ---
-        const agentSteps = [
-            {
-                element: '#agent-bar',
-                popover: {
-                    title: '🕵️ Central do Consultor',
-                    description: 'Esta é sua central de controle. Aqui você gerencia sua carteira, alterna entre clientes e acompanha toda a operação em tempo real.',
-                    side: "bottom",
-                    align: 'start'
-                }
-            },
-            {
-                element: '#client-selector',
-                popover: {
-                    title: '📂 Gestão de Carteira',
-                    description: 'Selecione aqui o cliente que deseja analisar. Ao trocar, todos os dados do sistema são atualizados automaticamente para aquela conta.',
-                    side: "bottom",
-                    align: 'start'
-                }
-            },
-            {
-                element: '#btn-add-client',
-                popover: {
-                    title: '➕ Adicionar Novo Cliente',
-                    description: 'Cadastre um novo cliente na sua carteira para começar a organizar finanças, acompanhar indicadores e gerar relatórios personalizados.',
-                    side: "left",
-                    align: 'start'
-                }
-            }
-        ];
-
-        const commonSteps = [
-            {
-                element: '#logo-area',
-                popover: {
-                    title: '🛡️ Bem-vindo ao Meu Aliado',
-                    description: 'Eu vou te guiar para que você tenha controle total das suas finanças — com clareza, estratégia e visão de crescimento.'
-                }
-            },
-
-            // Ações Principais
-            {
-                element: '#btn-novo',
-                popover: {
-                    title: '🚀 Novo Lançamento',
-                    description: 'Aqui você registra Ganhos, Despesas ou Parcelamentos. Tudo começa por este botão.',
-                    side: "bottom"
-                }
-            },
-            {
-                element: '#btn-ai',
-                popover: {
-                    title: '🧠 Inteligência Financeira',
-                    description: 'Converse com o Aliado para lançar gastos por texto, tirar dúvidas ou receber orientações estratégicas.',
-                    side: "bottom"
-                }
-            },
-            {
-                element: '#btn-fatura',
-                popover: {
-                    title: '💳 Gestão de Fatura',
-                    description: 'Faça lançamentos em lote para organizar sua fatura mensal de forma rápida e eficiente.',
-                    side: "bottom"
-                }
-            },
-
-            // Ferramentas
-            {
-                element: '#btn-history',
-                popover: {
-                    title: '📅 Histórico e Evolução',
-                    description: 'Acompanhe sua performance financeira mês a mês através de gráficos claros e comparativos.',
-                    side: "bottom"
-                }
-            },
-            {
-                element: '#btn-export',
-                popover: {
-                    title: '📊 Exportar Relatórios',
-                    description: 'Baixe seus dados em Excel para análises mais detalhadas ou envio para contadores e parceiros.',
-                    side: "bottom"
-                }
-            },
-
-            // Dashboard
-            {
-                element: '#card-saldo',
-                popover: {
-                    title: '💰 Seu Termômetro Financeiro',
-                    description: 'Aqui você vê seu saldo atual. Verde indica resultado positivo. Vermelho sinaliza atenção e necessidade de ajuste.',
-                    side: "top"
-                }
-            },
-
-            // Menu
-            {
-                element: '#btn-notifications',
-                popover: {
-                    title: '🔔 Central de Alertas',
-                    description: 'Receba avisos importantes como contas próximas do vencimento e atualizações do sistema.',
-                }
-            },
-            {
-                element: '#btn-menu',
-                popover: {
-                    title: '👤 Perfil e Configurações',
-                    description: 'Gerencie sua assinatura, personalize o tema e ajuste preferências do sistema.',
-                    side: "left"
-                }
-            }
-        ];
-
-
-
-        // --- 2. LÓGICA DE MONTAGEM ---
-        let finalSteps = (userPlan === 'agent') ? [...agentSteps, ...commonSteps] : commonSteps;
-
-        finalSteps = finalSteps.filter(step => document.querySelector(step.element));
-
-        // --- 3. EXECUÇÃO ---
-        const driverObj = driverLib({
-            showProgress: true,
-            animate: true,
-            allowClose: true,
-            overlayClickNext: false,
-            keyboardControl: true,
-            nextBtnText: 'Próximo →',
-            prevBtnText: '← Voltar',
-            doneBtnText: 'Concluir 🚀',
-            steps: finalSteps,
-        });
-
-        driverObj.drive();
-    };
+    
 
     useEffect(() => {
         // Só roda se tiver USUÁRIO logado. Se for Landing Page (!user), ignora.
@@ -325,14 +179,14 @@ export default function FinancialDashboard() {
             if (userPlan === 'agent' && (window as any).driver) {
                 const hasSeenTour = localStorage.getItem('has_seen_agent_tour_v1');
                 if (!hasSeenTour) {
-                    setTimeout(() => { runTour(); localStorage.setItem('has_seen_agent_tour_v1', 'true'); }, 1500);
+                    setTimeout(() => { localStorage.setItem('has_seen_agent_tour_v1', 'true'); }, 1500);
                 }
             }
             // Lógica para usuários normais (Start, Free, Pro)
             else {
                 const hasSeenTour = localStorage.getItem('hasSeenTour_v3');
                 if (!hasSeenTour) {
-                    setTimeout(() => { runTour(); localStorage.setItem('hasSeenTour_v3', 'true'); }, 1500);
+                    setTimeout(() => { localStorage.setItem('hasSeenTour_v3', 'true'); }, 1500);
                 }
             }
         }
@@ -2571,7 +2425,6 @@ export default function FinancialDashboard() {
                     setIsHistoryOpen={setIsHistoryOpen}
                     setIsExportModalOpen={setIsExportModalOpen}
                     openPricingModal={openPricingModal}
-                    runTour={runTour}
                     setIsProfileModalOpen={setIsProfileModalOpen}
                     handleManageSubscription={handleManageSubscription}
                     whatsappEnabled={whatsappEnabled}
@@ -2610,7 +2463,6 @@ export default function FinancialDashboard() {
                     setIsHistoryOpen={setIsHistoryOpen}
                     setIsExportModalOpen={setIsExportModalOpen}
                     openPricingModal={openPricingModal}
-                    runTour={runTour}
                     setIsProfileModalOpen={setIsProfileModalOpen}
                     handleManageSubscription={handleManageSubscription}
                     whatsappEnabled={whatsappEnabled}
