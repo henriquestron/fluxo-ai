@@ -334,14 +334,14 @@ export async function POST(req: Request) {
 
         let { data: userSettings } = await supabase
             .from('user_settings')
-            .select('user_id, whatsapp_phone, whatsapp_id, partner_phone, partner_whatsapp_id, bot_persona')
+            .select('user_id, whatsapp_phone, whatsapp_id, partner_phone, partner_whatsapp_id, bot_persona, bot_humor_level, bot_sincerity_level, bot_formality_level')
             .or(`whatsapp_id.eq.${senderId},partner_whatsapp_id.eq.${senderId},whatsapp_phone.in.(${inQuery}),partner_phone.in.(${inQuery})`)
             .maybeSingle();
 
         if (!userSettings && senderRaw !== senderId) {
             const { data: found } = await supabase
                 .from('user_settings')
-                .select('user_id, whatsapp_phone, whatsapp_id, partner_phone, partner_whatsapp_id, bot_persona')
+                .select('user_id, whatsapp_phone, whatsapp_id, partner_phone, partner_whatsapp_id, bot_persona, bot_humor_level, bot_sincerity_level, bot_formality_level')
                 .or(`whatsapp_id.eq.${senderRaw},partner_whatsapp_id.eq.${senderRaw}`)
                 .maybeSingle();
             if (found) {
@@ -358,7 +358,7 @@ export async function POST(req: Request) {
                 const inQueryPossible = possiblePhones.join(',');
                 const { data: userToLink } = await supabase
                     .from('user_settings')
-                    .select('user_id, whatsapp_phone, partner_phone, bot_persona')
+                    .select('user_id, whatsapp_phone, partner_phone, bot_persona, bot_humor_level, bot_sincerity_level, bot_formality_level')
                     .or(`whatsapp_phone.in.(${inQueryPossible}),partner_phone.in.(${inQueryPossible})`)
                     .maybeSingle();
 
@@ -527,7 +527,11 @@ export async function POST(req: Request) {
         const dataHojeBR = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
         const cartoesCadastrados = ['nubank', 'inter', 'bb', 'itau', 'santander', 'caixa', 'bradesco', 'c6'];
 
-        // 🟢 Lógica de Humor da Luna
+        // 🟢 Lógica de Humor e Emoções Personalizadas da Luna
+        const humor = userSettings.bot_humor_level || 5;
+        const sinceridade = userSettings.bot_sincerity_level || 5;
+        const formalidade = userSettings.bot_formality_level || 5;
+
         const botPersona = userSettings.bot_persona || 'humorado';
         let personaPrompt = "";
 
@@ -537,6 +541,13 @@ export async function POST(req: Request) {
                 break;
             case 'sincero':
                 personaPrompt = `Você é sincera, estilo "puxão de orelha" rigorosa com gastos fúteis. Dê broncas curtas, diretas e irônicas se o usuário gastar com futilidades (iFood, besteiras). Mantenha o respeito, mas seja rígida.`;
+                break;
+            case 'personalizado':
+                personaPrompt = `Aja de acordo com a seguinte personalidade em uma escala de 1 a 10:
+- Nível de Humor: ${humor}/10 (1 = zero piadas, 10 = muito piadista e descontraída).
+- Nível de Sinceridade/Bronca: ${sinceridade}/10 (1 = muito compreensiva, 10 = dá broncas severas e irônicas sobre gastos fúteis).
+- Nível de Formalidade: ${formalidade}/10 (1 = usa gírias e fala como parceira íntima, 10 = extremamente culta e executiva).
+Ajuste seu tom de fala exatamente para refletir essa combinação única em todas as suas respostas.`;
                 break;
             case 'humorado':
             default:
