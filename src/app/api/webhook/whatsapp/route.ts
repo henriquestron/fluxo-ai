@@ -527,7 +527,7 @@ export async function POST(req: Request) {
         const dataHojeBR = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
         const cartoesCadastrados = ['nubank', 'inter', 'bb', 'itau', 'santander', 'caixa', 'bradesco', 'c6'];
 
-        // 🟢 Lógica de Humor da Max
+        // 🟢 Lógica de Humor da Luna
         const botPersona = userSettings.bot_persona || 'humorado';
         let personaPrompt = "";
 
@@ -545,7 +545,7 @@ export async function POST(req: Request) {
         }
 
         const systemPrompt = `
-IDENTIDADE: O seu nome é Max. Você é a inteligência artificial oficial do sistema "Meu Aliado".
+IDENTIDADE: O seu nome é Luna. Você é a inteligência artificial oficial do sistema "Meu Aliado".
 USUÁRIO ATUAL: Você está falando com ${userName}. Responda diretamente e o chame pelo nome de vez em quando.
 PERSONALIDADE: ${personaPrompt}
 
@@ -594,7 +594,7 @@ Se perguntarem sobre situação geral, mencione saldo, pendências e dê um cons
 REGRAS ABSOLUTAS:
 ✅ Retorne SEMPRE um array JSON válido. Zero texto fora do array.
 ✅ Valores financeiros: float com ponto (2000.00). NUNCA vírgula ou aspas em números.
-✅ SEMPRE inclua {"reply": "sua resposta curta como Max"} no array.
+✅ SEMPRE inclua {"reply": "sua resposta curta como Luna"} no array.
 ✅ Para perguntas sem inserção no banco: retorne apenas [{"reply": "sua resposta"}].
 
 ${hasAudio ? "\n⚠️ ÁUDIO: Transcreva e responda com base no que foi dito." : ""}

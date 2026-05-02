@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   X, User, Lock, Camera, Save, Loader2, Mail, Phone, Link as LinkIcon, 
   Check, Zap, AlertTriangle, Trash2, Briefcase, Bot, Sparkles, Users, 
-  Wallet, Settings, Power 
+  Wallet, Settings, Power, Sliders
 } from 'lucide-react'; 
 import { supabase } from '@/supabase'; 
 import { toast } from 'sonner';
@@ -38,8 +38,12 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
   const [whatsapp, setWhatsapp] = useState('');
   const [partnerWhatsapp, setPartnerWhatsapp] = useState('');
 
-  // STATES DO CÉREBRO DA IA (Regras e Humor)
-  const [botPersona, setBotPersona] = useState('humorado'); // 🟢 Agora vive aqui
+  // 🟢 STATES DO CÉREBRO DA IA (Regras e Emoções)
+  const [botPersona, setBotPersona] = useState('humorado'); 
+  const [humorLevel, setHumorLevel] = useState(5);
+  const [sincerityLevel, setSincerityLevel] = useState(5);
+  const [formalityLevel, setFormalityLevel] = useState(5);
+
   const [workspaces, setWorkspaces] = useState<any[]>([]);
   const [walletGoals, setWalletGoals] = useState<any[]>([]); 
   const [loadingAI, setLoadingAI] = useState(false);
@@ -66,16 +70,21 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
       const fetchData = async () => {
         setLoadingAI(true);
         
-        // Busca Whatsapp e Personalidade (Humor)
+        // 🟢 Busca Whatsapp e Níveis de Emoção
         const { data: settingsData } = await supabase
           .from('user_settings')
-          .select('whatsapp_phone, partner_phone, bot_persona')
+          .select('whatsapp_phone, partner_phone, bot_persona, bot_humor_level, bot_sincerity_level, bot_formality_level')
           .eq('user_id', user.id)
           .maybeSingle();
         
-        if (settingsData?.whatsapp_phone) setWhatsapp(settingsData.whatsapp_phone);
-        if (settingsData?.partner_phone) setPartnerWhatsapp(settingsData.partner_phone);
-        if (settingsData?.bot_persona) setBotPersona(settingsData.bot_persona);
+        if (settingsData) {
+            if (settingsData.whatsapp_phone) setWhatsapp(settingsData.whatsapp_phone);
+            if (settingsData.partner_phone) setPartnerWhatsapp(settingsData.partner_phone);
+            if (settingsData.bot_persona) setBotPersona(settingsData.bot_persona);
+            if (settingsData.bot_humor_level) setHumorLevel(settingsData.bot_humor_level);
+            if (settingsData.bot_sincerity_level) setSincerityLevel(settingsData.bot_sincerity_level);
+            if (settingsData.bot_formality_level) setFormalityLevel(settingsData.bot_formality_level);
+        }
 
         // Busca Dados do Consultor
         const { data: profileData } = await supabase
@@ -199,7 +208,6 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
     }
   };
 
-  // 🟢 SALVA APENAS OS NÚMEROS DE WHATSAPP (TELA PRINCIPAL)
   const handleSavePhones = async () => {
     setSavingPhones(true);
     try {
@@ -230,21 +238,23 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
     }
   };
 
-  // 🟢 SALVA O CÉREBRO DA IA (MODAL INTERNO)
+  // 🟢 SALVA O CÉREBRO E AS EMOÇÕES
   const handleSaveAIConfig = async () => {
     setSavingRules(true);
     try {
-      // 1. Salva o Humor da IA na tabela user_settings
       await supabase.from('user_settings')
-        .update({ bot_persona: botPersona })
+        .update({ 
+            bot_persona: botPersona,
+            bot_humor_level: humorLevel,
+            bot_sincerity_level: sincerityLevel,
+            bot_formality_level: formalityLevel
+        })
         .eq('user_id', user.id);
 
-      // 2. Salva Workspaces
       for (const ws of workspaces) {
         await supabase.from('workspaces').update({ whatsapp_rule: ws.whatsapp_rule }).eq('id', ws.id).eq('user_id', user.id);
       }
       
-      // 3. Salva Caixinhas
       for (const wg of walletGoals) {
         await supabase.from('goals').update({ 
             whatsapp_rule: wg.whatsapp_rule, 
@@ -252,7 +262,7 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
         }).eq('id', wg.id).eq('user_id', user.id);
       }
 
-      toast.success("Cérebro da IA atualizado! 🧠");
+      toast.success("Cérebro da Luna atualizado! 🧠");
       setIsAIConfigOpen(false);
     } catch (error) {
       toast.error("Erro ao sincronizar regras com o servidor.");
@@ -374,7 +384,6 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
                   </div>
                 </div>
 
-                {/* BLOCO VIP DO CONSULTOR */}
                 {isConsultant && (
                   <div className="mt-8 bg-gradient-to-b from-purple-900/20 to-transparent border border-purple-500/20 p-5 rounded-2xl space-y-5">
                     <div className="flex items-center gap-2 border-b border-purple-500/20 pb-3">
@@ -423,7 +432,7 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
             </div>
           )}
 
-          {/* ABA 2: WHATSAPP E ROTEAMENTO (LIMPA) */}
+          {/* ABA 2: WHATSAPP */}
           {activeTab === 'whatsapp' && (
             <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
               
@@ -525,7 +534,7 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
                     <div className="p-2 bg-cyan-500/20 rounded-lg text-cyan-400"><Sparkles size={20}/></div>
                     <div>
                         <h2 className="text-xl font-bold text-white leading-none">Cérebro do WhatsApp</h2>
-                        <p className="text-xs text-gray-500 mt-1">Configure o humor e ensine a IA onde salvar cada gasto.</p>
+                        <p className="text-xs text-gray-500 mt-1">Configure o humor e ensine a Luna onde salvar cada gasto.</p>
                     </div>
                 </div>
                 <button onClick={() => setIsAIConfigOpen(false)} className="text-gray-500 hover:text-white"><X size={24}/></button>
@@ -533,12 +542,12 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
 
             <div className="p-6 overflow-y-auto space-y-8 scrollbar-hide">
                 
-                {/* 1. SEÇÃO DE PERSONALIDADE (HUMOR) */}
+                {/* 1. SEÇÃO DE PERSONALIDADE (HUMOR E SLIDERS) */}
                 <section>
                     <h3 className="text-purple-400 text-xs font-black uppercase tracking-widest mb-4 flex items-center gap-2">
                         <Sparkles size={14} /> Personalidade da IA
                     </h3>
-                    <div className="bg-gray-900/50 border border-gray-800 p-4 rounded-2xl focus-within:border-purple-500/30 transition">
+                    <div className="bg-gray-900/50 border border-gray-800 p-5 rounded-2xl focus-within:border-purple-500/30 transition">
                         <label className="text-sm font-bold text-gray-200 mb-2 block">Estilo de Resposta (Humor)</label>
                         <select 
                             value={botPersona} 
@@ -548,7 +557,59 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
                             <option value="humorado">😂 Parceiro (Descontraído e Engraçado)</option>
                             <option value="sincero">😠 Pai Bravo (Sincero e Dá Puxão de Orelha)</option>
                             <option value="formal">👔 Executivo (Sério, Objetivo e Formal)</option>
+                            <option value="personalizado">🎛️ Personalizado (Ajuste Fino de Emoções)</option>
                         </select>
+
+                        {/* 🟢 SLIDERS CUSTOMIZADOS */}
+                        {botPersona === 'personalizado' && (
+                            <div className="mt-5 p-5 bg-black rounded-xl border border-gray-800 space-y-6 animate-in fade-in duration-300">
+                                <div className="text-center mb-2">
+                                    <h4 className="text-sm font-bold text-white flex items-center justify-center gap-2">
+                                        <Sliders size={16} className="text-purple-500"/> Painel de Sentimentos
+                                    </h4>
+                                    <p className="text-[10px] text-gray-500 mt-1">Deslize para calibrar o comportamento da Luna.</p>
+                                </div>
+                                
+                                <div>
+                                    <label className="text-xs font-bold mb-3 flex justify-between text-gray-400">
+                                        <span className="flex items-center gap-1">🤪 Nível de Humor</span>
+                                        <span className="text-purple-400 bg-purple-900/30 px-2 py-0.5 rounded-md">{humorLevel}/10</span>
+                                    </label>
+                                    <input 
+                                        type="range" min="1" max="10" 
+                                        value={humorLevel} 
+                                        onChange={(e) => setHumorLevel(Number(e.target.value))} 
+                                        className="w-full h-2 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-purple-500" 
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-xs font-bold mb-3 flex justify-between text-gray-400">
+                                        <span className="flex items-center gap-1">😠 Nível de Sinceridade (Broncas)</span>
+                                        <span className="text-orange-400 bg-orange-900/30 px-2 py-0.5 rounded-md">{sincerityLevel}/10</span>
+                                    </label>
+                                    <input 
+                                        type="range" min="1" max="10" 
+                                        value={sincerityLevel} 
+                                        onChange={(e) => setSincerityLevel(Number(e.target.value))} 
+                                        className="w-full h-2 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-orange-500" 
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="text-xs font-bold mb-3 flex justify-between text-gray-400">
+                                        <span className="flex items-center gap-1">👔 Nível de Formalidade</span>
+                                        <span className="text-cyan-400 bg-cyan-900/30 px-2 py-0.5 rounded-md">{formalityLevel}/10</span>
+                                    </label>
+                                    <input 
+                                        type="range" min="1" max="10" 
+                                        value={formalityLevel} 
+                                        onChange={(e) => setFormalityLevel(Number(e.target.value))} 
+                                        className="w-full h-2 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-cyan-500" 
+                                    />
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </section>
 
@@ -631,7 +692,7 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
                     disabled={savingRules}
                     className="flex-[2] bg-white text-black font-black py-4 rounded-2xl hover:bg-gray-200 transition shadow-xl flex items-center justify-center gap-2"
                 >
-                    {savingRules ? <Loader2 className="animate-spin" /> : <><Save size={18}/> Salvar Regras da IA</>}
+                    {savingRules ? <Loader2 className="animate-spin" /> : <><Save size={18}/> Salvar Cérebro</>}
                 </button>
             </div>
           </div>
