@@ -409,11 +409,27 @@ export async function POST(req: Request) {
         }
 
         // ── ETAPA 6: VERIFICAR PLANO ───────────────────────────────────────────
-        const { data: profile } = await supabase.from('profiles').select('plan_tier, full_name').eq('id', userSettings.user_id).single();
+        // ── ETAPA 6: VERIFICAR PLANO E NOME DO USUÁRIO ─────────────────────────
+        
+        // 1. Busca APENAS o plano na tabela profiles (pra não dar erro no banco)
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('plan_tier')
+            .eq('id', userSettings.user_id)
+            .single();
+            
         const plan = profile?.plan_tier || 'free';
-        const userName = profile?.full_name ? profile.full_name.split(' ')[0] : 'chefe';
+
+        // 2. Busca o nome real do usuário direto no sistema de Autenticação
+        const { data: authData } = await supabase.auth.admin.getUserById(userSettings.user_id);
+        const fullName = authData?.user?.user_metadata?.full_name;
+        
+        // Pega só o primeiro nome
+        const userName = fullName ? fullName.split(' ')[0] : 'chefe';
+
+        // 3. Verificação de acesso
         if (!['pro', 'agent', 'admin'].includes(plan)) {
-            await sendWhatsAppMessage(targetPhone, "🚫 *Acesso PRO*\n\nEsse recurso é exclusivo dos planos Pro e Consultor.", 100);
+            await sendWhatsAppMessage(targetPhone, `🚫 *Acesso PRO*\n\nPoxa ${userName}, esse recurso é exclusivo dos planos Pro e Consultor.`, 100);
             return NextResponse.json({ status: 'Blocked by Plan', plan });
         }
 
