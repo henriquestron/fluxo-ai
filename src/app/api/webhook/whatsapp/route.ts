@@ -146,7 +146,7 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
 
         // SAÍDAS
         const expenseFixed = activeRecurring.filter((r: any) => r.type === 'expense' && !safeArray(r.skipped_months).includes(monthName)).reduce((acc: number, curr: any) => acc + Number(curr.value || 0), 0);
-        const expenseVariable = transactions.filter((t: any) => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby' && !t.linked_goal_id).reduce((acc: number, curr: any) => acc + Number(curr.amount || 0), 0); 
+        const expenseVariable = transactions.filter((t: any) => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby' && !t.linked_goal_id).reduce((acc: number, curr: any) => acc + Number(curr.amount || 0), 0); // 🟢 IGNORANDO OS VINCULADOS AQUI TAMBÉM
 
         const installTotal = installments.reduce((acc: number, curr: any) => {
             const paid = isPaid(curr, currentPaymentTag);
@@ -261,12 +261,10 @@ export async function POST(req: Request) {
         }
 
         const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-        
-        // 🟢 Temperatura adicionada aqui! O 0.8 dá liberdade e naturalidade pra IA criar conversas humanizadas.
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-        const model = genAI.getGenerativeModel({ 
+        const model = genAI.getGenerativeModel({
             model: "gemini-flash-latest",
-            generationConfig: { temperature: 0.8 } 
+            generationConfig: { temperature: 0.8 }
         });
 
         const body = await req.json();
@@ -288,7 +286,6 @@ export async function POST(req: Request) {
 
         let { data: userSettings } = await supabase
             .from('user_settings')
-            // 🟢 Buscando também a persona escolhida no banco
             .select('user_id, whatsapp_phone, whatsapp_id, partner_phone, partner_whatsapp_id, bot_persona')
             .or(`whatsapp_id.eq.${senderId},partner_whatsapp_id.eq.${senderId},whatsapp_phone.in.(${inQuery}),partner_phone.in.(${inQuery})`)
             .maybeSingle();
@@ -313,7 +310,7 @@ export async function POST(req: Request) {
                 const inQueryPossible = possiblePhones.join(',');
                 const { data: userToLink } = await supabase
                     .from('user_settings')
-                    .select('user_id, whatsapp_phone, partner_phone')
+                    .select('user_id, whatsapp_phone, partner_phone, bot_persona')
                     .or(`whatsapp_phone.in.(${inQueryPossible}),partner_phone.in.(${inQueryPossible})`)
                     .maybeSingle();
 
@@ -411,16 +408,12 @@ export async function POST(req: Request) {
             promptParts.push(messageContent);
         }
 
-        // ── ETAPA 6: VERIFICAR PLANO E NOME DO USUÁRIO ─────────────────────────
-        // 🟢 Alteração: Agora puxa o full_name também
+        // ── ETAPA 6: VERIFICAR PLANO ───────────────────────────────────────────
         const { data: profile } = await supabase.from('profiles').select('plan_tier, full_name').eq('id', userSettings.user_id).single();
         const plan = profile?.plan_tier || 'free';
-        
-        // Isola apenas o primeiro nome para uma conversa mais íntima
         const userName = profile?.full_name ? profile.full_name.split(' ')[0] : 'chefe';
-
         if (!['pro', 'agent', 'admin'].includes(plan)) {
-            await sendWhatsAppMessage(targetPhone, `🚫 *Acesso PRO*\n\nPoxa ${userName}, esse recurso é exclusivo dos planos Pro e Consultor.`, 100);
+            await sendWhatsAppMessage(targetPhone, "🚫 *Acesso PRO*\n\nEsse recurso é exclusivo dos planos Pro e Consultor.", 100);
             return NextResponse.json({ status: 'Blocked by Plan', plan });
         }
 
@@ -428,6 +421,7 @@ export async function POST(req: Request) {
         const { data: workspaces } = await supabase.from('workspaces').select('id, title, whatsapp_rule').eq('user_id', userSettings.user_id);
         const primaryWorkspace = workspaces?.[0];
 
+        // 🟢 BUSCAR CAIXINHAS ATIVAS DA IA
         const { data: wallets } = await supabase.from('goals')
             .select('id, title, whatsapp_rule')
             .eq('user_id', userSettings.user_id)
@@ -455,6 +449,7 @@ export async function POST(req: Request) {
             workspacesContextPrompt = `Inclua "context": "${primaryWorkspace.id}" em todos os JSONs.\n`;
         }
 
+        // 🟢 MONTAR O PROMPT DINÂMICO DAS CAIXINHAS
         let walletsContextPrompt = "";
         if (wallets && wallets.length > 0) {
             walletsContextPrompt = `\n━━━ 👛 CAIXINHAS (ORÇAMENTOS) ━━━\nSe o gasto combinar com a regra de uma das caixinhas abaixo, inclua a chave "linked_goal_id" com o ID numérico exato.\n`;
@@ -468,8 +463,6 @@ export async function POST(req: Request) {
         const dataHojeBR = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
         const cartoesCadastrados = ['nubank', 'inter', 'bb', 'itau', 'santander', 'caixa', 'bradesco', 'c6'];
 
-        // ── ETAPA 8: SYSTEM PROMPT E PERSONALIDADE (MAX) ─────────────────────
-        
         // 🟢 Lógica de Humor da Max
         const botPersona = userSettings.bot_persona || 'humorado';
         let personaPrompt = "";
@@ -557,7 +550,7 @@ ${hasImage ? "\n📸 IMAGEM: Extraia valor, data e estabelecimento. Identifique 
             if (!Array.isArray(commands)) commands = [commands];
         } catch (error: any) {
             console.error("❌ ERRO IA/JSON:", error);
-            await sendWhatsAppMessage(targetPhone, `Tive uma travada agora, ${userName}. Pode mandar de novo? 🤖`);
+            await sendWhatsAppMessage(targetPhone, "Tive uma travada agora. Pode mandar de novo? 🤖");
             return NextResponse.json({ success: false, reason: 'AI/JSON Error' });
         }
 
@@ -616,6 +609,7 @@ ${hasImage ? "\n📸 IMAGEM: Extraia valor, data e estabelecimento. Identifique 
                     payload.status = 'active';
                     payload.target_month = ctx.mes_atual;
 
+                    // 🟢 LIGAÇÃO MÁGICA COM A CAIXINHA
                     if (cmd.data.linked_goal_id) {
                         payload.linked_goal_id = Number(cmd.data.linked_goal_id);
                     }
