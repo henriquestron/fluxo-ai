@@ -74,6 +74,9 @@ async function downloadMedia(url: string) {
 // ============================================================================
 // CONTEXTO FINANCEIRO COMPLETO (CLONE EXATO DO PAGE.TSX)
 // ============================================================================
+// ============================================================================
+// CONTEXTO FINANCEIRO COMPLETO (CLONE EXATO DO PAGE.TSX)
+// ============================================================================
 async function getFinancialContext(supabase: any, userId: string, workspaceId: string) {
     const today = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
     const currentYear = today.getFullYear();
@@ -145,10 +148,16 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
         const incomeTotal = incomeFixed + incomeVariable;
 
         // SAÍDAS
-        const expenseFixed = activeRecurring.filter((r: any) => r.type === 'expense' && !safeArray(r.skipped_months).includes(monthName)).reduce((acc: number, curr: any) => acc + Number(curr.value || 0), 0);
-        const expenseVariable = transactions.filter((t: any) => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby' && !t.linked_goal_id).reduce((acc: number, curr: any) => acc + Number(curr.amount || 0), 0); // 🟢 IGNORANDO OS VINCULADOS AQUI TAMBÉM
+        // 🟢 FIX 1: Ignora Contas Fixas que estão vinculadas a uma Caixinha (!r.linked_goal_id)
+        const expenseFixed = activeRecurring.filter((r: any) => r.type === 'expense' && !safeArray(r.skipped_months).includes(monthName) && !r.linked_goal_id).reduce((acc: number, curr: any) => acc + Number(curr.value || 0), 0);
+        
+        // 🟢 FIX 2: Já ignorava variáveis vinculadas a caixinhas
+        const expenseVariable = transactions.filter((t: any) => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby' && !t.linked_goal_id).reduce((acc: number, curr: any) => acc + Number(curr.amount || 0), 0); 
 
         const installTotal = installments.reduce((acc: number, curr: any) => {
+            // 🟢 FIX 3: Ignora Parcelados que estão vinculados a uma Caixinha
+            if (curr.linked_goal_id) return acc;
+
             const paid = isPaid(curr, currentPaymentTag);
             if ((curr.status === 'delayed' || curr.status === 'standby') && !paid) return acc;
             if (safeArray(curr.standby_months).includes(currentPaymentTag) && !paid) return acc;
@@ -181,17 +190,24 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
             });
 
             detalhesG = "\n📤 DESPESAS:\n";
-            activeRecurring.filter((r: any) => r.type === 'expense' && !safeArray(r.skipped_months).includes(monthName)).forEach((r: any) => {
+            
+            // 🟢 FIX 4: Ignora as fixas vinculadas na hora de gerar o texto
+            activeRecurring.filter((r: any) => r.type === 'expense' && !safeArray(r.skipped_months).includes(monthName) && !r.linked_goal_id).forEach((r: any) => {
                 const pd = isPaid(r, currentPaymentTag);
                 if (!pd) { pendingCount++; pendingAmount += Number(r.value); } else { paidCount++; }
                 detalhesG += ` ${pd ? "✅" : "⏳"} ${r.title}: R$ ${Number(r.value).toFixed(2)}\n`;
             });
-            transactions.filter((t: any) => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').forEach((t: any) => {
+
+            transactions.filter((t: any) => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby' && !t.linked_goal_id).forEach((t: any) => {
                 const pd = t.is_paid;
                 if (!pd) { pendingCount++; pendingAmount += Number(t.amount); } else { paidCount++; }
                 detalhesG += ` ${pd ? "✅" : "⏳"} ${t.title}: R$ ${Number(t.amount).toFixed(2)}\n`;
             });
+
             installments.forEach((curr: any) => {
+                // 🟢 FIX 5: Ignora os parcelados vinculados na hora de gerar o texto
+                if (curr.linked_goal_id) return;
+
                 const pd = isPaid(curr, currentPaymentTag);
                 if ((curr.status === 'delayed' || curr.status === 'standby') && !pd) return;
                 if (safeArray(curr.standby_months).includes(currentPaymentTag) && !pd) return;
