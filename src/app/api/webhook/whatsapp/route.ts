@@ -583,7 +583,10 @@ ${walletsContextPrompt}
 
 1. 💳 CARTÃO DE CRÉDITO (se mencionar banco, fatura ou cartão):
 Bancos: ${cartoesCadastrados.join(', ')}
-{"action":"add","table":"installments","context":"ID","data":{"title":"Nome","value_per_month":0.00,"installments_count":1,"payment_method":"banco","due_day":10}}
+⚠️ REGRA DA FATURA (MUITO IMPORTANTE):
+- Se o usuário informar o mês da fatura (ex: "para junho", "mês que vem", "próxima fatura"): Adicione a chave "start_date" no formato "10/MM/YYYY" correspondente ao mês pedido.
+- Se o usuário NÃO informar o mês: Lance normalmente (sem start_date) para o mês atual, mas adicione na sua "reply" um lembrete no seu estilo: "Ah, e se a fatura já tiver fechado, da próxima vez é só me falar 'para o mês que vem' que eu já jogo pra lá!"
+{"action":"add","table":"installments","context":"ID","data":{"title":"Nome","value_per_month":0.00,"installments_count":1,"payment_method":"banco","due_day":10,"start_date":"10/MM/YYYY"}}
 
 2. 🔁 GASTO FIXO (fixo, todo mês, assinatura, aluguel):
 {"action":"add","table":"recurring","context":"ID","data":{"title":"Nome","value":0.00,"type":"expense","due_day":10}}
