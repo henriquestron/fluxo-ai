@@ -27,6 +27,7 @@ const BANK_STYLES: any = {
     'bradesco': { label: 'Bradesco', color: 'bg-[#CC092F]', bg: 'bg-[#CC092F]/10', border: 'border-[#CC092F]/30', text: 'text-[#ff4d6f]', icon: 'https://upload.wikimedia.org/wikipedia/commons/c/c3/Banco_Bradesco_logo.svg' },
     'c6': { label: 'C6 Bank', color: 'bg-[#222]', bg: 'bg-gray-800', border: 'border-gray-600', text: 'text-gray-300', icon: 'https://upload.wikimedia.org/wikipedia/commons/7/77/Logo_C6_Bank.svg' },
     'picpay': { label: 'PicPay', color: 'bg-[#11C76F]', bg: 'bg-[#11C76F]/10', border: 'border-[#11C76F]/30', text: 'text-[#11C76F]', icon: 'https://upload.wikimedia.org/wikipedia/commons/5/5e/PicPay_Logogrande.png' },    
+    'mercadopago': { label: 'Mercado Pago', color: 'bg-[#009EE3]', bg: 'bg-[#009EE3]/10', border: 'border-[#009EE3]/30', text: 'text-[#009EE3]', icon: 'https://logodownload.org/wp-content/uploads/2019/06/mercado-pago-logo.png' },
     'money': { label: 'Dinheiro', color: 'bg-emerald-600', bg: 'bg-emerald-900/10', border: 'border-emerald-500/30', text: 'text-emerald-400', icon: null },
     'outros': { label: 'Outros', color: 'bg-gray-700', bg: 'bg-gray-800/50', border: 'border-gray-700', text: 'text-gray-400', icon: null },
 };

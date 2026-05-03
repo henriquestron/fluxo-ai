@@ -52,6 +52,14 @@ const BANK_STYLES: any = {
         text: 'text-[#4ea4eb]', 
         icon: 'https://upload.wikimedia.org/wikipedia/commons/3/3c/Caixa_Econ%C3%B4mica_Federal_logo_1997.svg' 
     },
+    'mercadopago': { 
+        label: 'Mercado Pago', 
+        color: 'bg-[#009EE3]', 
+        bg: 'bg-[#009EE3]/10', 
+        border: 'border-[#009EE3]/30', 
+        text: 'text-[#009EE3]', 
+        icon: 'https://logodownload.org/wp-content/uploads/2019/06/mercado-pago-logo.png' 
+    },
     'bradesco': { 
         label: 'Bradesco', 
         color: 'bg-[#CC092F]', 
@@ -69,7 +77,6 @@ const BANK_STYLES: any = {
         text: 'text-gray-300', 
         icon: 'https://upload.wikimedia.org/wikipedia/commons/7/77/Logo_C6_Bank.svg' 
     },
-    
     'money': { 
         label: 'Dinheiro', 
         color: 'bg-emerald-600', 
