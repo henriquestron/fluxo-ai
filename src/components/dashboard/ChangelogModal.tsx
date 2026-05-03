@@ -191,23 +191,28 @@ export default function ChangelogModal({ isOpen, onClose, data }: ChangelogModal
                 <div className="p-4 sm:p-6 bg-[#111] border-t border-gray-800 flex flex-col sm:flex-row justify-between items-center gap-4 shrink-0">
                     
                     {/* CONTROLES DE NAVEGAÇÃO */}
+                    
                     <div className="flex items-center gap-3 w-full sm:w-auto justify-center sm:justify-start">
-                        <button 
-                            onClick={() => setCurrentIndex(prev => prev + 1)} 
-                            disabled={currentIndex >= logs.length - 1}
-                            className="p-2 rounded-lg bg-gray-900 border border-gray-800 text-gray-400 hover:text-white hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed transition flex items-center justify-center"
-                            title="Nota Anterior"
-                        >
-                            <ChevronLeft size={20} />
-                        </button>
-                        <span className="text-xs font-bold text-gray-600 font-mono tracking-widest uppercase">
-                            {logs.length > 0 ? `${currentIndex + 1} de ${logs.length}` : '1 de 1'}
-                        </span>
+                        {/* 🟢 SETA ESQUERDA (Volta para a nota mais recente / index menor) */}
                         <button 
                             onClick={() => setCurrentIndex(prev => prev - 1)} 
                             disabled={currentIndex === 0}
                             className="p-2 rounded-lg bg-gray-900 border border-gray-800 text-gray-400 hover:text-white hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed transition flex items-center justify-center"
                             title="Nota Mais Recente"
+                        >
+                            <ChevronLeft size={20} />
+                        </button>
+                        
+                        <span className="text-xs font-bold text-gray-600 font-mono tracking-widest uppercase">
+                            {logs.length > 0 ? `${currentIndex + 1} de ${logs.length}` : '1 de 1'}
+                        </span>
+                        
+                        {/* 🟢 SETA DIREITA (Avança para a nota mais antiga / index maior) */}
+                        <button 
+                            onClick={() => setCurrentIndex(prev => prev + 1)} 
+                            disabled={currentIndex >= logs.length - 1}
+                            className="p-2 rounded-lg bg-gray-900 border border-gray-800 text-gray-400 hover:text-white hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed transition flex items-center justify-center"
+                            title="Nota Anterior"
                         >
                             <ChevronRight size={20} />
                         </button>
