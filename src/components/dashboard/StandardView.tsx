@@ -5,10 +5,11 @@ import {
     ShoppingCart, Home, Car, Utensils, Zap, GraduationCap,
     HeartPulse, Plane, Gamepad2, Smartphone, Check, Clock,
     FileText, Trash2, Pencil, List, AlertTriangle,
-    ChevronDown, ChevronUp, X,RotateCcw, 
-    Paperclip
+    ChevronDown, ChevronUp, X, RotateCcw, 
+    Paperclip, Loader2
 } from 'lucide-react';
 import { Transaction, Installment, Recurring } from '@/types';
+
 // --- MAPA DE ÍCONES ---
 const ICON_MAP: any = {
     'shopping-cart': ShoppingCart, 'home': Home, 'car': Car, 'utensils': Utensils,
@@ -31,9 +32,6 @@ const BANK_STYLES: any = {
     'money': { label: 'Dinheiro', color: 'bg-emerald-600', bg: 'bg-emerald-900/10', border: 'border-emerald-500/30', text: 'text-emerald-400', icon: null },
     'outros': { label: 'Outros', color: 'bg-gray-700', bg: 'bg-gray-800/50', border: 'border-gray-700', text: 'text-gray-400', icon: null },
 };
-
-// 🟢 ESTADOS PARA A EXCLUSÃO EM MASSA
-
 
 // --- COMPONENTE CARD ---
 const Card = ({ title, value, icon: Icon, type, extraLabel, subValueLabel, elementId }: any) => {
@@ -79,32 +77,26 @@ const Card = ({ title, value, icon: Icon, type, extraLabel, subValueLabel, eleme
 };
 
 interface StandardViewProps {
-    // 👇 Aqui acontece a mágica: Trocamos 'any[]' pelos tipos reais
     transactions: Transaction[];
     installments: Installment[];
     recurring: Recurring[];
-
     activeTab: string;
     months: string[];
     setActiveTab: (tab: string) => void;
-
-    // Esse aqui podemos deixar any por enquanto ou criar um tipo 'DashboardSummary' depois
     currentMonthData: any;
-
     previousSurplus: number;
     displayBalance: number;
     viewingAs: any;
     selectedYear: number;
-
-    // Funções mantêm a assinatura, mas agora o 'item' pode ser tipado também se quiser
     onTogglePaid: (table: string, id: number, currentStatus: boolean) => void;
-    onToggleSkip: (item: Recurring) => void; // ✅ Agora sabemos que é Recurring
+    onToggleSkip: (item: Recurring) => void; 
     onToggleDelay: (table: string, item: any) => void;
     onDelete: (table: string, id: number) => void;
     onEdit: (item: any, mode: string) => void;
     onTogglePaidMonth: (table: string, item: any) => void;
     getReceipt: (item: any, month: string) => any;
 }
+
 export default function StandardView({
     transactions, installments, recurring, activeTab, months, setActiveTab,
     currentMonthData, previousSurplus, displayBalance, viewingAs, selectedYear,
@@ -118,30 +110,108 @@ export default function StandardView({
     const monthMap: Record<string, string> = { 'Jan': '/01', 'Fev': '/02', 'Mar': '/03', 'Abr': '/04', 'Mai': '/05', 'Jun': '/06', 'Jul': '/07', 'Ago': '/08', 'Set': '/09', 'Out': '/10', 'Nov': '/11', 'Dez': '/12' };
     const dateFilter = `${monthMap[activeTab]}/${selectedYear}`;
 
-    // 🟢 NOVA TAG: Para verificar o mês atual no array de Stand-by
     const [selectedItems, setSelectedItems] = useState<{ id: any, table: string }[]>([]);
+
+    // 🟢 ESTADOS DO MODAL CUSTOMIZADO
+    const [modalConfig, setModalConfig] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        type: 'alert' | 'confirm' | 'danger';
+        onConfirm?: () => Promise<void> | void;
+    }>({ isOpen: false, title: '', message: '', type: 'alert' });
+    const [modalProcessing, setModalProcessing] = useState(false);
+
+    const closeModal = () => {
+        if (modalProcessing) return; // Impede de fechar enquanto carrega
+        setModalConfig(prev => ({ ...prev, isOpen: false }));
+    };
+
+    const showAlert = (title: string, message: string) => {
+        setModalConfig({ isOpen: true, title, message, type: 'alert' });
+    };
+
+    const showConfirm = (title: string, message: string, onConfirm: () => Promise<void> | void, isDanger = false) => {
+        setModalConfig({ isOpen: true, title, message, type: isDanger ? 'danger' : 'confirm', onConfirm });
+    };
+
+    const handleModalConfirm = async () => {
+        if (modalConfig.onConfirm) {
+            setModalProcessing(true);
+            try {
+                await modalConfig.onConfirm();
+            } finally {
+                setModalProcessing(false);
+                closeModal();
+            }
+        } else {
+            closeModal();
+        }
+    };
 
     const toggleSelection = (id: any, table: string) => {
         setSelectedItems(prev => {
             const exists = prev.find(item => item.id === id && item.table === table);
             if (exists) {
-                return prev.filter(item => !(item.id === id && item.table === table)); // Remove se já tava marcado
+                return prev.filter(item => !(item.id === id && item.table === table)); 
             }
-            return [...prev, { id, table }]; // Adiciona se não tava marcado
+            return [...prev, { id, table }]; 
         });
     };
 
-    const handleBulkDelete = async () => {
-        if (confirm(`Tem certeza que deseja excluir as ${selectedItems.length} contas selecionadas?`)) {
-            // Chama a sua função onDelete para cada item selecionado
-            for (const item of selectedItems) {
-                await onDelete(item.table, item.id);
-            }
-            setSelectedItems([]); // Limpa a seleção depois de apagar
-        }
+    const handleBulkDelete = () => {
+        showConfirm(
+            "Atenção: Zona de Risco",
+            `Você tem certeza absoluta que deseja excluir permanentemente as ${selectedItems.length} contas selecionadas?`,
+            async () => {
+                for (const item of selectedItems) {
+                    await onDelete(item.table, item.id);
+                }
+                setSelectedItems([]);
+            },
+            true // danger mode = botão vermelho
+        );
     };
 
-    // Helper Unificado de Datas
+    // 🟢 FUNÇÕES EM MASSA COM MODAL CUSTOMIZADO
+    const handleBulkPayBank = (bankLabel: string, groupItems: any[]) => {
+        const tag = `${activeTab}/${selectedYear}`;
+        const pendentes = groupItems.filter((i:any) => !i.paid_months?.includes(tag));
+        
+        if(pendentes.length === 0) {
+            return showAlert('Fatura Zerada!', 'Todas as compras desta fatura já estão pagas ou foram congeladas.');
+        }
+        
+        showConfirm(
+            `Pagar fatura do ${bankLabel}?`,
+            `Isso vai dar baixa em todas as ${pendentes.length} contas pendentes deste cartão de uma só vez.`,
+            async () => {
+                for (const item of pendentes) {
+                    await onTogglePaidMonth('installments', item);
+                }
+            }
+        );
+    };
+
+    const handleBulkDelayBank = (bankLabel: string, groupItems: any[]) => {
+        const tag = `${activeTab}/${selectedYear}`;
+        const pendentes = groupItems.filter((i:any) => !i.paid_months?.includes(tag));
+        
+        if(pendentes.length === 0) {
+            return showAlert('Tudo Certo!', 'Nenhuma conta pendente nesta fatura para colocar em stand-by.');
+        }
+        
+        showConfirm(
+            `Adiar fatura do ${bankLabel}?`,
+            `Isso vai jogar todas as ${pendentes.length} contas pendentes para a lista de Stand-by (congeladas).`,
+            async () => {
+                for (const item of pendentes) {
+                    await onToggleDelay('installments', item);
+                }
+            }
+        );
+    };
+
     const getStartData = (item: any) => {
         if (item.start_date && item.start_date.includes('/')) {
             const p = item.start_date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
@@ -154,30 +224,26 @@ export default function StandardView({
         }
         return { m: 0, y: new Date().getFullYear() };
     };
-    // 🟢 HELPER DA IMUNIDADE VISUAL
+
     const currentTag = `${activeTab}/${selectedYear}`;
     const isPaidThisMonth = (item: any, isTrans = false) => {
         if (isTrans) return item.is_paid;
         return item.paid_months?.includes(currentTag) || item.paid_months?.includes(activeTab);
     };
 
-    // --- FILTRO TRANSAÇÕES ---
     const monthTransactions = transactions.filter(t =>
         t.date?.includes(dateFilter) &&
         ((t.status !== 'delayed' && t.status !== 'standby') || isPaidThisMonth(t, true))
     );
 
-    // --- FILTRO RECORRENTES (Salário/Fixas) ---
-    // --- FILTRO RECORRENTES (Salário/Fixas) ---
     const activeRecurring = recurring.filter(r => {
         const paid = isPaidThisMonth(r);
         if ((r.status === 'delayed' || r.status === 'standby') && !paid) return false;
         if (r.standby_months?.includes(currentTag) && !paid) return false;
 
-        // 🟢 NOVA REGRA (SOFT DELETE): Verifica se a conta foi cancelada deste mês em diante
         if (r.cancelled_from) {
             const currentYYYYMM = `${selectedYear}-${String(monthIndex + 1).padStart(2, '0')}`;
-            if (currentYYYYMM >= r.cancelled_from) return false; // Esconde do painel!
+            if (currentYYYYMM >= r.cancelled_from) return false; 
         }
 
         const { m: startM, y: startY } = getStartData(r);
@@ -186,7 +252,6 @@ export default function StandardView({
         if (selectedYear === startY && monthIndex >= startM) return true;
         return false;
     }).map(r => {
-        // 🟢 NOVA REGRA (AJUSTE MENSAL): Puxa o valor editado só daquele mês, se existir
         let finalValue = r.value;
         if (r.custom_values) {
             const parsedCustom = typeof r.custom_values === 'string' ? JSON.parse(r.custom_values) : r.custom_values;
@@ -194,16 +259,14 @@ export default function StandardView({
                 finalValue = parsedCustom[currentTag];
             }
         }
-        return { ...r, value: finalValue }; // Devolve a conta com o valor alterado
+        return { ...r, value: finalValue }; 
     });
 
-    // --- FILTRO PARCELAS ---
     const groupedInstallments = installments.reduce((acc: any, curr: any) => {
         const paid = isPaidThisMonth(curr);
         if ((curr.status === 'delayed' || curr.status === 'standby') && !paid) return acc;
         if (curr.standby_months?.includes(currentTag) && !paid) return acc;
 
-        // 🟢 NOVA REGRA (SOFT DELETE) PARA PARCELAS
         if (curr.cancelled_from) {
             const currentYYYYMM = `${selectedYear}-${String(monthIndex + 1).padStart(2, '0')}`;
             if (currentYYYYMM >= curr.cancelled_from) return acc;
@@ -212,26 +275,15 @@ export default function StandardView({
         const { m: startM, y: startY } = getStartData(curr);
         const monthsDiff = ((selectedYear - startY) * 12) + (monthIndex - startM);
         
-        // MÁQUINA DO TEMPO: Conta quantos standbys essa conta teve no passado
-        let pastStandbys = 0;
-        const standbyArr = Array.isArray(curr.standby_months) ? curr.standby_months : JSON.parse(curr.standby_months || '[]');
-        
-        for (let i = 0; i < monthsDiff; i++) {
-            const checkM = (startM + i) % 12;
-            const checkY = startY + Math.floor((startM + i) / 12);
-            if (standbyArr.includes(`${months[checkM]}/${checkY}`)) pastStandbys++;
-        }
+        // 🟢 FIX: Removido o pastStandbys! Agora a parcela obedece o tempo real.
+        // Se congelar a 4/5, o mês seguinte será a 5/5 de qualquer forma.
+        const actualInstallment = 1 + (curr.current_installment || 0) + monthsDiff;
 
-        // Subtrai os meses congelados da parcela atual
-        const actualInstallment = 1 + (curr.current_installment || 0) + monthsDiff - pastStandbys;
-
-        // Se a parcela já passou do limite ou ainda não começou, não mostra
         if (actualInstallment < 1 || actualInstallment > curr.installments_count) return acc;
 
         const bank = curr.payment_method || 'outros';
         if (!acc[bank]) acc[bank] = { items: [], total: 0 };
 
-        // 🟢 NOVA REGRA (AJUSTE MENSAL): Verifica se a parcela sofreu ajuste neste mês
         let baseValue = Number(curr.value_per_month || 0);
         if (curr.custom_values) {
             const parsedCustom = typeof curr.custom_values === 'string' ? JSON.parse(curr.custom_values) : curr.custom_values;
@@ -248,9 +300,6 @@ export default function StandardView({
 
     const sortedBanks = Object.keys(groupedInstallments).sort((a, b) => groupedInstallments[b].total - groupedInstallments[a].total);
 
-    // --- RENDER STANDBY (Garante que contas pagas não apareçam na caixa vermelha) ---
-    // --- RENDER STANDBY (Congelador Global) ---
-    // --- RENDER STANDBY (Congelador Global) ---
     const renderDelayed = () => {
         const delayedItems: any[] = [];
 
@@ -261,9 +310,7 @@ export default function StandardView({
         });
 
         installments.forEach(i => {
-            // 🟢 PREVENÇÃO DE ERRO
             const standbyArr = Array.isArray(i.standby_months) ? i.standby_months : [];
-
             if ((i.status === 'delayed' || i.status === 'standby') && standbyArr.length === 0) {
                 delayedItems.push({ ...i, _source: 'inst', _amount: Number(i.value_per_month) });
             }
@@ -277,9 +324,7 @@ export default function StandardView({
 
         recurring.forEach(r => {
             if (r.type === 'expense') {
-                // 🟢 PREVENÇÃO DE ERRO
                 const standbyArr = Array.isArray(r.standby_months) ? r.standby_months : [];
-
                 if ((r.status === 'delayed' || r.status === 'standby') && standbyArr.length === 0) {
                     delayedItems.push({ ...r, _source: 'recur', _amount: Number(r.value) });
                 }
@@ -314,12 +359,13 @@ export default function StandardView({
             </div>
         );
     };
+
     const hasDelayed = currentMonthData.delayedTotal > 0;
     const gridClass = hasDelayed ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-4" : "grid-cols-1 md:grid-cols-3";
 
     return (
         <div className="animate-in fade-in zoom-in duration-500">
-            {/* ... SELETOR DE MÊS ... */}
+            {/* SELETOR DE MÊS */}
             <div className="flex justify-between items-center mb-6 overflow-x-auto pb-2 scrollbar-hide">
                 <div className="flex bg-gray-900/80 p-1.5 rounded-2xl border border-gray-800 shadow-xl backdrop-blur-md">
                     {months.map(m => (
@@ -332,21 +378,18 @@ export default function StandardView({
                 {viewingAs && (<div className="hidden md:flex items-center gap-2 bg-purple-900/20 border border-purple-500/30 px-4 py-2 rounded-xl"><div className="w-2 h-2 rounded-full bg-purple-500 animate-pulse"></div><span className="text-purple-300 text-xs font-bold uppercase tracking-wider">Visualizando Cliente</span></div>)}
             </div>
 
-            {/* ... CARDS DO TOPO ... */}
-            {/* ... CARDS DO TOPO ... */}
+            {/* CARDS DO TOPO */}
             <div className={`grid gap-4 mb-8 ${gridClass}`}>
                 <Card elementId="card-saldo" title="Saldo Previsto" value={displayBalance} icon={Wallet} type={displayBalance >= 0 ? 'income' : 'negative'} extraLabel={previousSurplus > 0 ? `+ R$ ${previousSurplus.toFixed(2)} (Mês Passado)` : null} />
                 
-                {/* 🟢 Trocamos .income por .displayIncome */}
                 <Card title="Entradas" value={currentMonthData.displayIncome || currentMonthData.income} icon={TrendingUp} type="income" />
                 
-                {/* 🟢 Trocamos .expenseTotal por .displayExpense */}
                 <Card title="Saídas Totais" value={currentMonthData.displayExpense || currentMonthData.expenseTotal} icon={TrendingDown} type="expense" subValueLabel={currentMonthData.accumulatedDebt > 0 ? (<span className="text-red-400 font-bold flex items-center gap-1"><AlertCircle size={12} /> + R$ {currentMonthData.accumulatedDebt.toFixed(2)} Pendente</span>) : null} />
                 
                 {hasDelayed && (<Card title="Em Stand-by" value={currentMonthData.delayedTotal} icon={Clock} type="warning" subValueLabel="Valores Adiados" />)}
             </div>
 
-            {/* 🟢 BARRA FLUTUANTE DE AÇÃO EM MASSA */}
+            {/* BARRA FLUTUANTE DE AÇÃO EM MASSA (EXCLUSÃO) */}
             {selectedItems.length > 0 && (
                 <div className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-full shadow-[0_10px_40px_rgba(220,38,38,0.4)] z-50 flex items-center gap-4 animate-in slide-in-from-bottom-10 zoom-in-95 duration-300 border border-red-500">
                     <span className="font-bold text-sm">{selectedItems.length} contas selecionadas</span>
@@ -357,6 +400,44 @@ export default function StandardView({
                     <button onClick={() => setSelectedItems([])} className="p-1.5 hover:bg-red-700 rounded-full transition ml-2" title="Cancelar seleção">
                         <X size={16} />
                     </button>
+                </div>
+            )}
+
+            {/* --- MODAL CUSTOMIZADO (ALERTS & CONFIRMS) --- */}
+            {modalConfig.isOpen && (
+                <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-[#111] border border-gray-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col items-center text-center">
+                        
+                        {/* ÍCONE ANIMADO BASEADO NO TIPO */}
+                        {modalConfig.type === 'danger' && <div className="bg-red-500/10 p-4 rounded-full mb-4 text-red-500"><AlertTriangle size={36} /></div>}
+                        {modalConfig.type === 'confirm' && <div className="bg-cyan-500/10 p-4 rounded-full mb-4 text-cyan-400"><AlertCircle size={36} /></div>}
+                        {modalConfig.type === 'alert' && <div className="bg-emerald-500/10 p-4 rounded-full mb-4 text-emerald-400"><CheckCircle2 size={36} /></div>}
+
+                        <h3 className="text-xl font-bold text-white mb-2">{modalConfig.title}</h3>
+                        <p className="text-gray-400 text-sm mb-8 leading-relaxed">{modalConfig.message}</p>
+
+                        <div className="flex gap-3 w-full">
+                            {modalConfig.type !== 'alert' && (
+                                <button 
+                                    onClick={closeModal} 
+                                    disabled={modalProcessing}
+                                    className="flex-1 py-3.5 rounded-xl font-bold text-white bg-gray-800 hover:bg-gray-700 transition disabled:opacity-50"
+                                >
+                                    Cancelar
+                                </button>
+                            )}
+                            <button
+                                onClick={handleModalConfirm}
+                                disabled={modalProcessing}
+                                className={`flex-1 py-3.5 rounded-xl font-bold text-white transition flex items-center justify-center gap-2
+                                    ${modalConfig.type === 'danger' ? 'bg-red-600 hover:bg-red-500' : 
+                                      modalConfig.type === 'confirm' ? 'bg-cyan-600 hover:bg-cyan-500' : 
+                                      'bg-emerald-600 hover:bg-emerald-500'}`}
+                            >
+                                {modalProcessing ? <Loader2 className="animate-spin" size={18}/> : (modalConfig.type === 'alert' ? 'Entendi' : 'Confirmar')}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
 
@@ -408,9 +489,7 @@ export default function StandardView({
                                                         {item.type === 'income' ? '+' : '-'} R$ {Number(item.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                                     </p>
                                                     <div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                                                        {/* 🟢 ÍCONE DE PAGAR DISCRETO AQUI */}
                                                         <button onClick={() => onTogglePaid('transactions', item.id, item.is_paid || false)} className={`hover:text-emerald-400 ${item.is_paid ? 'text-emerald-500/50' : 'text-gray-500'}`} title={item.is_paid ? "Desfazer" : "Dar Baixa"}><Check size={14} /></button>
-                                                        
                                                         <button onClick={() => onToggleDelay('transactions', item)} title="Congelar" className="text-gray-500 hover:text-orange-400"><Clock size={14} /></button>
                                                         <button onClick={() => onEdit(item, item.type)} className="text-gray-500 hover:text-cyan-400"><Pencil size={14} /></button>
                                                         <button onClick={() => onDelete('transactions', item.id)} className="text-gray-500 hover:text-red-400"><Trash2 size={14} /></button>
@@ -464,6 +543,26 @@ export default function StandardView({
                                         </div>
                                         {isOpen && (
                                             <div className="divide-y divide-gray-700/20 bg-black/20 animate-in slide-in-from-top-2 duration-200">
+                                                
+                                                {/* 🟢 BARRA DE AÇÕES EM MASSA DA FATURA */}
+                                                <div className="flex items-center justify-between p-2 px-4 bg-black/40 border-b border-gray-700/30">
+                                                    <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Ações da Fatura</span>
+                                                    <div className="flex gap-2">
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); handleBulkPayBank(style.label, group.items); }} 
+                                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition border border-emerald-500/20"
+                                                        >
+                                                            <CheckCircle2 size={12} /> Pagar Tudo
+                                                        </button>
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); handleBulkDelayBank(style.label, group.items); }} 
+                                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 transition border border-orange-500/20"
+                                                        >
+                                                            <Clock size={12} /> Adiar Tudo
+                                                        </button>
+                                                    </div>
+                                                </div>
+
                                                 {group.items.map((item: any) => {
                                                     const tag = `${activeTab}/${selectedYear}`;
                                                     const isPaid = item.paid_months?.includes(tag);
@@ -488,9 +587,7 @@ export default function StandardView({
                                                                     R$ {Number(item.value_per_month).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                                                 </p>
                                                                 <div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                                                                    {/* 🟢 ÍCONE DE PAGAR DISCRETO AQUI */}
                                                                     <button onClick={() => onTogglePaidMonth('installments', item)} className={`hover:text-emerald-400 ${isPaid ? 'text-emerald-500/50' : 'text-gray-500'}`} title={isPaid ? "Desfazer" : "Dar Baixa"}><Check size={12} /></button>
-
                                                                     <button onClick={() => onToggleDelay('installments', item)} className="text-gray-500 hover:text-orange-400" title="Stand-by"><Clock size={12} /></button>
                                                                     <button onClick={() => onEdit(item, 'installment')} className="text-gray-500 hover:text-cyan-400" title="Editar"><Pencil size={12} /></button>
                                                                     <button onClick={() => onDelete('installments', item.id)} className="text-gray-500 hover:text-red-400" title="Excluir"><Trash2 size={12} /></button>
@@ -545,9 +642,7 @@ export default function StandardView({
                                                     R$ {Number(item.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                                 </p>
                                                 <div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                                                    {/* 🟢 ÍCONE DE PAGAR DISCRETO AQUI */}
                                                     <button onClick={() => onTogglePaidMonth('recurring', item)} className={`hover:text-emerald-400 ${isPaid ? 'text-emerald-500/50' : 'text-gray-500'}`} title={isPaid ? "Desfazer" : "Receber"}><Check size={12} /></button>
-
                                                     <button onClick={() => onToggleDelay('recurring', item)} title={isSkipped ? "Voltar salário" : "Pular este mês"} className="text-gray-500 hover:text-orange-400">
                                                         <Clock size={12} />
                                                     </button>
@@ -579,7 +674,6 @@ export default function StandardView({
 
                                         return (
                                             <div key={item.id} className={`group p-3 rounded-xl border mb-2 transition flex items-center justify-between ${isSelected ? 'border-red-500 bg-red-500/10' : isSkipped ? 'border-dashed border-gray-800 opacity-50 bg-transparent' : isPaid ? 'bg-gray-900/50 border-gray-800' : 'bg-gray-800/30 border-gray-700 hover:border-gray-600'}`}>
-                                                
                                                 <div className="flex items-center gap-2">
                                                     <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(item.id, 'recurring')} className="w-4 h-4 rounded border-gray-700 bg-black text-red-500 focus:ring-red-500 focus:ring-offset-gray-900 cursor-pointer shrink-0" />
 
@@ -604,13 +698,10 @@ export default function StandardView({
                                                         R$ {Number(item.value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                                     </p>
                                                     <div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                                                        {/* 🟢 ÍCONE DE PAGAR DISCRETO AQUI */}
                                                         <button onClick={() => onTogglePaidMonth('recurring', item)} className={`hover:text-emerald-400 ${isPaid ? 'text-emerald-500/50' : 'text-gray-500'}`} title={isPaid ? "Desfazer" : "Dar Baixa"}><Check size={12} /></button>
-
                                                         <button onClick={() => onToggleDelay('recurring', item)} title="Stand-by" className="text-gray-500 hover:text-orange-400"><Clock size={12} /></button>
                                                         <button onClick={() => onEdit(item, 'fixed_expense')} className="text-gray-500 hover:text-cyan-400"><Pencil size={12} /></button>
                                                         <button onClick={() => onDelete('recurring', item.id)} className="text-gray-500 hover:text-red-400"><Trash2 size={12} /></button>
-
                                                         {getReceipt(item, activeTab) && (
                                                             <a href={getReceipt(item, activeTab)} target="_blank" className="text-emerald-500 hover:text-emerald-300" title="Ver Recibo">
                                                                 <FileText size={12} />
@@ -618,7 +709,6 @@ export default function StandardView({
                                                         )}
                                                     </div>
                                                 </div>
-
                                             </div>
                                         );
                                     })
