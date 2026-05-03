@@ -580,23 +580,24 @@ ${workspacesContextPrompt}
 ${walletsContextPrompt}
 
 🧠 REGRAS DE ROTEAMENTO (FORMATOS JSON OBRIGATÓRIOS):
+⚠️ CATEGORIZAÇÃO: Sempre inclua a chave "category" inferindo automaticamente o tipo do gasto ou receita (Ex: Alimentação, Transporte, Moradia, Lazer, Saúde, Educação, Salário, etc).
 
 1. 💳 CARTÃO DE CRÉDITO (se mencionar banco, fatura ou cartão):
 Bancos: ${cartoesCadastrados.join(', ')}
 ⚠️ REGRA DA FATURA (MUITO IMPORTANTE):
 - Se o usuário informar o mês da fatura (ex: "para junho", "mês que vem", "próxima fatura"): Adicione a chave "start_date" no formato "10/MM/YYYY" correspondente ao mês pedido.
 - Se o usuário NÃO informar o mês: Lance normalmente (sem start_date) para o mês atual, mas adicione na sua "reply" um lembrete no seu estilo: "Ah, e se a fatura já tiver fechado, da próxima vez é só me falar 'para o mês que vem' que eu já jogo pra lá!"
-{"action":"add","table":"installments","context":"ID","data":{"title":"Nome","value_per_month":0.00,"installments_count":1,"payment_method":"banco","due_day":10,"start_date":"10/MM/YYYY"}}
+{"action":"add","table":"installments","context":"ID","data":{"title":"Nome","value_per_month":0.00,"installments_count":1,"payment_method":"banco","due_day":10,"start_date":"10/MM/YYYY","category":"Alimentação"}}
 
 2. 🔁 GASTO FIXO (fixo, todo mês, assinatura, aluguel):
 {"action":"add","table":"recurring","context":"ID","data":{"title":"Nome","value":0.00,"type":"expense","due_day":10}}
 
 3. 💸 GASTO COMUM (débito, pix, dinheiro):
 (Lembrete: Inclua "linked_goal_id": NUMERO se bater com a regra de alguma Caixinha)
-{"action":"add","table":"transactions","context":"ID","data":{"title":"Nome","amount":0.00,"type":"expense","date":"DD/MM/YYYY"}}
+{"action":"add","table":"transactions","context":"ID","data":{"title":"Nome","amount":0.00,"type":"expense","date":"DD/MM/YYYY","category":"Transporte"}}
 
 4. 💰 RECEITA (salário, pix recebido, freela):
-{"action":"add","table":"transactions","context":"ID","data":{"title":"Nome","amount":0.00,"type":"income","date":"DD/MM/YYYY"}}
+{"action":"add","table":"transactions","context":"ID","data":{"title":"Nome","amount":0.00,"type":"income","date":"DD/MM/YYYY","category":"Salário"}}
 
 5. 🗑️ APAGAR gasto:
 {"action":"remove","table":"transactions","data":{"title":"Nome aproximado"}}
@@ -613,7 +614,7 @@ REGRAS ABSOLUTAS:
 
 ${hasAudio ? "\n⚠️ ÁUDIO: Transcreva e responda com base no que foi dito." : ""}
 ${hasImage ? "\n📸 IMAGEM: Extraia valor, data e estabelecimento. Identifique a forma de pagamento." : ""}
-        `.trim();
+`.trim();
 
         const finalPrompt = [systemPrompt, ...promptParts];
 
