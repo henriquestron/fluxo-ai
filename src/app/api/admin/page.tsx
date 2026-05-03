@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { ArrowLeft, Rocket, Users, Settings, Save, ShieldCheck, Tag, Ticket, Megaphone, Video, FileText, History, Trash2, PlusCircle, Loader2 } from "lucide-react";
+import { ArrowLeft, Rocket, Users, Settings, Save, ShieldCheck, Tag, Ticket, Megaphone, Video, FileText, History, Trash2, PlusCircle, Loader2, ImagePlus, X } from "lucide-react";
 import { toast } from "sonner";
 
 const supabase = createClient(
@@ -48,8 +48,9 @@ export default function AdminDashboard() {
 
   // 🟢 STATES DO CHANGELOG
   const [changelogs, setChangelogs] = useState<any[]>([]);
-  const [newChangelog, setNewChangelog] = useState({ version: '', title: '', content: '', video_url: '' });
+  const [newChangelog, setNewChangelog] = useState({ version: '', title: '', content: '', video_url: '', image_url: '' });
   const [savingChangelog, setSavingChangelog] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false); // 🟢 Controle do upload de imagem
 
   useEffect(() => {
     checkAdminAndFetchData();
@@ -68,7 +69,7 @@ export default function AdminDashboard() {
     setIsAdmin(true);
     fetchSettings();
     fetchUsers();
-    fetchChangelogs(); // 🟢 Busca o histórico
+    fetchChangelogs();
     setLoading(false);
   }
 
@@ -82,13 +83,38 @@ export default function AdminDashboard() {
     if (data) setUsers(data);
   }
 
-  // 🟢 FUNÇÃO PARA BUSCAR O HISTÓRICO DE NOTAS
   async function fetchChangelogs() {
     const { data } = await supabase.from('changelogs').select('*').order('created_at', { ascending: false });
     if (data) setChangelogs(data);
   }
 
-  // 🟢 FUNÇÃO PARA LANÇAR UMA NOVA NOTA
+  // 🟢 FUNÇÃO DE UPLOAD DA IMAGEM
+  const handleImageUpload = async (e: any) => {
+    try {
+      setUploadingImage(true);
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      const fileExt = file.name.split('.').pop();
+      const fileName = `changelog_${Date.now()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { error: uploadError } = await supabase.storage.from('changelogs').upload(filePath, file);
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from('changelogs').getPublicUrl(filePath);
+      
+      setNewChangelog(prev => ({ ...prev, image_url: data.publicUrl }));
+      toast.success("Imagem anexada com sucesso!");
+
+    } catch (error: any) {
+      console.error("Erro no upload:", error);
+      toast.error("Erro ao enviar a imagem. Tente novamente.");
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
   async function handleCreateChangelog(e: React.FormEvent) {
     e.preventDefault();
     if (!newChangelog.version || !newChangelog.title || !newChangelog.content) return toast.error("Preencha Versão, Título e Texto!");
@@ -98,7 +124,8 @@ export default function AdminDashboard() {
         version: newChangelog.version,
         title: newChangelog.title,
         content: newChangelog.content,
-        video_url: newChangelog.video_url || null
+        video_url: newChangelog.video_url || null,
+        image_url: newChangelog.image_url || null // 🟢 Salva a imagem no banco
     }]);
 
     if (error) {
@@ -106,13 +133,12 @@ export default function AdminDashboard() {
         console.error(error);
     } else {
         toast.success("Atualização lançada com sucesso! 🚀");
-        setNewChangelog({ version: '', title: '', content: '', video_url: '' });
-        fetchChangelogs(); // Atualiza a lista
+        setNewChangelog({ version: '', title: '', content: '', video_url: '', image_url: '' });
+        fetchChangelogs();
     }
     setSavingChangelog(false);
   }
 
-  // 🟢 FUNÇÃO PARA APAGAR UMA NOTA DO HISTÓRICO
   async function handleDeleteChangelog(id: string) {
     if (!confirm("Tem certeza que deseja apagar esta nota de atualização?")) return;
     const { error } = await supabase.from('changelogs').delete().eq('id', id);
@@ -232,12 +258,12 @@ export default function AdminDashboard() {
               <div className="p-3 bg-fuchsia-500/20 border border-fuchsia-500/30 rounded-xl text-fuchsia-400"><Megaphone size={24} /></div>
               <div>
                 <h2 className="text-2xl font-bold text-fuchsia-400">Lançamento de Atualizações</h2>
-                <p className="text-sm text-gray-500">Crie notas. A última lançada aparecerá para os usuários automaticamente.</p>
+                <p className="text-sm text-gray-500">Crie notas com textos longos e envie prints de tela para explicar melhor.</p>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2">
+          <div className="grid grid-cols-1 xl:grid-cols-2">
             {/* LADO ESQUERDO: FORMULÁRIO */}
             <div className="p-8 border-r border-gray-800">
                 <h3 className="font-bold text-lg mb-6 flex items-center gap-2"><PlusCircle size={20} className="text-fuchsia-500"/> Nova Atualização</h3>
@@ -248,20 +274,47 @@ export default function AdminDashboard() {
                             <input type="text" placeholder="Ex: v2.1" required className="w-full p-3 border border-gray-700 rounded-xl bg-black outline-none focus:border-fuchsia-500 font-mono" value={newChangelog.version} onChange={(e) => setNewChangelog({...newChangelog, version: e.target.value})} />
                         </div>
                         <div>
-                            <label className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1 block">Link de Vídeo</label>
-                            <input type="text" placeholder="URL do YouTube" className="w-full p-3 border border-gray-700 rounded-xl bg-black outline-none focus:border-fuchsia-500" value={newChangelog.video_url} onChange={(e) => setNewChangelog({...newChangelog, video_url: e.target.value})} />
+                            <label className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1 block">Título Chamativo</label>
+                            <input type="text" placeholder="Ex: Cérebro da IA Liberado! 🧠" required className="w-full p-3 border border-gray-700 rounded-xl bg-black outline-none focus:border-fuchsia-500" value={newChangelog.title} onChange={(e) => setNewChangelog({...newChangelog, title: e.target.value})} />
                         </div>
                     </div>
-                    <div>
-                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1 block">Título Chamativo</label>
-                        <input type="text" placeholder="Ex: Cérebro da IA Liberado! 🧠" required className="w-full p-3 border border-gray-700 rounded-xl bg-black outline-none focus:border-fuchsia-500" value={newChangelog.title} onChange={(e) => setNewChangelog({...newChangelog, title: e.target.value})} />
+                    
+                    {/* 🟢 MÍDIA DA ATUALIZAÇÃO (FOTO OU VÍDEO) */}
+                    <div className="bg-gray-900/50 p-4 rounded-xl border border-gray-800 space-y-4">
+                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">Mídia de Apoio (Opcional)</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs text-gray-500 mb-1 flex items-center gap-1"><Video size={14}/> Link do YouTube</label>
+                                <input type="text" placeholder="https://youtu.be/..." className="w-full p-2.5 border border-gray-700 rounded-lg bg-black text-sm outline-none focus:border-fuchsia-500" value={newChangelog.video_url} onChange={(e) => setNewChangelog({...newChangelog, video_url: e.target.value})} />
+                            </div>
+                            
+                            <div>
+                                <label className="text-xs text-gray-500 mb-1 flex items-center gap-1"><ImagePlus size={14}/> Imagem / Print Screen</label>
+                                {newChangelog.image_url ? (
+                                    <div className="relative w-full h-10 bg-black rounded-lg border border-fuchsia-500/50 flex items-center justify-between px-3 overflow-hidden">
+                                        <span className="text-xs text-fuchsia-400 truncate">Imagem Anexada</span>
+                                        <button type="button" onClick={() => setNewChangelog({...newChangelog, image_url: ''})} className="text-gray-400 hover:text-red-400 bg-black/50 p-1 rounded-md z-10"><X size={14}/></button>
+                                        <img src={newChangelog.image_url} alt="Preview" className="absolute inset-0 opacity-20 object-cover w-full h-full pointer-events-none" />
+                                    </div>
+                                ) : (
+                                    <label className={`w-full h-10 border border-gray-700 border-dashed rounded-lg bg-black text-sm outline-none hover:border-fuchsia-500 hover:text-fuchsia-400 transition cursor-pointer flex items-center justify-center gap-2 text-gray-400 ${uploadingImage ? 'opacity-50 pointer-events-none' : ''}`}>
+                                        {uploadingImage ? <Loader2 className="animate-spin" size={16}/> : <ImagePlus size={16}/>}
+                                        {uploadingImage ? "Enviando..." : "Anexar Imagem"}
+                                        <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                                    </label>
+                                )}
+                            </div>
+                        </div>
                     </div>
+
                     <div>
-                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1 block">Texto da Atualização</label>
-                        <textarea rows={5} placeholder="Descreva as novidades..." required className="w-full p-3 border border-gray-700 rounded-xl bg-black outline-none focus:border-fuchsia-500 resize-none" value={newChangelog.content} onChange={(e) => setNewChangelog({...newChangelog, content: e.target.value})} />
+                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1 block">Texto Detalhado da Atualização</label>
+                        {/* 🟢 TEXTAREA MAIOR PARA TEXTOS LONGOS */}
+                        <textarea rows={12} placeholder="Descreva as novidades. Você pode pular linhas normalmente..." required className="w-full p-4 border border-gray-700 rounded-xl bg-black outline-none focus:border-fuchsia-500 resize-y min-h-[200px]" value={newChangelog.content} onChange={(e) => setNewChangelog({...newChangelog, content: e.target.value})} />
                     </div>
-                    <button type="submit" disabled={savingChangelog} className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold py-3.5 rounded-xl transition shadow-lg flex items-center justify-center gap-2">
-                        {savingChangelog ? <Loader2 className="animate-spin" size={18}/> : <Rocket size={18}/>} Disparar Atualização para os Clientes
+
+                    <button type="submit" disabled={savingChangelog} className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold py-4 rounded-xl transition shadow-lg flex items-center justify-center gap-2 text-lg">
+                        {savingChangelog ? <Loader2 className="animate-spin" size={20}/> : <Rocket size={20}/>} Disparar Atualização para os Clientes
                     </button>
                 </form>
             </div>
@@ -275,10 +328,10 @@ export default function AdminDashboard() {
                         <p className="text-gray-500 text-sm">Nenhuma atualização registrada.</p>
                     </div>
                 ) : (
-                    <div className="space-y-4 max-h-[500px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-2">
+                    <div className="space-y-4 max-h-[800px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-2">
                         {changelogs.map((log, idx) => (
-                            <div key={log.id} className={`p-4 rounded-2xl border ${idx === 0 ? 'bg-fuchsia-950/20 border-fuchsia-500/30' : 'bg-[#111] border-gray-800'}`}>
-                                <div className="flex justify-between items-start mb-2">
+                            <div key={log.id} className={`p-5 rounded-2xl border ${idx === 0 ? 'bg-fuchsia-950/20 border-fuchsia-500/30' : 'bg-[#111] border-gray-800'}`}>
+                                <div className="flex justify-between items-start mb-3">
                                     <div className="flex items-center gap-2">
                                         <span className="bg-gray-800 text-white text-xs font-mono px-2 py-0.5 rounded">{log.version}</span>
                                         {idx === 0 && <span className="text-[9px] uppercase tracking-widest text-fuchsia-400 font-bold bg-fuchsia-500/10 px-2 py-0.5 rounded-full">Atual</span>}
@@ -287,8 +340,16 @@ export default function AdminDashboard() {
                                         <Trash2 size={16}/>
                                     </button>
                                 </div>
-                                <h4 className="font-bold text-white mb-1">{log.title}</h4>
-                                <p className="text-xs text-gray-500 line-clamp-2">{log.content}</p>
+                                <h4 className="font-bold text-white mb-2 text-lg">{log.title}</h4>
+                                <p className="text-sm text-gray-400 line-clamp-3 whitespace-pre-wrap">{log.content}</p>
+                                
+                                {/* Mostrar badge se tiver mídia */}
+                                {(log.video_url || log.image_url) && (
+                                    <div className="mt-4 flex gap-2">
+                                        {log.image_url && <span className="text-[10px] bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-2 py-1 rounded flex items-center gap-1"><ImagePlus size={10}/> Tem Imagem</span>}
+                                        {log.video_url && <span className="text-[10px] bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-1 rounded flex items-center gap-1"><Video size={10}/> Tem Vídeo</span>}
+                                    </div>
+                                )}
                             </div>
                         ))}
                     </div>
