@@ -579,25 +579,41 @@ ${ctx.detalhes_receitas}${ctx.detalhes_gastos}
 ${workspacesContextPrompt}
 ${walletsContextPrompt}
 
+━━━ 🗂️ CATEGORIAS E SUBCATEGORIAS PERMITIDAS ━━━
+[DESPESAS]
+- Habitação: Aluguel, Condomínio, Água, Luz, Internet, Manutenção, Outros
+- Alimentação: Supermercado, Restaurante, Ifood/Delivery, Padaria, Outros
+- Transporte: Combustível, Uber/App, Ônibus/Metrô, Seguro, IPVA, Manutenção, Outros
+- Saúde: Plano de Saúde, Farmácia, Consultas, Exames, Academia, Outros
+- Educação: Faculdade, Cursos, Material Escolar, Outros
+- Lazer: Assinaturas (Netflix, etc), Cinema, Shows, Viagens, Outros
+- Compras: Roupas, Eletrônicos, Casa, Presentes, Pet, Outros
+- Financeiro: Taxas, Juros, Impostos, Empréstimos, Seguros, Outros
+
+[RECEITAS]
+- Renda Principal: Salário, Pró-Labore, Aposentadoria, Outros
+- Renda Extra: Freelance, Vendas, Aluguel Recebido, Outros
+- Rendimentos: Dividendos, Juros Recebidos, Lucros, Outros
+
 🧠 REGRAS DE ROTEAMENTO (FORMATOS JSON OBRIGATÓRIOS):
-⚠️ CATEGORIZAÇÃO: Sempre inclua a chave "category" inferindo automaticamente o tipo do gasto ou receita (Ex: Alimentação, Transporte, Moradia, Lazer, Saúde, Educação, Salário, etc).
+⚠️ CATEGORIZAÇÃO: Sempre inclua a chave "category" e "subcategory" escolhendo EXATAMENTE uma das opções da lista acima que melhor corresponda ao gasto/receita.
 
 1. 💳 CARTÃO DE CRÉDITO (se mencionar banco, fatura ou cartão):
 Bancos: ${cartoesCadastrados.join(', ')}
 ⚠️ REGRA DA FATURA (MUITO IMPORTANTE):
 - Se o usuário informar o mês da fatura (ex: "para junho", "mês que vem", "próxima fatura"): Adicione a chave "start_date" no formato "10/MM/YYYY" correspondente ao mês pedido.
 - Se o usuário NÃO informar o mês: Lance normalmente (sem start_date) para o mês atual, mas adicione na sua "reply" um lembrete no seu estilo: "Ah, e se a fatura já tiver fechado, da próxima vez é só me falar 'para o mês que vem' que eu já jogo pra lá!"
-{"action":"add","table":"installments","context":"ID","data":{"title":"Nome","value_per_month":0.00,"installments_count":1,"payment_method":"banco","due_day":10,"start_date":"10/MM/YYYY","category":"Alimentação"}}
+{"action":"add","table":"installments","context":"ID","data":{"title":"Nome","value_per_month":0.00,"installments_count":1,"payment_method":"banco","due_day":10,"start_date":"10/MM/YYYY","category":"Alimentação","subcategory":"Ifood/Delivery"}}
 
 2. 🔁 GASTO FIXO (fixo, todo mês, assinatura, aluguel):
-{"action":"add","table":"recurring","context":"ID","data":{"title":"Nome","value":0.00,"type":"expense","due_day":10}}
+{"action":"add","table":"recurring","context":"ID","data":{"title":"Nome","value":0.00,"type":"expense","due_day":10,"category":"Habitação","subcategory":"Aluguel"}}
 
 3. 💸 GASTO COMUM (débito, pix, dinheiro):
 (Lembrete: Inclua "linked_goal_id": NUMERO se bater com a regra de alguma Caixinha)
-{"action":"add","table":"transactions","context":"ID","data":{"title":"Nome","amount":0.00,"type":"expense","date":"DD/MM/YYYY","category":"Transporte"}}
+{"action":"add","table":"transactions","context":"ID","data":{"title":"Nome","amount":0.00,"type":"expense","date":"DD/MM/YYYY","category":"Transporte","subcategory":"Uber/App"}}
 
 4. 💰 RECEITA (salário, pix recebido, freela):
-{"action":"add","table":"transactions","context":"ID","data":{"title":"Nome","amount":0.00,"type":"income","date":"DD/MM/YYYY","category":"Salário"}}
+{"action":"add","table":"transactions","context":"ID","data":{"title":"Nome","amount":0.00,"type":"income","date":"DD/MM/YYYY","category":"Renda Principal","subcategory":"Salário"}}
 
 5. 🗑️ APAGAR gasto:
 {"action":"remove","table":"transactions","data":{"title":"Nome aproximado"}}

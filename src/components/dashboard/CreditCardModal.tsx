@@ -110,14 +110,14 @@ export default function CreditCardModal({ isOpen, onClose, user, activeTab, cont
     const [selectedBank, setSelectedBank] = useState('nubank');
     const [isSaving, setIsSaving] = useState(false);
     
-    // 🟢 NOVA MEMÓRIA: Guarda o dia de vencimento de CADA banco separado
+    // Guarda o dia de vencimento de CADA banco separado
     const [dueDays, setDueDays] = useState<Record<string, string>>({});
     
     const [items, setItems] = useState([
         { id: 1, title: '', value: '', installments: '1', isPaid: false }
     ]);
 
-    // 🟢 LIMITE DE ITENS (Anti-Spam / Anti-Travamento)
+    // LIMITE DE ITENS (Anti-Spam / Anti-Travamento)
     const MAX_ITEMS = 50;
     const addNewLine = () => {
         if (items.length >= MAX_ITEMS) {
@@ -158,7 +158,7 @@ export default function CreditCardModal({ isOpen, onClose, user, activeTab, cont
             
             const startOffset = currentRealMonth - targetMonthIndex;
             
-            // 🟢 SANITIZAÇÃO DE VENCIMENTO (Sempre entre 1 e 31)
+            // SANITIZAÇÃO DE VENCIMENTO (Sempre entre 1 e 31)
             const finalDueDay = Math.min(31, Math.max(1, parseInt(dueDays[selectedBank] || '10') || 10));
 
             const inserts = items.map(item => {
@@ -192,7 +192,6 @@ export default function CreditCardModal({ isOpen, onClose, user, activeTab, cont
             setItems([{ id: 1, title: '', value: '', installments: '1', isPaid: false }]);
 
         } catch (error: any) {
-            // 🟢 MENSAGEM GENÉRICA DE ERRO (Protege a estrutura do banco)
             console.error("❌ Erro interno ao salvar fatura:", error);
             toast.error("Não foi possível salvar os dados. Verifique sua conexão e tente novamente.");
         } finally {
@@ -205,21 +204,28 @@ export default function CreditCardModal({ isOpen, onClose, user, activeTab, cont
 
     return (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-sm flex items-center justify-center z-[150] p-4 animate-in fade-in zoom-in duration-300">
-            <div className="bg-[#111] border border-gray-800 w-full max-w-3xl rounded-3xl shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="bg-[#111] border border-gray-800 w-full max-w-3xl rounded-3xl shadow-2xl flex flex-col max-h-[95vh] sm:max-h-[90vh]">
                 
-                <div className="p-6 border-b border-gray-800 bg-[#0a0a0a]">
-                    <div className="flex justify-between items-start mb-6">
-                        <div>
-                            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                                <CreditCard className="text-purple-500" /> Fatura Rápida ({activeTab})
-                            </h2>
-                            <p className="text-gray-500 text-xs mt-1">Adicione vários gastos de uma vez no cartão.</p>
+                {/* CABEÇALHO REFEITO COM FLEX-WRAP PARA MOBILE */}
+                <div className="p-5 sm:p-6 border-b border-gray-800 bg-[#0a0a0a] rounded-t-3xl">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-5 sm:mb-6">
+                        <div className="flex justify-between w-full sm:w-auto items-start">
+                            <div>
+                                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                                    <CreditCard className="text-purple-500" /> Fatura Rápida ({activeTab})
+                                </h2>
+                                <p className="text-gray-500 text-xs mt-1">Adicione vários gastos de uma vez no cartão.</p>
+                            </div>
+                            {/* Botão de Fechar Exclusivo do Mobile */}
+                            <button onClick={onClose} className="sm:hidden text-gray-500 hover:text-white transition bg-gray-900 hover:bg-gray-800 p-2 rounded-xl flex-shrink-0">
+                                <X size={20}/>
+                            </button>
                         </div>
                         
-                        <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-2 bg-gray-900 border border-gray-800 px-3 py-2 rounded-xl" title="Dia do Vencimento da Fatura">
+                        <div className="flex items-center w-full sm:w-auto gap-4">
+                            <div className="flex items-center justify-center gap-2 bg-gray-900 border border-gray-800 px-3 py-2 rounded-xl flex-1 sm:flex-none" title="Dia do Vencimento da Fatura">
                                 <CalendarDays size={16} className={currentBankStyle.text.replace('text-', 'text-').split(' ')[0] || "text-gray-500"} />
-                                <span className="text-xs text-gray-500 font-bold uppercase">Venc. {BANK_STYLES[selectedBank].label}:</span>
+                                <span className="text-xs text-gray-500 font-bold uppercase">Venc. <span className="hidden sm:inline">{BANK_STYLES[selectedBank].label}:</span></span>
                                 <input 
                                     type="number" 
                                     min="1" 
@@ -230,12 +236,14 @@ export default function CreditCardModal({ isOpen, onClose, user, activeTab, cont
                                     placeholder="10" 
                                 />
                             </div>
-                            <button onClick={onClose} className="text-gray-500 hover:text-white transition bg-gray-900 hover:bg-gray-800 p-2 rounded-xl">
+                            {/* Botão de Fechar Exclusivo do Desktop */}
+                            <button onClick={onClose} className="hidden sm:block text-gray-500 hover:text-white transition bg-gray-900 hover:bg-gray-800 p-2 rounded-xl flex-shrink-0">
                                 <X size={20}/>
                             </button>
                         </div>
                     </div>
 
+                    {/* BARRA DE ROLAGEM DE BANCOS */}
                     <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
                         {Object.keys(BANK_STYLES).map(key => {
                             const bank = BANK_STYLES[key];
@@ -260,34 +268,86 @@ export default function CreditCardModal({ isOpen, onClose, user, activeTab, cont
                     </div>
                 </div>
 
-                <div className="p-6 overflow-y-auto flex-1 space-y-2 bg-[#0f0f10]">
+                {/* LISTA DE ITENS RESPONSIVA */}
+                <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-3 sm:space-y-2 bg-[#0f0f10]">
                     {items.map((item, index) => (
-                        <div key={item.id} className="flex gap-2 items-center animate-in slide-in-from-left-2 duration-300">
-                            <span className="text-gray-600 text-xs font-mono w-4">{index + 1}.</span>
+                        <div key={item.id} className="flex flex-col sm:flex-row gap-2 sm:items-center animate-in slide-in-from-left-2 duration-300 bg-gray-900/30 sm:bg-transparent p-3 sm:p-0 rounded-xl sm:rounded-none border border-gray-800 sm:border-transparent">
                             
-                            {/* 🟢 LIMITE DE TEXTO (maxLength="100") */}
-                            <input 
-                                type="text" 
-                                placeholder="O que você comprou?" 
-                                value={item.title} 
-                                onChange={(e) => updateItem(item.id, 'title', e.target.value)} 
-                                autoFocus={index === items.length - 1} 
-                                maxLength={100}
-                                className="flex-1 bg-gray-800 border border-gray-700 rounded-lg p-3 text-sm text-white focus:border-purple-500 outline-none"
-                            />
+                            {/* LINHA 1 MOBILE (Nome e Lixeira) | Esquerda no Desktop */}
+                            <div className="flex w-full sm:w-auto items-center gap-2 flex-1">
+                                <span className="hidden sm:inline-block text-gray-600 text-xs font-mono w-4">{index + 1}.</span>
+                                
+                                <input 
+                                    type="text" 
+                                    placeholder="O que comprou?" 
+                                    value={item.title} 
+                                    onChange={(e) => updateItem(item.id, 'title', e.target.value)} 
+                                    autoFocus={index === items.length - 1} 
+                                    maxLength={100}
+                                    className="flex-1 w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-sm text-white focus:border-purple-500 outline-none"
+                                />
+                                {/* Botão Excluir Mobile */}
+                                <button onClick={() => removeLine(item.id)} className="sm:hidden p-3 rounded-lg text-gray-400 hover:text-red-500 bg-gray-800 hover:bg-red-500/10 border border-gray-700 transition" disabled={items.length === 1}>
+                                    <Trash2 size={18}/>
+                                </button>
+                            </div>
                             
-                            <div className="w-28 relative"><span className="absolute left-3 top-3 text-xs text-gray-500">R$</span><input type="number" placeholder="0,00" value={item.value} onChange={(e) => updateItem(item.id, 'value', e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 pl-8 text-sm text-white focus:border-purple-500 outline-none font-mono"/></div>
-                            <div className="w-20 relative" title="Número de Parcelas"><span className="absolute right-3 top-3.5 text-[10px] text-gray-500 font-bold">x</span><input type="number" placeholder="1" value={item.installments} onChange={(e) => updateItem(item.id, 'installments', e.target.value)} className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-sm text-white focus:border-purple-500 outline-none text-center"/></div>
-                            <button onClick={() => updateItem(item.id, 'isPaid', !item.isPaid)} className={`p-3 rounded-lg border transition ${item.isPaid ? 'bg-emerald-500/20 border-emerald-500 text-emerald-500' : 'bg-gray-800 border-gray-700 text-gray-600 hover:text-white'}`} title={item.isPaid ? "Marcado como Pago" : "Marcar como Pago"}>{item.isPaid ? <CheckCircle2 size={18}/> : <Circle size={18}/>}</button>
-                            <button onClick={() => removeLine(item.id)} className="p-3 rounded-lg text-gray-600 hover:text-red-500 hover:bg-red-500/10 transition" disabled={items.length === 1}><Trash2 size={18}/></button>
+                            {/* LINHA 2 MOBILE (Valor, Parcelas e Check) | Direita no Desktop */}
+                            <div className="flex w-full sm:w-auto items-center gap-2">
+                                
+                                {/* 🟢 CAMPO DE VALOR COM TEXTO "R$" FIXO DENTRO DA CAIXA */}
+                                <div className="flex-1 sm:w-32 flex items-center bg-gray-800 border border-gray-700 rounded-lg overflow-hidden focus-within:border-purple-500 transition-colors">
+                                    <span className="pl-3 text-xs text-gray-500 font-bold">R$</span>
+                                    <input 
+                                        type="number" 
+                                        placeholder="0,00" 
+                                        value={item.value} 
+                                        onChange={(e) => updateItem(item.id, 'value', e.target.value)} 
+                                        className="w-full bg-transparent p-3 pl-2 text-sm text-white outline-none font-mono"
+                                    />
+                                </div>
+                                
+                                {/* 🟢 CAMPO DE PARCELAS CORRIGIDO COM TEXTO "Parc." */}
+                                <div className="flex-1 sm:w-28 flex items-center bg-gray-800 border border-gray-700 rounded-lg overflow-hidden focus-within:border-purple-500 transition-colors" title="Número de Parcelas">
+                                    <span className="pl-3 text-[10px] text-gray-400 font-bold uppercase tracking-wider">Parc.</span>
+                                    <input 
+                                        type="number" 
+                                        placeholder="1" 
+                                        value={item.installments} 
+                                        onChange={(e) => updateItem(item.id, 'installments', e.target.value)} 
+                                        className="w-full bg-transparent p-3 pl-2 text-sm text-white outline-none text-center font-mono"
+                                    />
+                                </div>
+
+                                <button onClick={() => updateItem(item.id, 'isPaid', !item.isPaid)} className={`p-3 rounded-lg border transition flex-shrink-0 ${item.isPaid ? 'bg-emerald-500/20 border-emerald-500 text-emerald-500' : 'bg-gray-800 border-gray-700 text-gray-600 hover:text-white'}`} title={item.isPaid ? "Marcado como Pago" : "Marcar como Pago"}>
+                                    {item.isPaid ? <CheckCircle2 size={18}/> : <Circle size={18}/>}
+                                </button>
+
+                                {/* Botão Excluir Desktop */}
+                                <button onClick={() => removeLine(item.id)} className="hidden sm:block p-3 rounded-lg text-gray-600 hover:text-red-500 hover:bg-red-500/10 transition flex-shrink-0" disabled={items.length === 1}>
+                                    <Trash2 size={18}/>
+                                </button>
+                            </div>
                         </div>
                     ))}
-                    <button onClick={addNewLine} className="w-full py-3 border border-dashed border-gray-700 rounded-xl text-gray-500 hover:text-white hover:border-gray-500 transition flex items-center justify-center gap-2 text-sm mt-4"><Plus size={16}/> Adicionar mais um item</button>
+                    
+                    <button onClick={addNewLine} className="w-full py-4 sm:py-3 border border-dashed border-gray-700 rounded-xl text-gray-500 hover:text-white hover:border-gray-500 transition flex items-center justify-center gap-2 text-sm mt-4">
+                        <Plus size={16}/> Adicionar item
+                    </button>
                 </div>
 
-                <div className="p-6 border-t border-gray-800 bg-[#0a0a0a] flex justify-between items-center">
-                    <div><p className="text-gray-500 text-xs uppercase font-bold">Total a lançar</p><p className={`text-2xl font-bold font-mono ${currentBankStyle.text.replace('text-white', 'text-gray-200')}`}>R$ {totalBatch.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p></div>
-                    <button onClick={handleSaveBatch} disabled={isSaving || totalBatch === 0} className={`px-8 py-4 rounded-xl font-bold text-white flex items-center gap-2 shadow-lg transition ${isSaving ? 'bg-gray-700 cursor-wait' : `${currentBankStyle.color} hover:brightness-110`}`}>{isSaving ? <Loader2 className="animate-spin"/> : <Save size={20}/>}{isSaving ? "Salvando..." : "Lançar Fatura"}</button>
+                {/* RODAPÉ RESPONSIVO */}
+                <div className="p-5 sm:p-6 border-t border-gray-800 bg-[#0a0a0a] rounded-b-3xl flex flex-col sm:flex-row justify-between items-center gap-4">
+                    <div className="w-full sm:w-auto text-center sm:text-left">
+                        <p className="text-gray-500 text-xs uppercase font-bold">Total a lançar</p>
+                        <p className={`text-2xl font-bold font-mono ${currentBankStyle.text.replace('text-white', 'text-gray-200')}`}>
+                            R$ {totalBatch.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </p>
+                    </div>
+                    <button onClick={handleSaveBatch} disabled={isSaving || totalBatch === 0} className={`w-full sm:w-auto px-8 py-4 rounded-xl font-bold text-white flex items-center justify-center gap-2 shadow-lg transition ${isSaving ? 'bg-gray-700 cursor-wait' : `${currentBankStyle.color} hover:brightness-110`}`}>
+                        {isSaving ? <Loader2 className="animate-spin"/> : <Save size={20}/>}
+                        {isSaving ? "Salvando..." : "Lançar Fatura"}
+                    </button>
                 </div>
             </div>
         </div>

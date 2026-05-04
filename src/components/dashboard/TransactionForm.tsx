@@ -1,7 +1,42 @@
-import React from 'react';
-import { X, DollarSign, TrendingDown, CreditCard, CheckCircle2, Upload, FileText, Loader2, Landmark, Check, Sparkles, Wallet } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { 
+    X, DollarSign, TrendingDown, CreditCard, CheckCircle2, Upload, FileText, Loader2, 
+    Landmark, Check, Sparkles, Wallet, 
+    ShoppingCart, Home, Car, Utensils, HeartPulse, GraduationCap, Plane, Tv, 
+    Smartphone, Coffee, Zap, Droplet, Wifi, Shirt, Gift, Briefcase, PiggyBank, Baby, Dog
+} from 'lucide-react';
 import { ACCOUNTS, ICON_MAP, MONTHS } from '@/utils/constants';
-import { Goal } from '@/types'; // 🟢 Importante importar o tipo
+import { Goal } from '@/types'; 
+
+// 🟢 MAPA DE ÍCONES ESTENDIDO
+const EXTENDED_ICON_MAP: Record<string, any> = {
+    ...ICON_MAP,
+    'shopping-cart': ShoppingCart, 'home': Home, 'car': Car, 'utensils': Utensils,
+    'heart-pulse': HeartPulse, 'graduation-cap': GraduationCap, 'plane': Plane,
+    'tv': Tv, 'smartphone': Smartphone, 'coffee': Coffee, 'zap': Zap, 'droplet': Droplet,
+    'wifi': Wifi, 'shirt': Shirt, 'gift': Gift, 'briefcase': Briefcase, 'piggy-bank': PiggyBank,
+    'baby': Baby, 'dog': Dog
+};
+
+// 🟢 ÁRVORE DE CATEGORIAS E SUBCATEGORIAS
+const EXPENSE_CATEGORIES: Record<string, string[]> = {
+    'Habitação': ['Aluguel', 'Condomínio', 'Água', 'Luz', 'Internet', 'Manutenção', 'Outros'],
+    'Alimentação': ['Supermercado', 'Restaurante', 'Ifood/Delivery', 'Padaria', 'Outros'],
+    'Transporte': ['Combustível', 'Uber/App', 'Ônibus/Metrô', 'Seguro', 'IPVA', 'Manutenção', 'Outros'],
+    'Saúde': ['Plano de Saúde', 'Farmácia', 'Consultas', 'Exames', 'Academia', 'Outros'],
+    'Educação': ['Faculdade', 'Cursos', 'Material Escolar', 'Outros'],
+    'Lazer': ['Assinaturas (Netflix, etc)', 'Cinema', 'Shows', 'Viagens', 'Outros'],
+    'Compras': ['Roupas', 'Eletrônicos', 'Casa', 'Presentes', 'Pet', 'Outros'],
+    'Financeiro': ['Taxas', 'Juros', 'Impostos', 'Empréstimos', 'Seguros', 'Outros'],
+    'Outros': ['Outros']
+};
+
+const INCOME_CATEGORIES: Record<string, string[]> = {
+    'Renda Principal': ['Salário', 'Pró-Labore', 'Aposentadoria', 'Outros'],
+    'Renda Extra': ['Freelance', 'Vendas', 'Aluguel Recebido', 'Outros'],
+    'Rendimentos': ['Dividendos', 'Juros Recebidos', 'Lucros', 'Outros'],
+    'Outros': ['Outros']
+};
 
 interface TransactionFormProps {
     isOpen: boolean;
@@ -16,7 +51,7 @@ interface TransactionFormProps {
     handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
     handleRemoveReceipt: (e: React.MouseEvent) => void;
     userPlan: string;
-    goals: Goal[]; // 🟢 ADICIONADO: O form precisa receber as metas/caixinhas
+    goals: Goal[]; 
 }
 
 export default function TransactionForm({
@@ -24,9 +59,20 @@ export default function TransactionForm({
     editingId, uploadingFile, handleFileUpload, handleRemoveReceipt, userPlan, goals
 }: TransactionFormProps) {
     
+    // 🟢 Lógica para as categorias dinâmicas
+    const categoriesMap = formMode === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+    const availableCategories = Object.keys(categoriesMap);
+    const availableSubcategories = formData.category && categoriesMap[formData.category] ? categoriesMap[formData.category] : [];
+
+    // Limpa a subcategoria se a categoria mudar para evitar bugs
+    useEffect(() => {
+        if (formData.category && categoriesMap[formData.category] && !categoriesMap[formData.category].includes(formData.subcategory)) {
+            setFormData((prev: any) => ({ ...prev, subcategory: categoriesMap[formData.category][0] || 'Outros' }));
+        }
+    }, [formData.category, formMode]);
+
     if (!isOpen) return null;
 
-    // 🟢 Filtra apenas as metas que são "Caixinhas"
     const wallets = goals ? goals.filter(g => g.type === 'wallet') : [];
 
     return (
@@ -66,32 +112,73 @@ export default function TransactionForm({
                     
                     <input type="text" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none transition" placeholder="Descrição (Ex: Mercado, Uber...)" />
 
-                    {/* Ícones */}
+                    {/* NOVOS CAMPOS: CATEGORIA E SUBCATEGORIA */}
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="text-xs text-gray-500 ml-1 mb-1 block">Categoria</label>
+                            <select 
+                                value={formData.category || ''} 
+                                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                                className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-sm text-white focus:border-cyan-500 outline-none transition cursor-pointer"
+                            >
+                                <option value="" disabled>Selecione...</option>
+                                {availableCategories.map(cat => (
+                                    <option key={cat} value={cat}>{cat}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="text-xs text-gray-500 ml-1 mb-1 block">Subcategoria</label>
+                            <select 
+                                value={formData.subcategory || ''} 
+                                onChange={(e) => setFormData({ ...formData, subcategory: e.target.value })}
+                                disabled={!formData.category}
+                                className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-sm text-white focus:border-cyan-500 outline-none transition cursor-pointer disabled:opacity-50"
+                            >
+                                {availableSubcategories.map((sub: string) => (
+                                    <option key={sub} value={sub}>{sub}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    {/* Ícones com o mapa estendido */}
                     <div className="my-4">
                         <label className="text-gray-500 text-xs uppercase font-bold mb-2 block ml-1">Escolha um Ícone</label>
                         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                            {Object.keys(ICON_MAP).map(iconKey => {
-                                const IconComponent = ICON_MAP[iconKey];
+                            {Object.keys(EXTENDED_ICON_MAP).map(iconKey => {
+                                const IconComponent = EXTENDED_ICON_MAP[iconKey];
                                 return (
-                                    <button key={iconKey} onClick={() => setFormData({ ...formData, icon: iconKey })} className={`p-3 rounded-xl border transition flex-shrink-0 ${formData.icon === iconKey ? 'bg-cyan-600 border-cyan-400 text-white shadow-lg shadow-cyan-900/50' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700 hover:text-white'}`}><IconComponent size={20} /></button>
+                                    <button 
+                                        key={iconKey} 
+                                        type="button"
+                                        onClick={() => setFormData({ ...formData, icon: iconKey })} 
+                                        className={`p-3 rounded-xl border transition flex-shrink-0 ${formData.icon === iconKey ? 'bg-cyan-600 border-cyan-400 text-white shadow-lg shadow-cyan-900/50' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700 hover:text-white'}`}
+                                    >
+                                        <IconComponent size={20} />
+                                    </button>
                                 )
                             })}
                         </div>
                     </div>
 
-                    {/* Contas / Bancos */}
-                    <div className="mb-4">
-                        <label className="text-gray-500 text-xs uppercase font-bold mb-2 block ml-1 flex items-center gap-2"><Landmark size={12} /> Conta / Cartão</label>
-                        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                            {ACCOUNTS.map(acc => (
-                                <button key={acc.id} onClick={() => setFormData({ ...formData, paymentMethod: acc.id })} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition border ${formData.paymentMethod === acc.id ? `${acc.color} ${acc.text} border-transparent shadow-md scale-105` : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
-                                    {acc.id === 'nubank' && <img src="https://upload.wikimedia.org/wikipedia/commons/f/f7/Nubank_logo_2021.svg" className="w-4 h-4 invert opacity-90" alt="Nu" />}
-                                    {acc.label}
-                                    {formData.paymentMethod === acc.id && <Check size={12} />}
-                                </button>
-                            ))}
+                    {/* 🟢 Contas / Bancos - APARECE APENAS PARA PARCELADOS (CARTÃO) */}
+                    {formMode === 'installment' && (
+                        <div className="mb-4 animate-in slide-in-from-top-2">
+                            <label className="text-gray-500 text-xs uppercase font-bold mb-2 ml-1 flex items-center gap-1.5">
+                                <Landmark size={14} /> Onde foi parcelado (Cartão, Empréstimo, Carnê)?
+                            </label>
+                            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                                {ACCOUNTS.map(acc => (
+                                    <button type="button" key={acc.id} onClick={() => setFormData({ ...formData, paymentMethod: acc.id })} className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition border ${formData.paymentMethod === acc.id ? `${acc.color} ${acc.text} border-transparent shadow-md scale-105` : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
+                                        {acc.id === 'nubank' && <img src="https://upload.wikimedia.org/wikipedia/commons/f/f7/Nubank_logo_2021.svg" className="w-4 h-4 invert opacity-90" alt="Nu" />}
+                                        {acc.label}
+                                        {formData.paymentMethod === acc.id && <Check size={12} />}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     <div className="flex gap-3 mb-2">
                         {(formMode === 'income' || formMode === 'expense') && (
@@ -110,11 +197,11 @@ export default function TransactionForm({
                         )}
                         <div className={(formMode === 'income' || formMode === 'expense') ? 'w-2/3' : 'w-full'}>
                             <label className="text-xs text-gray-500 ml-1 mb-1 block">{formMode === 'installment' ? "Valor TOTAL da Compra" : "Valor (R$)"}</label>
-                            <input type="number" value={formData.amount} onChange={(e) => setFormData({ ...formData, amount: e.target.value })} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none font-mono text-lg" placeholder={formMode === 'installment' ? "Total: 1200.00" : "0.00"} />
+                            <input type="number" value={formData.amount || ''} onChange={(e) => setFormData({ ...formData, amount: e.target.value })} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white focus:border-cyan-500 outline-none font-mono text-lg" placeholder={formMode === 'installment' ? "Total: 1200.00" : "0.00"} />
                         </div>
                     </div>
 
-                    {/* 🟢 NOVO: CAIXINHAS / ORÇAMENTOS */}
+                    {/* CAIXINHAS / ORÇAMENTOS */}
                     {wallets.length > 0 && formMode !== 'income' && (
                         <div className="bg-emerald-900/10 p-4 rounded-xl border border-emerald-900/30 my-4 animate-in slide-in-from-top-2">
                             <div className="flex items-center gap-3">
@@ -133,13 +220,12 @@ export default function TransactionForm({
                             {formData.linkedGoalId && (
                                 <div className="mt-3">
                                     <select 
-                                        value={formData.linkedGoalId} 
+                                        value={formData.linkedGoalId || ''} 
                                         onChange={(e) => setFormData({ ...formData, linkedGoalId: Number(e.target.value) })}
                                         className="w-full bg-black text-white p-3 rounded-lg border border-emerald-500/30 outline-none cursor-pointer focus:border-emerald-400 transition"
                                     >
                                         {wallets.map(w => (
                                             <option key={w.id} value={w.id}>
-                                                {/* 🟢 MUDAMOS A MATEMÁTICA AQUI: Guardado - Gasto */}
                                                 {w.title} (Disp: R$ {(w.current_amount - (w.spent_amount || 0)).toFixed(2)})
                                             </option>
                                         ))}
@@ -155,16 +241,16 @@ export default function TransactionForm({
                             <p className="text-purple-400 text-xs font-bold uppercase mb-2 flex items-center gap-2"><Sparkles size={12} /> Detalhes do Parcelamento</p>
                             <div>
                                 <label className="text-gray-400 text-xs block mb-1">Valor da Parcela Mensal:</label>
-                                <input type="number" value={formData.fixedMonthlyValue} onChange={(e) => setFormData({ ...formData, fixedMonthlyValue: e.target.value })} className="w-full bg-black border border-gray-700 rounded-lg p-3 text-white focus:border-purple-500 outline-none font-bold text-lg font-mono" placeholder="Ex: 100.00" />
+                                <input type="number" value={formData.fixedMonthlyValue || ''} onChange={(e) => setFormData({ ...formData, fixedMonthlyValue: e.target.value })} className="w-full bg-black border border-gray-700 rounded-lg p-3 text-white focus:border-purple-500 outline-none font-bold text-lg font-mono" placeholder="Ex: 100.00" />
                             </div>
                             <div className="flex gap-4">
                                 <div className="flex-1">
                                     <label className="text-gray-500 text-[10px] uppercase font-bold mb-1 block">Qtd. Parcelas</label>
-                                    <input type="number" placeholder="12" value={formData.installments} onChange={(e) => setFormData({ ...formData, installments: e.target.value })} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white outline-none" />
+                                    <input type="number" placeholder="12" value={formData.installments || ''} onChange={(e) => setFormData({ ...formData, installments: e.target.value })} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white outline-none" />
                                 </div>
                                 <div className="flex-1">
                                     <label className="text-gray-500 text-[10px] uppercase font-bold mb-1 block">Dia Vencimento</label>
-                                    <input type="number" placeholder="Dia 10" value={formData.dueDay} onChange={(e) => setFormData({ ...formData, dueDay: e.target.value })} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white outline-none" />
+                                    <input type="number" placeholder="Dia 10" value={formData.dueDay || ''} onChange={(e) => setFormData({ ...formData, dueDay: e.target.value })} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white outline-none" />
                                 </div>
                             </div>
                         </div>
@@ -173,7 +259,7 @@ export default function TransactionForm({
                     {(formMode === 'fixed_expense') && (
                          <div className="mb-2">
                             <label className="text-xs text-gray-500 ml-1 mb-1 block">Dia do Vencimento</label>
-                            <input type="number" placeholder="Dia 10" value={formData.dueDay} onChange={(e) => setFormData({ ...formData, dueDay: e.target.value })} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white outline-none" />
+                            <input type="number" placeholder="Dia 10" value={formData.dueDay || ''} onChange={(e) => setFormData({ ...formData, dueDay: e.target.value })} className="w-full bg-gray-800 border border-gray-700 rounded-xl p-3 text-white outline-none" />
                         </div>
                     )}
 

@@ -6,15 +6,18 @@ import {
     HeartPulse, Plane, Gamepad2, Smartphone, Check, Clock,
     FileText, Trash2, Pencil, List, AlertTriangle,
     ChevronDown, ChevronUp, X, RotateCcw, 
-    Paperclip, Loader2
+    Paperclip, Loader2,
+    Wifi, Droplet, Shirt, Gift, Briefcase, PiggyBank, Baby, Dog, Tv, Coffee
 } from 'lucide-react';
 import { Transaction, Installment, Recurring } from '@/types';
 
-// --- MAPA DE ÍCONES ---
+// --- MAPA DE ÍCONES (ATUALIZADO) ---
 const ICON_MAP: any = {
     'shopping-cart': ShoppingCart, 'home': Home, 'car': Car, 'utensils': Utensils,
     'zap': Zap, 'graduation-cap': GraduationCap, 'heart-pulse': HeartPulse,
-    'plane': Plane, 'gamepad-2': Gamepad2, 'smartphone': Smartphone, 'dollar-sign': DollarSign
+    'plane': Plane, 'gamepad-2': Gamepad2, 'smartphone': Smartphone, 'dollar-sign': DollarSign,
+    'tv': Tv, 'coffee': Coffee, 'droplet': Droplet, 'wifi': Wifi, 'shirt': Shirt,
+    'gift': Gift, 'briefcase': Briefcase, 'piggy-bank': PiggyBank, 'baby': Baby, 'dog': Dog
 };
 
 // --- ESTILOS DOS BANCOS ---
@@ -179,12 +182,12 @@ export default function StandardView({
         const pendentes = groupItems.filter((i:any) => !i.paid_months?.includes(tag));
         
         if(pendentes.length === 0) {
-            return showAlert('Fatura Zerada!', 'Todas as compras desta fatura já estão pagas ou foram congeladas.');
+            return showAlert('Tudo Zerado!', 'Todas as contas deste grupo já estão pagas ou foram congeladas no mês atual.');
         }
         
         showConfirm(
-            `Pagar fatura do ${bankLabel}?`,
-            `Isso vai dar baixa em todas as ${pendentes.length} contas pendentes deste cartão de uma só vez.`,
+            `Dar baixa em ${bankLabel}?`,
+            `Isso vai dar baixa em todas as ${pendentes.length} parcelas pendentes deste agrupamento de uma só vez.`,
             async () => {
                 for (const item of pendentes) {
                     await onTogglePaidMonth('installments', item);
@@ -198,11 +201,11 @@ export default function StandardView({
         const pendentes = groupItems.filter((i:any) => !i.paid_months?.includes(tag));
         
         if(pendentes.length === 0) {
-            return showAlert('Tudo Certo!', 'Nenhuma conta pendente nesta fatura para colocar em stand-by.');
+            return showAlert('Tudo Certo!', 'Nenhuma conta pendente neste grupo para colocar em stand-by.');
         }
         
         showConfirm(
-            `Adiar fatura do ${bankLabel}?`,
+            `Adiar contas de ${bankLabel}?`,
             `Isso vai jogar todas as ${pendentes.length} contas pendentes para a lista de Stand-by (congeladas).`,
             async () => {
                 for (const item of pendentes) {
@@ -275,8 +278,6 @@ export default function StandardView({
         const { m: startM, y: startY } = getStartData(curr);
         const monthsDiff = ((selectedYear - startY) * 12) + (monthIndex - startM);
         
-        // 🟢 FIX: Removido o pastStandbys! Agora a parcela obedece o tempo real.
-        // Se congelar a 4/5, o mês seguinte será a 5/5 de qualquer forma.
         const actualInstallment = 1 + (curr.current_installment || 0) + monthsDiff;
 
         if (actualInstallment < 1 || actualInstallment > curr.installments_count) return acc;
@@ -466,25 +467,27 @@ export default function StandardView({
 
                                         return (
                                             <div key={item.id} className={`group p-4 transition flex items-center justify-between ${isSelected ? 'bg-red-500/10' : 'hover:bg-white/[0.02]'}`}>
-                                                <div className="flex items-center gap-3">
-                                                    <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(item.id, 'transactions')} className="w-4 h-4 rounded border-gray-700 bg-black text-red-500 focus:ring-red-500 focus:ring-offset-gray-900 cursor-pointer" />
+                                                <div className="flex items-center gap-3 w-full">
+                                                    <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(item.id, 'transactions')} className="w-4 h-4 rounded border-gray-700 bg-black text-red-500 focus:ring-red-500 focus:ring-offset-gray-900 cursor-pointer shrink-0" />
 
-                                                    <div onClick={() => onTogglePaid('transactions', item.id, item.is_paid || false)} className={`cursor-pointer w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${item.is_paid ? 'bg-emerald-500/20 text-emerald-500' : 'bg-gray-800 text-gray-500 group-hover:bg-gray-700'}`}>
+                                                    <div onClick={() => onTogglePaid('transactions', item.id, item.is_paid || false)} className={`cursor-pointer w-10 h-10 rounded-2xl flex items-center justify-center transition-all shrink-0 ${item.is_paid ? 'bg-emerald-500/20 text-emerald-500' : 'bg-gray-800 text-gray-500 group-hover:bg-gray-700'}`}>
                                                         {item.is_paid ? <CheckCircle2 size={18} /> : <Icon size={18} />}
                                                     </div>
-                                                    <div>
-                                                        <p className={`font-bold text-sm ${item.is_paid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
-                                                        <p className="text-xs text-gray-500 flex items-center gap-1">
-                                                            {item.category} • {item.date}
+                                                    <div className="overflow-hidden pr-2 w-full">
+                                                        <p className={`font-bold text-sm truncate ${item.is_paid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
+                                                        <p className="text-xs text-gray-500 flex flex-wrap items-center gap-1">
+                                                            <span className="truncate max-w-[150px]">{(item as any).category && (item as any).subcategory ? `${(item as any).category} • ${(item as any).subcategory}` : (item as any).category || 'Outros'}</span>
+                                                            <span className="text-gray-600 hidden sm:inline">•</span> 
+                                                            <span className="shrink-0">{item.date}</span>
                                                             {getReceipt(item, activeTab) && (
-                                                                <a href={getReceipt(item, activeTab)} target="_blank" className="text-emerald-500 hover:text-emerald-300" title="Ver Recibo">
+                                                                <a href={getReceipt(item, activeTab)} target="_blank" className="text-emerald-500 hover:text-emerald-300 ml-1 shrink-0" title="Ver Recibo">
                                                                     <FileText size={14} />
                                                                 </a>
                                                             )}
                                                         </p>
                                                     </div>
                                                 </div>
-                                                <div className="text-right">
+                                                <div className="text-right shrink-0">
                                                     <p className={`font-mono font-bold text-sm ${item.type === 'income' ? 'text-emerald-400' : 'text-gray-300'}`}>
                                                         {item.type === 'income' ? '+' : '-'} R$ {Number(item.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                                     </p>
@@ -505,23 +508,27 @@ export default function StandardView({
                     {renderDelayed()}
                 </div>
 
-                {/* COLUNA 2: BANCOS */}
+                {/* COLUNA 2: BANCOS E PARCELAMENTOS */}
                 <div className="space-y-6">
                     <div className="flex items-center justify-between">
-                        <h3 className="text-xl font-bold text-white flex items-center gap-2"><div className="w-1 h-6 bg-purple-500 rounded-full"></div> Cartões & Faturas</h3>
+                        {/* 🟢 NOME DA COLUNA ATUALIZADO */}
+                        <h3 className="text-xl font-bold text-white flex items-center gap-2"><div className="w-1 h-6 bg-purple-500 rounded-full"></div> Cartões & Parcelamentos</h3>
                     </div>
 
                     <div className="space-y-3 max-h-[700px] overflow-y-auto scrollbar-thin scrollbar-thumb-purple-900/30 scrollbar-track-transparent pr-1">
                         {sortedBanks.length === 0 ? (
                             <div className="bg-[#0f0f10] border border-gray-800/50 rounded-3xl p-8 flex flex-col items-center justify-center text-center text-gray-600 gap-3 min-h-[200px]">
                                 <CreditCard size={32} opacity={0.5} />
-                                <p className="text-sm">Sem faturas para este mês.</p>
+                                <p className="text-sm">Sem faturas ou parcelas para este mês.</p>
                             </div>
                         ) : (
                             sortedBanks.map(bankKey => {
                                 const group = groupedInstallments[bankKey];
                                 const style = BANK_STYLES[bankKey] || BANK_STYLES['outros'];
                                 const isOpen = openBanks.includes(bankKey);
+
+                                // 🟢 VERIFICA SE É UM CARTÃO DE VERDADE OU ALGO GENÉRICO
+                                const isCard = bankKey !== 'outros' && bankKey !== 'money';
 
                                 return (
                                     <div key={bankKey} className={`rounded-2xl border overflow-hidden transition-all duration-300 ${style.bg} ${style.border} ${isOpen ? 'shadow-lg shadow-black/40' : 'opacity-90 hover:opacity-100'}`}>
@@ -530,12 +537,14 @@ export default function StandardView({
                                                 {style.icon ? <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center p-1.5 shadow-sm"><img src={style.icon} className="w-full h-full object-contain" style={{ filter: bankKey === 'nubank' ? 'none' : '' }} /></div> : <div className={`w-8 h-8 rounded-full flex items-center justify-center bg-black/20 ${style.text}`}><CreditCard size={16} /></div>}
                                                 <div>
                                                     <h4 className={`font-bold text-sm ${style.text}`}>{style.label}</h4>
-                                                    <p className="text-[10px] text-gray-400/80 uppercase tracking-wider font-bold">{isOpen ? `Fatura de ${activeTab}` : `${group.items.length} compras`}</p>
+                                                    {/* 🟢 TEXTOS DINÂMICOS NA CABEÇA DO CARD */}
+                                                    <p className="text-[10px] text-gray-400/80 uppercase tracking-wider font-bold">{isOpen ? `${isCard ? 'Fatura de' : 'Parcelas de'} ${activeTab}` : `${group.items.length} contas`}</p>
                                                 </div>
                                             </div>
                                             <div className="text-right flex items-center gap-3">
                                                 <div>
-                                                    <p className="text-[10px] text-gray-400">Total da Fatura</p>
+                                                    {/* 🟢 TEXTOS DINÂMICOS NO TOTAL */}
+                                                    <p className="text-[10px] text-gray-400">{isCard ? 'Total da Fatura' : 'Total no Mês'}</p>
                                                     <p className="text-white font-bold font-mono">R$ {group.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                                                 </div>
                                                 {isOpen ? <ChevronUp size={18} className="text-gray-500" /> : <ChevronDown size={18} className="text-gray-500" />}
@@ -544,9 +553,9 @@ export default function StandardView({
                                         {isOpen && (
                                             <div className="divide-y divide-gray-700/20 bg-black/20 animate-in slide-in-from-top-2 duration-200">
                                                 
-                                                {/* 🟢 BARRA DE AÇÕES EM MASSA DA FATURA */}
                                                 <div className="flex items-center justify-between p-2 px-4 bg-black/40 border-b border-gray-700/30">
-                                                    <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Ações da Fatura</span>
+                                                    {/* 🟢 TEXTOS DINÂMICOS NAS AÇÕES */}
+                                                    <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">{isCard ? 'Ações da Fatura' : 'Ações em Massa'}</span>
                                                     <div className="flex gap-2">
                                                         <button 
                                                             onClick={(e) => { e.stopPropagation(); handleBulkPayBank(style.label, group.items); }} 
@@ -571,18 +580,25 @@ export default function StandardView({
 
                                                     return (
                                                         <div key={item.id} className={`group p-3 flex items-center justify-between transition ${isSelected ? 'bg-red-500/10' : 'hover:bg-white/5'}`}>
-                                                            <div className="flex items-center gap-2">
+                                                            <div className="flex items-center gap-2 w-full pr-2">
                                                                 <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(item.id, 'installments')} className="w-3.5 h-3.5 rounded border-gray-700 bg-black text-red-500 focus:ring-red-500 focus:ring-offset-gray-900 cursor-pointer shrink-0" />
 
-                                                                <div onClick={() => onTogglePaidMonth('installments', item)} className={`cursor-pointer w-8 h-8 rounded-lg flex items-center justify-center transition-all ${isPaid ? 'bg-emerald-500/20 text-emerald-500' : 'bg-gray-800/50 text-gray-500 hover:text-white'}`}>
+                                                                <div onClick={() => onTogglePaidMonth('installments', item)} className={`cursor-pointer w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all ${isPaid ? 'bg-emerald-500/20 text-emerald-500' : 'bg-gray-800/50 text-gray-500 hover:text-white'}`}>
                                                                     {isPaid ? <Check size={14} /> : <span className="text-[10px] font-bold">{item.actualInstallment}x</span>}
                                                                 </div>
-                                                                <div className="overflow-hidden">
-                                                                    <p className={`text-sm font-medium truncate max-w-[140px] ${isPaid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
-                                                                    <p className="text-[10px] text-gray-500 flex items-center gap-1"><Icon size={10} /> <span>{item.actualInstallment}/{item.installments_count}</span> <span className="text-gray-600 mx-0.5">•</span> <span className="text-gray-400">{item.due_day} {activeTab}</span></p>
+                                                                <div className="overflow-hidden w-full">
+                                                                    <p className={`text-sm font-medium truncate ${isPaid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
+                                                                    <p className="text-[10px] text-gray-500 flex flex-wrap items-center gap-1">
+                                                                        <Icon size={10} className="shrink-0" /> 
+                                                                        <span className="truncate max-w-[120px]">{(item as any).category && (item as any).subcategory ? `${(item as any).category} • ${(item as any).subcategory}` : (item as any).category || 'Outros'}</span>
+                                                                        <span className="text-gray-600 hidden sm:inline">•</span> 
+                                                                        <span className="shrink-0">{item.actualInstallment}/{item.installments_count}</span> 
+                                                                        <span className="text-gray-600 mx-0.5">•</span> 
+                                                                        <span className="shrink-0 text-gray-400">Dia {item.due_day}</span>
+                                                                    </p>
                                                                 </div>
                                                             </div>
-                                                            <div className="text-right">
+                                                            <div className="text-right shrink-0">
                                                                 <p className={`font-mono text-sm font-medium ${isPaid ? 'text-gray-600' : (item.has_arrears ? 'text-orange-400' : 'text-gray-300')}`}>
                                                                     R$ {Number(item.value_per_month).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                                                 </p>
@@ -626,18 +642,21 @@ export default function StandardView({
 
                                     return (
                                         <div key={item.id} className={`group flex items-center justify-between p-2 rounded-lg mb-1 transition hover:bg-white/5 ${isSelected ? 'bg-red-500/10' : ''} ${isSkipped ? 'opacity-50 border border-dashed border-emerald-900 bg-transparent' : ''}`}>
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-2 w-full pr-2">
                                                 <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(item.id, 'recurring')} className="w-3.5 h-3.5 rounded border-gray-700 bg-black text-red-500 focus:ring-red-500 focus:ring-offset-gray-900 cursor-pointer shrink-0" />
 
-                                                <div onClick={() => onTogglePaidMonth('recurring', item)} className={`cursor-pointer w-8 h-8 rounded-full flex items-center justify-center transition-all ${isPaid ? 'bg-emerald-500/20 text-emerald-500' : 'bg-black text-gray-400 group-hover:text-white'}`}>
+                                                <div onClick={() => onTogglePaidMonth('recurring', item)} className={`cursor-pointer w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all ${isPaid ? 'bg-emerald-500/20 text-emerald-500' : 'bg-black text-gray-400 group-hover:text-white'}`}>
                                                     {isPaid ? <CheckCircle2 size={14} /> : <DollarSign size={14} />}
                                                 </div>
-                                                <div>
-                                                    <p className={`text-sm font-bold ${isPaid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
+                                                <div className="overflow-hidden w-full">
+                                                    <p className={`text-sm font-bold truncate ${isPaid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
+                                                    <p className="text-[10px] text-gray-500 truncate max-w-[150px]">
+                                                        {(item as any).category && (item as any).subcategory ? `${(item as any).category} • ${(item as any).subcategory}` : (item as any).category || 'Outros'}
+                                                    </p>
                                                     {isSkipped && <p className="text-[10px] text-orange-500 font-bold">Pulado neste mês</p>}
                                                 </div>
                                             </div>
-                                            <div className="text-right">
+                                            <div className="text-right shrink-0">
                                                 <p className={`font-mono font-bold text-sm ${isSkipped || isPaid ? 'text-gray-500' : 'text-emerald-400'}`}>
                                                     R$ {Number(item.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                                 </p>
@@ -674,18 +693,21 @@ export default function StandardView({
 
                                         return (
                                             <div key={item.id} className={`group p-3 rounded-xl border mb-2 transition flex items-center justify-between ${isSelected ? 'border-red-500 bg-red-500/10' : isSkipped ? 'border-dashed border-gray-800 opacity-50 bg-transparent' : isPaid ? 'bg-gray-900/50 border-gray-800' : 'bg-gray-800/30 border-gray-700 hover:border-gray-600'}`}>
-                                                <div className="flex items-center gap-2">
+                                                <div className="flex items-center gap-2 w-full pr-2">
                                                     <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(item.id, 'recurring')} className="w-4 h-4 rounded border-gray-700 bg-black text-red-500 focus:ring-red-500 focus:ring-offset-gray-900 cursor-pointer shrink-0" />
 
-                                                    <div onClick={() => onTogglePaidMonth('recurring', item)} className={`cursor-pointer w-10 h-10 rounded-xl flex items-center justify-center transition-all ${isPaid ? 'bg-emerald-500/20 text-emerald-500' : 'bg-black text-gray-400 group-hover:text-white'}`}>
+                                                    <div onClick={() => onTogglePaidMonth('recurring', item)} className={`cursor-pointer w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-all ${isPaid ? 'bg-emerald-500/20 text-emerald-500' : 'bg-black text-gray-400 group-hover:text-white'}`}>
                                                         {isPaid ? <CheckCircle2 size={18} /> : <Icon size={18} />}
                                                     </div>
-                                                    <div>
-                                                        <p className={`font-bold text-sm ${isPaid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
-                                                        <p className="text-[10px] text-gray-500 flex items-center gap-1">
-                                                            Vence dia {item.due_day} {isSkipped && <span className="text-orange-500 font-bold ml-1">(Pular)</span>}
+                                                    <div className="overflow-hidden w-full">
+                                                        <p className={`font-bold text-sm truncate ${isPaid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
+                                                        <p className="text-[10px] text-gray-500 flex flex-wrap items-center gap-1">
+                                                            <span className="truncate max-w-[120px]">{(item as any).category && (item as any).subcategory ? `${(item as any).category} • ${(item as any).subcategory}` : (item as any).category || 'Outros'}</span>
+                                                            <span className="text-gray-600 hidden sm:inline">•</span>
+                                                            <span className="shrink-0">Vence dia {item.due_day}</span>
+                                                            {isSkipped && <span className="text-orange-500 font-bold ml-1 shrink-0">(Pular)</span>}
                                                             {getReceipt(item, activeTab) && (
-                                                                <span title="Comprovante Anexado" className="flex items-center ml-1 text-cyan-500">
+                                                                <span title="Comprovante Anexado" className="flex items-center ml-1 text-cyan-500 shrink-0">
                                                                     <Paperclip size={12} />
                                                                 </span>
                                                             )}
@@ -693,7 +715,7 @@ export default function StandardView({
                                                     </div>
                                                 </div>
                                                 
-                                                <div className="text-right">
+                                                <div className="text-right shrink-0">
                                                     <p className={`font-mono font-bold text-sm ${isPaid ? 'text-gray-500 line-through' : isSkipped ? 'text-gray-500' : 'text-white'}`}>
                                                         R$ {Number(item.value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                                     </p>
@@ -702,11 +724,6 @@ export default function StandardView({
                                                         <button onClick={() => onToggleDelay('recurring', item)} title="Stand-by" className="text-gray-500 hover:text-orange-400"><Clock size={12} /></button>
                                                         <button onClick={() => onEdit(item, 'fixed_expense')} className="text-gray-500 hover:text-cyan-400"><Pencil size={12} /></button>
                                                         <button onClick={() => onDelete('recurring', item.id)} className="text-gray-500 hover:text-red-400"><Trash2 size={12} /></button>
-                                                        {getReceipt(item, activeTab) && (
-                                                            <a href={getReceipt(item, activeTab)} target="_blank" className="text-emerald-500 hover:text-emerald-300" title="Ver Recibo">
-                                                                <FileText size={12} />
-                                                            </a>
-                                                        )}
                                                     </div>
                                                 </div>
                                             </div>

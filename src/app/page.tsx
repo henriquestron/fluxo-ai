@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
 import {
-    X, Sparkles, Trash2, Pencil, Clock, AlertTriangle, LogOut, CheckSquare, ShieldCheck, Loader2, Lock, Zap, FolderPlus, Layers, 
+    X, Sparkles, Trash2, Pencil, Clock, AlertTriangle, LogOut, CheckSquare, ShieldCheck, Loader2, Lock, Zap, FolderPlus, Layers,
 }
     from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -71,7 +71,7 @@ export default function FinancialDashboard() {
 
     const [newProfileName, setNewProfileName] = useState('');
     const [isSimulationMode, setIsSimulationMode] = useState(false);
-    
+
     // --- MODAIS ---
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [isCreditCardModalOpen, setIsCreditCardModalOpen] = useState(false); // <--- ESTADO NOVO AQUI
@@ -105,7 +105,7 @@ export default function FinancialDashboard() {
     const [isTrialExpired, setIsTrialExpired] = useState(false);
     const [actionModal, setActionModal] = useState({ isOpen: false, type: '', title: '', message: '', btnSingle: '', btnAll: '', payload: null as any });
     const [isChangelogOpen, setIsChangelogOpen] = useState(false);
-    const [changelogData, setChangelogData] = useState<any>(null);  
+    const [changelogData, setChangelogData] = useState<any>(null);
     const [isImportOpen, setIsImportOpen] = useState(false);
     const [isTutorialOpen, setIsTutorialOpen] = useState(false);
     // --- AUTH & USER DATA ---
@@ -145,6 +145,7 @@ export default function FinancialDashboard() {
         dueDay: '',
         day: diaDeHoje,
         category: 'Outros',
+        subcategory: 'Outros',
         targetMonth: 'Jan',
         isFixedIncome: false,
         fixedMonthlyValue: '',
@@ -170,7 +171,7 @@ export default function FinancialDashboard() {
     };
 
 
-    
+
 
     useEffect(() => {
         // Só roda se tiver USUÁRIO logado. Se for Landing Page (!user), ignora.
@@ -1404,6 +1405,7 @@ export default function FinancialDashboard() {
             installments: item.installments_count || '',
             dueDay: item.due_day || '',
             category: item.category || 'Outros',
+            subcategory: item.subcategory || 'Outros', // 🟢 AGORA ELE PUXA A SUBCATEGORIA DO BANCO!
             targetMonth: item.target_month || activeTab,
             isFixedIncome: mode === 'income' && item.category === 'Salário',
             fixedMonthlyValue: item.fixed_monthly_value || '',
@@ -1417,8 +1419,12 @@ export default function FinancialDashboard() {
         setIsFormOpen(true);
     };
 
-    const openNewTransactionModal = () => { setEditingId(null); setFormData({ ...initialFormState, targetMonth: activeTab }); setIsFormOpen(true); };
-
+    const openNewTransactionModal = () => {
+        setEditingId(null);
+        // 🟢 GARANTE QUE SUBCATEGORIA SEJA ZERADA SE O initialFormState NÃO A TIVER
+        setFormData({ ...initialFormState, targetMonth: activeTab, category: 'Outros', subcategory: 'Outros' });
+        setIsFormOpen(true);
+    };
     const handleFileUpload = async (e: any) => {
         const file = e.target.files[0];
         if (!file || !user) return;
@@ -1451,6 +1457,7 @@ export default function FinancialDashboard() {
             dueDay: '',
             day: diaDeHoje, // <--- AQUI TAMBÉM!
             category: 'Outros',
+            subcategory: 'Outros',
             targetMonth: activeTab || 'Jan',
             isFixedIncome: false,
             fixedMonthlyValue: '',
@@ -1526,7 +1533,7 @@ export default function FinancialDashboard() {
         let customValues: Record<string, any> = {};
         if (originalItem?.custom_values) customValues = typeof originalItem.custom_values === 'string' ? JSON.parse(originalItem.custom_values) : originalItem.custom_values;
 
-        // 🟢 A MÁQUINA DO TEMPO: Congela os valores passados para não quebrar o histórico
+        // A MÁQUINA DO TEMPO: Congela os valores passados para não quebrar o histórico
         const applyBackfill = (oldValue: number) => {
             const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
             let dDate = new Date(originalItem.created_at || isoDateForDatabase);
@@ -1546,20 +1553,38 @@ export default function FinancialDashboard() {
         };
 
         const getPayload = () => {
-            const base = { user_id: activeId, title: formData.title, context: context, linked_goal_id: formData.linkedGoalId || null, icon: formData.icon, payment_method: formData.paymentMethod || 'outros', receipts: updatedReceipts, receipt_url: finalReceiptUrl };
+            // 🟢 A MÁGICA ACONTECE AQUI: Adicionamos category e subcategory na "base" que vai para TODAS as tabelas
+            const base = {
+                user_id: activeId,
+                title: formData.title,
+                context: context,
+                linked_goal_id: formData.linkedGoalId || null,
+                icon: formData.icon,
+                payment_method: formData.paymentMethod || 'outros',
+                receipts: updatedReceipts,
+                receipt_url: finalReceiptUrl,
+                category: formData.category || 'Outros',       // 🟢 INJETADO!
+                subcategory: formData.subcategory || 'Outros'  // 🟢 INJETADO!
+            };
+
             const safeCreatedAt = (editingId && originalItem?.created_at) ? originalItem.created_at : isoDateForDatabase;
 
             if (formMode === 'income') {
                 if (formData.isFixedIncome) {
                     let finalValue = amountVal;
                     if (updateScope === 'single' && originalItem) { finalValue = originalItem.value; customValues[tag] = amountVal; }
-                    else if (updateScope === 'future' && originalItem) { applyBackfill(originalItem.value); } // 🟢 Viaja no tempo!
+                    else if (updateScope === 'future' && originalItem) { applyBackfill(originalItem.value); }
 
-                    return { table: 'recurring', data: { ...base, value: finalValue, custom_values: customValues, due_day: parseInt(dayValue), category: 'Salário', type: 'income', status: 'active', start_date: editingId && originalItem?.start_date ? originalItem.start_date : isoDateForDatabase, created_at: safeCreatedAt } };
-                } else return { table: 'transactions', data: { ...base, amount: amountVal, type: 'income', date: dateStringBR, category: 'Receita', target_month: formData.targetMonth, status: 'active', created_at: safeCreatedAt } };
+                    // Removemos a 'category: Salário' forçada daqui para ele usar a base
+                    return { table: 'recurring', data: { ...base, value: finalValue, custom_values: customValues, due_day: parseInt(dayValue), type: 'income', status: 'active', start_date: editingId && originalItem?.start_date ? originalItem.start_date : isoDateForDatabase, created_at: safeCreatedAt } };
+                } else {
+                    // Removemos a 'category: Receita' forçada daqui
+                    return { table: 'transactions', data: { ...base, amount: amountVal, type: 'income', date: dateStringBR, target_month: formData.targetMonth, status: 'active', created_at: safeCreatedAt } };
+                }
             }
 
-            if (formMode === 'expense') return { table: 'transactions', data: { ...base, amount: amountVal, type: 'expense', date: dateStringBR, category: formData.category, target_month: formData.targetMonth, status: 'active', created_at: safeCreatedAt, is_paid: editingId && originalItem !== undefined ? originalItem.is_paid : true } };
+            // Removemos a 'category: formData.category' daqui, pois já está no base
+            if (formMode === 'expense') return { table: 'transactions', data: { ...base, amount: amountVal, type: 'expense', date: dateStringBR, target_month: formData.targetMonth, status: 'active', created_at: safeCreatedAt, is_paid: editingId && originalItem !== undefined ? originalItem.is_paid : true } };
 
             if (formMode === 'installment') {
                 const qtd = parseInt(formData.installments.toString()) || 1;
@@ -1567,16 +1592,17 @@ export default function FinancialDashboard() {
                 let totalValue = amountVal > 0 ? amountVal : (valuePerMonth * qtd);
 
                 if (updateScope === 'single' && originalItem) { customValues[tag] = valuePerMonth; valuePerMonth = originalItem.value_per_month; totalValue = originalItem.total_value; }
-                else if (updateScope === 'future' && originalItem) { applyBackfill(originalItem.value_per_month); } // 🟢 Viaja no tempo!
+                else if (updateScope === 'future' && originalItem) { applyBackfill(originalItem.value_per_month); }
 
                 return { table: 'installments', data: { ...base, total_value: totalValue, installments_count: qtd, current_installment: editingId && originalItem ? originalItem.current_installment : 0, value_per_month: valuePerMonth, custom_values: customValues, due_day: parseInt(dayValue) || 10, status: 'active', created_at: safeCreatedAt } };
             }
 
             let finalValue = amountVal;
             if (updateScope === 'single' && originalItem) { finalValue = originalItem.value; customValues[tag] = amountVal; }
-            else if (updateScope === 'future' && originalItem) { applyBackfill(originalItem.value); } // 🟢 Viaja no tempo!
+            else if (updateScope === 'future' && originalItem) { applyBackfill(originalItem.value); }
 
-            return { table: 'recurring', data: { ...base, value: finalValue, custom_values: customValues, due_day: parseInt(dayValue), category: formData.category || 'Fixa', type: 'expense', status: 'active', start_date: editingId && originalItem?.start_date ? originalItem.start_date : isoDateForDatabase, created_at: safeCreatedAt } };
+            // Removemos a 'category: formData.category || Fixa' daqui, já está na base
+            return { table: 'recurring', data: { ...base, value: finalValue, custom_values: customValues, due_day: parseInt(dayValue), type: 'expense', status: 'active', start_date: editingId && originalItem?.start_date ? originalItem.start_date : isoDateForDatabase, created_at: safeCreatedAt } };
         };
 
         const { table, data } = getPayload();
@@ -1588,7 +1614,8 @@ export default function FinancialDashboard() {
             else if (table === 'recurring') { if (editingId) setRecurring(prev => prev.map(r => r.id === editingId ? fakeItem : r)); else setRecurring(prev => [...prev, fakeItem]); }
             toast.success("Salvo no laboratório! 🧪");
             setIsFormOpen(false); setEditingId(null);
-            setFormData({ title: '', amount: '', linkedGoalId: null, targetMonth: activeTab, icon: 'dollar-sign', paymentMethod: 'outros', isFixedIncome: false, category: 'Outros', installments: '1', fixedMonthlyValue: '', dueDay: '10', day: String(new Date().getDate()).padStart(2, '0'), receiptUrl: '' });
+            // 🟢 ZERANDO COM SUBCATEGORIA
+            setFormData({ title: '', amount: '', linkedGoalId: null, targetMonth: activeTab, icon: 'dollar-sign', paymentMethod: 'outros', isFixedIncome: false, category: 'Outros', subcategory: 'Outros', installments: '1', fixedMonthlyValue: '', dueDay: '10', day: String(new Date().getDate()).padStart(2, '0'), receiptUrl: '' });
             return;
         }
 
@@ -1609,7 +1636,8 @@ export default function FinancialDashboard() {
             toast.success(updateScope === 'single' ? "Exceção salva apenas para este mês!" : "Alteração salva deste mês em diante!");
 
             setIsFormOpen(false); setEditingId(null);
-            setFormData({ title: '', amount: '', linkedGoalId: null, targetMonth: activeTab, icon: 'dollar-sign', paymentMethod: 'outros', isFixedIncome: false, category: 'Outros', installments: '1', fixedMonthlyValue: '', dueDay: '10', day: String(new Date().getDate()).padStart(2, '0'), receiptUrl: '' });
+            // 🟢 ZERANDO COM SUBCATEGORIA AQUI TAMBÉM
+            setFormData({ title: '', amount: '', linkedGoalId: null, targetMonth: activeTab, icon: 'dollar-sign', paymentMethod: 'outros', isFixedIncome: false, category: 'Outros', subcategory: 'Outros', installments: '1', fixedMonthlyValue: '', dueDay: '10', day: String(new Date().getDate()).padStart(2, '0'), receiptUrl: '' });
             if (activeId) loadData(activeId, context);
         } catch (error: any) { toast.error("Erro ao salvar: " + (error.message || "")); }
     };
@@ -2599,6 +2627,7 @@ export default function FinancialDashboard() {
                             onEdit={handleEdit}
                             onTogglePaidMonth={togglePaidMonth}
                             getReceipt={getReceiptForMonth}
+
                         />
                     )}
                     {(currentLayout === 'modern') && (
@@ -2744,10 +2773,10 @@ export default function FinancialDashboard() {
                 goals={goalsComGastoDoMes}
             />
             {/* 🟢 MODAL DE ATUALIZAÇÕES */}
-            <ChangelogModal 
-                isOpen={isChangelogOpen} 
-                onClose={() => setIsChangelogOpen(false)} 
-                data={changelogData} 
+            <ChangelogModal
+                isOpen={isChangelogOpen}
+                onClose={() => setIsChangelogOpen(false)}
+                data={changelogData}
                 user={user}
             />
 
