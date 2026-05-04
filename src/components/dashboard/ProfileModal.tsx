@@ -129,6 +129,12 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
       const file = e.target.files?.[0];
       if (!file) return;
 
+      // 🟢 VALIDAÇÃO DE SEGURANÇA (TIPO E TAMANHO)
+      const ALLOWED = ['image/jpeg', 'image/png', 'image/webp'];
+      const MAX_MB = 3;
+      if (!ALLOWED.includes(file.type)) { toast.error('Use JPG, PNG ou WEBP.'); return; }
+      if (file.size > MAX_MB * 1024 * 1024) { toast.error(`A imagem deve ter no máximo ${MAX_MB}MB.`); return; }
+
       const fileExt = file.name.split('.').pop();
       const fileName = `avatar_${user.id}_${Date.now()}.${fileExt}`;
       const filePath = `avatars/${fileName}`;
@@ -153,6 +159,12 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
       setUploadingLogo(true);
       const file = e.target.files?.[0];
       if (!file) return;
+
+      // 🟢 VALIDAÇÃO DE SEGURANÇA (TIPO E TAMANHO)
+      const ALLOWED = ['image/jpeg', 'image/png', 'image/webp'];
+      const MAX_MB = 3;
+      if (!ALLOWED.includes(file.type)) { toast.error('Use JPG, PNG ou WEBP.'); return; }
+      if (file.size > MAX_MB * 1024 * 1024) { toast.error(`A logo deve ter no máximo ${MAX_MB}MB.`); return; }
 
       const fileExt = file.name.split('.').pop();
       const fileName = `logo_${user.id}_${Date.now()}.${fileExt}`;
@@ -184,6 +196,16 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
   const handleUpdateProfile = async () => {
     setLoading(true);
     try {
+      // 🟢 VALIDAÇÃO DO CNPJ/CPF (Impede lixo no banco de dados)
+      if (isConsultant) {
+        const cleanCnpj = cnpj.replace(/\D/g, '');
+        if (cleanCnpj.length > 0 && cleanCnpj.length !== 11 && cleanCnpj.length !== 14) {
+          toast.error('Erro: Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.');
+          setLoading(false);
+          return;
+        }
+      }
+
       const { error: authError } = await supabase.auth.updateUser({
         data: { full_name: fullName, avatar_url: avatarUrl }
       });
@@ -238,28 +260,35 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
     }
   };
 
-  // 🟢 SALVA O CÉREBRO E AS EMOÇÕES
+  // 🟢 SALVA O CÉREBRO E AS EMOÇÕES (COM UPSERT E CAST BOOLEAN)
   const handleSaveAIConfig = async () => {
     setSavingRules(true);
     try {
+      // Usando Upsert para garantir que crie a linha se o usuário for novo
       await supabase.from('user_settings')
-        .update({ 
+        .upsert({ 
+            user_id: user.id,
             bot_persona: botPersona,
             bot_humor_level: humorLevel,
             bot_sincerity_level: sincerityLevel,
             bot_formality_level: formalityLevel
-        })
-        .eq('user_id', user.id);
+        }, { onConflict: 'user_id' });
 
       for (const ws of workspaces) {
-        await supabase.from('workspaces').update({ whatsapp_rule: ws.whatsapp_rule }).eq('id', ws.id).eq('user_id', user.id);
+        await supabase.from('workspaces')
+            .update({ whatsapp_rule: ws.whatsapp_rule?.slice(0, 300) || null })
+            .eq('id', ws.id)
+            .eq('user_id', user.id);
       }
       
       for (const wg of walletGoals) {
-        await supabase.from('goals').update({ 
-            whatsapp_rule: wg.whatsapp_rule, 
-            ai_enabled: wg.ai_enabled 
-        }).eq('id', wg.id).eq('user_id', user.id);
+        await supabase.from('goals')
+            .update({ 
+                whatsapp_rule: wg.whatsapp_rule?.slice(0, 300) || null, 
+                ai_enabled: wg.ai_enabled === true // 🟢 Força conversão para booleano
+            })
+            .eq('id', wg.id)
+            .eq('user_id', user.id);
       }
 
       toast.success("Cérebro da Luna atualizado! 🧠");
@@ -404,7 +433,8 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
 
                     <div>
                         <label className="text-xs text-gray-400 font-bold ml-1 mb-1 block">Sua Biografia / Especialidade</label>
-                        <textarea value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Ex: Especialista em recuperação de crédito e organização financeira para autônomos..." className="w-full bg-black border border-gray-800 rounded-xl p-3 text-white focus:border-purple-500 outline-none transition resize-none h-20" />
+                        {/* 🟢 Adicionado maxLength de 500 para proteger o banco de dados */}
+                        <textarea maxLength={500} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Ex: Especialista em recuperação de crédito e organização financeira para autônomos..." className="w-full bg-black border border-gray-800 rounded-xl p-3 text-white focus:border-purple-500 outline-none transition resize-none h-20" />
                     </div>
 
                     <div className="bg-black/50 p-4 rounded-xl border border-gray-800 flex flex-col sm:flex-row items-center gap-4">
