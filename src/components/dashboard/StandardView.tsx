@@ -126,7 +126,7 @@ export default function StandardView({
     const [modalProcessing, setModalProcessing] = useState(false);
 
     const closeModal = () => {
-        if (modalProcessing) return; // Impede de fechar enquanto carrega
+        if (modalProcessing) return; 
         setModalConfig(prev => ({ ...prev, isOpen: false }));
     };
 
@@ -172,11 +172,10 @@ export default function StandardView({
                 }
                 setSelectedItems([]);
             },
-            true // danger mode = botão vermelho
+            true 
         );
     };
 
-    // 🟢 FUNÇÕES EM MASSA COM MODAL CUSTOMIZADO
     const handleBulkPayBank = (bankLabel: string, groupItems: any[]) => {
         const tag = `${activeTab}/${selectedYear}`;
         const pendentes = groupItems.filter((i:any) => !i.paid_months?.includes(tag));
@@ -409,7 +408,6 @@ export default function StandardView({
                 <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
                     <div className="bg-[#111] border border-gray-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col items-center text-center">
                         
-                        {/* ÍCONE ANIMADO BASEADO NO TIPO */}
                         {modalConfig.type === 'danger' && <div className="bg-red-500/10 p-4 rounded-full mb-4 text-red-500"><AlertTriangle size={36} /></div>}
                         {modalConfig.type === 'confirm' && <div className="bg-cyan-500/10 p-4 rounded-full mb-4 text-cyan-400"><AlertCircle size={36} /></div>}
                         {modalConfig.type === 'alert' && <div className="bg-emerald-500/10 p-4 rounded-full mb-4 text-emerald-400"><CheckCircle2 size={36} /></div>}
@@ -445,7 +443,7 @@ export default function StandardView({
             {/* --- LAYOUT COMPACTO 3 COLUNAS --- */}
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start relative">
                 
-                {/* COLUNA 1: EXTRATO */}
+                {/* 🟢 COLUNA 1: EXTRATO */}
                 <div className="space-y-6">
                     <div className="flex items-center justify-between">
                         <h3 className="text-xl font-bold text-white flex items-center gap-2"><div className="w-1 h-6 bg-cyan-500 rounded-full"></div> Extrato do Mês</h3>
@@ -467,17 +465,21 @@ export default function StandardView({
 
                                         return (
                                             <div key={item.id} className={`group p-4 transition flex items-center justify-between ${isSelected ? 'bg-red-500/10' : 'hover:bg-white/[0.02]'}`}>
-                                                <div className="flex items-center gap-3 w-full">
+                                                
+                                                {/* 🟢 AQUI ESTÁ A CORREÇÃO (min-w-0 e flex-1) */}
+                                                <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 pr-2">
                                                     <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(item.id, 'transactions')} className="w-4 h-4 rounded border-gray-700 bg-black text-red-500 focus:ring-red-500 focus:ring-offset-gray-900 cursor-pointer shrink-0" />
 
                                                     <div onClick={() => onTogglePaid('transactions', item.id, item.is_paid || false)} className={`cursor-pointer w-10 h-10 rounded-2xl flex items-center justify-center transition-all shrink-0 ${item.is_paid ? 'bg-emerald-500/20 text-emerald-500' : 'bg-gray-800 text-gray-500 group-hover:bg-gray-700'}`}>
                                                         {item.is_paid ? <CheckCircle2 size={18} /> : <Icon size={18} />}
                                                     </div>
-                                                    <div className="overflow-hidden pr-2 w-full">
+                                                    
+                                                    {/* min-w-0 e flex-1 para travar o crescimento do texto */}
+                                                    <div className="flex-1 min-w-0">
                                                         <p className={`font-bold text-sm truncate ${item.is_paid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
-                                                        <p className="text-xs text-gray-500 flex flex-wrap items-center gap-1">
-                                                            <span className="truncate max-w-[150px]">{(item as any).category && (item as any).subcategory ? `${(item as any).category} • ${(item as any).subcategory}` : (item as any).category || 'Outros'}</span>
-                                                            <span className="text-gray-600 hidden sm:inline">•</span> 
+                                                        <p className="text-[10px] sm:text-xs text-gray-500 flex items-center gap-1">
+                                                            <span className="truncate">{(item as any).category && (item as any).subcategory ? `${(item as any).category} • ${(item as any).subcategory}` : (item as any).category || 'Outros'}</span>
+                                                            <span className="text-gray-600 hidden sm:inline shrink-0">•</span> 
                                                             <span className="shrink-0">{item.date}</span>
                                                             {getReceipt(item, activeTab) && (
                                                                 <a href={getReceipt(item, activeTab)} target="_blank" className="text-emerald-500 hover:text-emerald-300 ml-1 shrink-0" title="Ver Recibo">
@@ -487,6 +489,7 @@ export default function StandardView({
                                                         </p>
                                                     </div>
                                                 </div>
+                                                
                                                 <div className="text-right shrink-0">
                                                     <p className={`font-mono font-bold text-sm ${item.type === 'income' ? 'text-emerald-400' : 'text-gray-300'}`}>
                                                         {item.type === 'income' ? '+' : '-'} R$ {Number(item.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
@@ -508,10 +511,9 @@ export default function StandardView({
                     {renderDelayed()}
                 </div>
 
-                {/* COLUNA 2: BANCOS E PARCELAMENTOS */}
+                {/* 🟢 COLUNA 2: BANCOS E PARCELAMENTOS */}
                 <div className="space-y-6">
                     <div className="flex items-center justify-between">
-                        {/* 🟢 NOME DA COLUNA ATUALIZADO */}
                         <h3 className="text-xl font-bold text-white flex items-center gap-2"><div className="w-1 h-6 bg-purple-500 rounded-full"></div> Cartões & Parcelamentos</h3>
                     </div>
 
@@ -526,8 +528,6 @@ export default function StandardView({
                                 const group = groupedInstallments[bankKey];
                                 const style = BANK_STYLES[bankKey] || BANK_STYLES['outros'];
                                 const isOpen = openBanks.includes(bankKey);
-
-                                // 🟢 VERIFICA SE É UM CARTÃO DE VERDADE OU ALGO GENÉRICO
                                 const isCard = bankKey !== 'outros' && bankKey !== 'money';
 
                                 return (
@@ -537,13 +537,11 @@ export default function StandardView({
                                                 {style.icon ? <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center p-1.5 shadow-sm"><img src={style.icon} className="w-full h-full object-contain" style={{ filter: bankKey === 'nubank' ? 'none' : '' }} /></div> : <div className={`w-8 h-8 rounded-full flex items-center justify-center bg-black/20 ${style.text}`}><CreditCard size={16} /></div>}
                                                 <div>
                                                     <h4 className={`font-bold text-sm ${style.text}`}>{style.label}</h4>
-                                                    {/* 🟢 TEXTOS DINÂMICOS NA CABEÇA DO CARD */}
                                                     <p className="text-[10px] text-gray-400/80 uppercase tracking-wider font-bold">{isOpen ? `${isCard ? 'Fatura de' : 'Parcelas de'} ${activeTab}` : `${group.items.length} contas`}</p>
                                                 </div>
                                             </div>
                                             <div className="text-right flex items-center gap-3">
                                                 <div>
-                                                    {/* 🟢 TEXTOS DINÂMICOS NO TOTAL */}
                                                     <p className="text-[10px] text-gray-400">{isCard ? 'Total da Fatura' : 'Total no Mês'}</p>
                                                     <p className="text-white font-bold font-mono">R$ {group.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                                                 </div>
@@ -554,21 +552,10 @@ export default function StandardView({
                                             <div className="divide-y divide-gray-700/20 bg-black/20 animate-in slide-in-from-top-2 duration-200">
                                                 
                                                 <div className="flex items-center justify-between p-2 px-4 bg-black/40 border-b border-gray-700/30">
-                                                    {/* 🟢 TEXTOS DINÂMICOS NAS AÇÕES */}
                                                     <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">{isCard ? 'Ações da Fatura' : 'Ações em Massa'}</span>
                                                     <div className="flex gap-2">
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); handleBulkPayBank(style.label, group.items); }} 
-                                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition border border-emerald-500/20"
-                                                        >
-                                                            <CheckCircle2 size={12} /> Pagar Tudo
-                                                        </button>
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); handleBulkDelayBank(style.label, group.items); }} 
-                                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 transition border border-orange-500/20"
-                                                        >
-                                                            <Clock size={12} /> Adiar Tudo
-                                                        </button>
+                                                        <button onClick={(e) => { e.stopPropagation(); handleBulkPayBank(style.label, group.items); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition border border-emerald-500/20"><CheckCircle2 size={12} /> Pagar Tudo</button>
+                                                        <button onClick={(e) => { e.stopPropagation(); handleBulkDelayBank(style.label, group.items); }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 transition border border-orange-500/20"><Clock size={12} /> Adiar Tudo</button>
                                                     </div>
                                                 </div>
 
@@ -580,24 +567,28 @@ export default function StandardView({
 
                                                     return (
                                                         <div key={item.id} className={`group p-3 flex items-center justify-between transition ${isSelected ? 'bg-red-500/10' : 'hover:bg-white/5'}`}>
-                                                            <div className="flex items-center gap-2 w-full pr-2">
+                                                            
+                                                            {/* 🟢 AQUI ESTÁ A CORREÇÃO (min-w-0 e flex-1) */}
+                                                            <div className="flex items-center gap-2 w-full pr-2 flex-1 min-w-0">
                                                                 <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(item.id, 'installments')} className="w-3.5 h-3.5 rounded border-gray-700 bg-black text-red-500 focus:ring-red-500 focus:ring-offset-gray-900 cursor-pointer shrink-0" />
 
                                                                 <div onClick={() => onTogglePaidMonth('installments', item)} className={`cursor-pointer w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all ${isPaid ? 'bg-emerald-500/20 text-emerald-500' : 'bg-gray-800/50 text-gray-500 hover:text-white'}`}>
                                                                     {isPaid ? <Check size={14} /> : <span className="text-[10px] font-bold">{item.actualInstallment}x</span>}
                                                                 </div>
-                                                                <div className="overflow-hidden w-full">
+                                                                
+                                                                <div className="flex-1 min-w-0">
                                                                     <p className={`text-sm font-medium truncate ${isPaid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
-                                                                    <p className="text-[10px] text-gray-500 flex flex-wrap items-center gap-1">
+                                                                    <p className="text-[10px] text-gray-500 flex items-center gap-1">
                                                                         <Icon size={10} className="shrink-0" /> 
-                                                                        <span className="truncate max-w-[120px]">{(item as any).category && (item as any).subcategory ? `${(item as any).category} • ${(item as any).subcategory}` : (item as any).category || 'Outros'}</span>
-                                                                        <span className="text-gray-600 hidden sm:inline">•</span> 
+                                                                        <span className="truncate">{(item as any).category && (item as any).subcategory ? `${(item as any).category} • ${(item as any).subcategory}` : (item as any).category || 'Outros'}</span>
+                                                                        <span className="text-gray-600 hidden sm:inline shrink-0">•</span> 
                                                                         <span className="shrink-0">{item.actualInstallment}/{item.installments_count}</span> 
-                                                                        <span className="text-gray-600 mx-0.5">•</span> 
+                                                                        <span className="text-gray-600 mx-0.5 shrink-0">•</span> 
                                                                         <span className="shrink-0 text-gray-400">Dia {item.due_day}</span>
                                                                     </p>
                                                                 </div>
                                                             </div>
+                                                            
                                                             <div className="text-right shrink-0">
                                                                 <p className={`font-mono text-sm font-medium ${isPaid ? 'text-gray-600' : (item.has_arrears ? 'text-orange-400' : 'text-gray-300')}`}>
                                                                     R$ {Number(item.value_per_month).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
@@ -622,7 +613,7 @@ export default function StandardView({
                     </div>
                 </div>
 
-                {/* COLUNA 3: RECORRENTES */}
+                {/* 🟢 COLUNA 3: RECORRENTES */}
                 <div className="space-y-6">
                     <div className="flex items-center justify-between">
                         <h3 className="text-xl font-bold text-white flex items-center gap-2"><div className="w-1 h-6 bg-emerald-500 rounded-full"></div> Recorrentes</h3>
@@ -642,35 +633,33 @@ export default function StandardView({
 
                                     return (
                                         <div key={item.id} className={`group flex items-center justify-between p-2 rounded-lg mb-1 transition hover:bg-white/5 ${isSelected ? 'bg-red-500/10' : ''} ${isSkipped ? 'opacity-50 border border-dashed border-emerald-900 bg-transparent' : ''}`}>
-                                            <div className="flex items-center gap-2 w-full pr-2">
+                                            
+                                            {/* 🟢 AQUI ESTÁ A CORREÇÃO (min-w-0 e flex-1) */}
+                                            <div className="flex items-center gap-2 w-full pr-2 flex-1 min-w-0">
                                                 <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(item.id, 'recurring')} className="w-3.5 h-3.5 rounded border-gray-700 bg-black text-red-500 focus:ring-red-500 focus:ring-offset-gray-900 cursor-pointer shrink-0" />
 
                                                 <div onClick={() => onTogglePaidMonth('recurring', item)} className={`cursor-pointer w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all ${isPaid ? 'bg-emerald-500/20 text-emerald-500' : 'bg-black text-gray-400 group-hover:text-white'}`}>
                                                     {isPaid ? <CheckCircle2 size={14} /> : <DollarSign size={14} />}
                                                 </div>
-                                                <div className="overflow-hidden w-full">
+                                                
+                                                <div className="flex-1 min-w-0">
                                                     <p className={`text-sm font-bold truncate ${isPaid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
-                                                    <p className="text-[10px] text-gray-500 truncate max-w-[150px]">
+                                                    <p className="text-[10px] text-gray-500 truncate">
                                                         {(item as any).category && (item as any).subcategory ? `${(item as any).category} • ${(item as any).subcategory}` : (item as any).category || 'Outros'}
                                                     </p>
-                                                    {isSkipped && <p className="text-[10px] text-orange-500 font-bold">Pulado neste mês</p>}
+                                                    {isSkipped && <p className="text-[10px] text-orange-500 font-bold truncate">Pulado neste mês</p>}
                                                 </div>
                                             </div>
+                                            
                                             <div className="text-right shrink-0">
                                                 <p className={`font-mono font-bold text-sm ${isSkipped || isPaid ? 'text-gray-500' : 'text-emerald-400'}`}>
                                                     R$ {Number(item.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                                 </p>
                                                 <div className="flex justify-end gap-2 mt-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                                                     <button onClick={() => onTogglePaidMonth('recurring', item)} className={`hover:text-emerald-400 ${isPaid ? 'text-emerald-500/50' : 'text-gray-500'}`} title={isPaid ? "Desfazer" : "Receber"}><Check size={12} /></button>
-                                                    <button onClick={() => onToggleDelay('recurring', item)} title={isSkipped ? "Voltar salário" : "Pular este mês"} className="text-gray-500 hover:text-orange-400">
-                                                        <Clock size={12} />
-                                                    </button>
-                                                    <button onClick={() => onEdit(item, 'income')} title="Editar Salário" className="text-gray-500 hover:text-cyan-400">
-                                                        <Pencil size={12} />
-                                                    </button>
-                                                    <button onClick={() => onDelete('recurring', item.id)} title="Excluir Permanentemente" className="text-gray-500 hover:text-red-400">
-                                                        <Trash2 size={12} />
-                                                    </button>
+                                                    <button onClick={() => onToggleDelay('recurring', item)} title={isSkipped ? "Voltar salário" : "Pular este mês"} className="text-gray-500 hover:text-orange-400"><Clock size={12} /></button>
+                                                    <button onClick={() => onEdit(item, 'income')} title="Editar Salário" className="text-gray-500 hover:text-cyan-400"><Pencil size={12} /></button>
+                                                    <button onClick={() => onDelete('recurring', item.id)} title="Excluir Permanentemente" className="text-gray-500 hover:text-red-400"><Trash2 size={12} /></button>
                                                 </div>
                                             </div>
                                         </div>
@@ -693,17 +682,20 @@ export default function StandardView({
 
                                         return (
                                             <div key={item.id} className={`group p-3 rounded-xl border mb-2 transition flex items-center justify-between ${isSelected ? 'border-red-500 bg-red-500/10' : isSkipped ? 'border-dashed border-gray-800 opacity-50 bg-transparent' : isPaid ? 'bg-gray-900/50 border-gray-800' : 'bg-gray-800/30 border-gray-700 hover:border-gray-600'}`}>
-                                                <div className="flex items-center gap-2 w-full pr-2">
+                                                
+                                                {/* 🟢 AQUI ESTÁ A CORREÇÃO (min-w-0 e flex-1) */}
+                                                <div className="flex items-center gap-2 w-full pr-2 flex-1 min-w-0">
                                                     <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(item.id, 'recurring')} className="w-4 h-4 rounded border-gray-700 bg-black text-red-500 focus:ring-red-500 focus:ring-offset-gray-900 cursor-pointer shrink-0" />
 
                                                     <div onClick={() => onTogglePaidMonth('recurring', item)} className={`cursor-pointer w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-all ${isPaid ? 'bg-emerald-500/20 text-emerald-500' : 'bg-black text-gray-400 group-hover:text-white'}`}>
                                                         {isPaid ? <CheckCircle2 size={18} /> : <Icon size={18} />}
                                                     </div>
-                                                    <div className="overflow-hidden w-full">
+                                                    
+                                                    <div className="flex-1 min-w-0">
                                                         <p className={`font-bold text-sm truncate ${isPaid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
-                                                        <p className="text-[10px] text-gray-500 flex flex-wrap items-center gap-1">
-                                                            <span className="truncate max-w-[120px]">{(item as any).category && (item as any).subcategory ? `${(item as any).category} • ${(item as any).subcategory}` : (item as any).category || 'Outros'}</span>
-                                                            <span className="text-gray-600 hidden sm:inline">•</span>
+                                                        <p className="text-[10px] text-gray-500 flex items-center gap-1">
+                                                            <span className="truncate">{(item as any).category && (item as any).subcategory ? `${(item as any).category} • ${(item as any).subcategory}` : (item as any).category || 'Outros'}</span>
+                                                            <span className="text-gray-600 hidden sm:inline shrink-0">•</span>
                                                             <span className="shrink-0">Vence dia {item.due_day}</span>
                                                             {isSkipped && <span className="text-orange-500 font-bold ml-1 shrink-0">(Pular)</span>}
                                                             {getReceipt(item, activeTab) && (
