@@ -2748,6 +2748,7 @@ export default function FinancialDashboard() {
                 isOpen={isChangelogOpen} 
                 onClose={() => setIsChangelogOpen(false)} 
                 data={changelogData} 
+                user={user}
             />
 
             <AiAssistantModal

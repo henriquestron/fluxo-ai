@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { ArrowLeft, Rocket, Users, Settings, Save, ShieldCheck, Tag, Ticket, Megaphone, Video, FileText, History, Trash2, PlusCircle, Loader2, ImagePlus, X } from "lucide-react";
+import { ArrowLeft, Rocket, Users, Settings, Save, ShieldCheck, Tag, Ticket, Megaphone, Video, FileText, History, Trash2, PlusCircle, Loader2, ImagePlus, X, Lightbulb, Bold, Italic, List, ListOrdered, Link as LinkIcon } from "lucide-react";
 import { toast } from "sonner";
 
 const supabase = createClient(
@@ -46,15 +46,36 @@ export default function AdminDashboard() {
   const [settings, setSettings] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
 
-  // 🟢 STATES DO CHANGELOG
+  // 🟢 STATES DA CENTRAL DE COMUNICAÇÃO (Com o novo campo "type")
   const [changelogs, setChangelogs] = useState<any[]>([]);
-  const [newChangelog, setNewChangelog] = useState({ version: '', title: '', content: '', video_url: '', image_url: '' });
+  const [newChangelog, setNewChangelog] = useState({ type: 'Atualização', version: '', title: '', content: '', video_url: '', image_url: '' });
   const [savingChangelog, setSavingChangelog] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false); // 🟢 Controle do upload de imagem
+  const [uploadingImage, setUploadingImage] = useState(false); 
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     checkAdminAndFetchData();
   }, []);
+
+  const insertFormatting = (prefix: string, suffix: string = '') => {
+      if (!textareaRef.current) return;
+      const textarea = textareaRef.current;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const text = newChangelog.content;
+      const selectedText = text.substring(start, end);
+      
+      // Monta o texto novo com as tags (ex: **palavra**)
+      const newText = text.substring(0, start) + prefix + selectedText + suffix + text.substring(end);
+      
+      setNewChangelog({ ...newChangelog, content: newText });
+      
+      // Devolve o cursor pro lugar certo logo após atualizar o state
+      setTimeout(() => {
+          textarea.focus();
+          textarea.setSelectionRange(start + prefix.length, end + prefix.length);
+      }, 0);
+  };
 
   async function checkAdminAndFetchData() {
     setLoading(true);
@@ -88,7 +109,6 @@ export default function AdminDashboard() {
     if (data) setChangelogs(data);
   }
 
-  // 🟢 FUNÇÃO DE UPLOAD DA IMAGEM
   const handleImageUpload = async (e: any) => {
     try {
       setUploadingImage(true);
@@ -120,27 +140,33 @@ export default function AdminDashboard() {
     if (!newChangelog.version || !newChangelog.title || !newChangelog.content) return toast.error("Preencha Versão, Título e Texto!");
     
     setSavingChangelog(true);
+
+    // 🟢 MÁGICA: Adiciona o prefixo no título para que o Front-End reconheça o tipo de aviso!
+    const finalTitle = newChangelog.type === 'Atualização' 
+        ? newChangelog.title 
+        : `${newChangelog.type}: ${newChangelog.title}`;
+
     const { error } = await supabase.from('changelogs').insert([{
         version: newChangelog.version,
-        title: newChangelog.title,
+        title: finalTitle,
         content: newChangelog.content,
         video_url: newChangelog.video_url || null,
-        image_url: newChangelog.image_url || null // 🟢 Salva a imagem no banco
+        image_url: newChangelog.image_url || null 
     }]);
 
     if (error) {
-        toast.error("Erro ao lançar novidade!");
+        toast.error("Erro ao lançar mensagem!");
         console.error(error);
     } else {
-        toast.success("Atualização lançada com sucesso! 🚀");
-        setNewChangelog({ version: '', title: '', content: '', video_url: '', image_url: '' });
+        toast.success("Mensagem disparada com sucesso! 🚀");
+        setNewChangelog({ type: 'Atualização', version: '', title: '', content: '', video_url: '', image_url: '' });
         fetchChangelogs();
     }
     setSavingChangelog(false);
   }
 
   async function handleDeleteChangelog(id: string) {
-    if (!confirm("Tem certeza que deseja apagar esta nota de atualização?")) return;
+    if (!confirm("Tem certeza que deseja apagar esta nota?")) return;
     const { error } = await supabase.from('changelogs').delete().eq('id', id);
     if (error) toast.error("Erro ao apagar nota.");
     else {
@@ -251,14 +277,14 @@ export default function AdminDashboard() {
           )}
         </section>
 
-        {/* 🟢 CENTRAL DE NOTAS DE ATUALIZAÇÃO (CHANGELOG) */}
+        {/* 🟢 CENTRAL DE NOTAS E AVISOS */}
         <section className="bg-white dark:bg-[#111111] rounded-3xl shadow-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
           <div className="p-8 border-b border-gray-100 dark:border-gray-800 flex flex-col md:flex-row gap-6 md:items-center justify-between bg-fuchsia-950/10">
             <div className="flex items-center gap-3">
               <div className="p-3 bg-fuchsia-500/20 border border-fuchsia-500/30 rounded-xl text-fuchsia-400"><Megaphone size={24} /></div>
               <div>
-                <h2 className="text-2xl font-bold text-fuchsia-400">Lançamento de Atualizações</h2>
-                <p className="text-sm text-gray-500">Crie notas com textos longos e envie prints de tela para explicar melhor.</p>
+                <h2 className="text-2xl font-bold text-fuchsia-400">Central de Comunicação</h2>
+                <p className="text-sm text-gray-500">Envie atualizações, dicas e mensagens motivacionais para a base.</p>
               </div>
             </div>
           </div>
@@ -266,17 +292,33 @@ export default function AdminDashboard() {
           <div className="grid grid-cols-1 xl:grid-cols-2">
             {/* LADO ESQUERDO: FORMULÁRIO */}
             <div className="p-8 border-r border-gray-800">
-                <h3 className="font-bold text-lg mb-6 flex items-center gap-2"><PlusCircle size={20} className="text-fuchsia-500"/> Nova Atualização</h3>
+                <h3 className="font-bold text-lg mb-6 flex items-center gap-2"><PlusCircle size={20} className="text-fuchsia-500"/> Disparar Mensagem</h3>
                 <form onSubmit={handleCreateChangelog} className="space-y-5">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1 block">Versão</label>
-                            <input type="text" placeholder="Ex: v2.1" required className="w-full p-3 border border-gray-700 rounded-xl bg-black outline-none focus:border-fuchsia-500 font-mono" value={newChangelog.version} onChange={(e) => setNewChangelog({...newChangelog, version: e.target.value})} />
+                    
+                    {/* 🟢 SELETOR DE TIPO */}
+                    <div className="grid grid-cols-3 gap-4">
+                        <div className="col-span-1">
+                            <label className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1 block flex items-center gap-1">Tipo <Lightbulb size={12}/></label>
+                            <select 
+                                className="w-full p-3 border border-gray-700 rounded-xl bg-black outline-none focus:border-fuchsia-500"
+                                value={newChangelog.type}
+                                onChange={(e) => setNewChangelog({...newChangelog, type: e.target.value})}
+                            >
+                                <option value="Atualização">Atualização (Cinza)</option>
+                                <option value="Novidade">Novidade (Azul)</option>
+                                <option value="Dica">Dica (Amarelo)</option>
+                                <option value="Importante">Importante (Roxo)</option>
+                            </select>
                         </div>
-                        <div>
-                            <label className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1 block">Título Chamativo</label>
+                        <div className="col-span-2">
+                            <label className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1 block">Título</label>
                             <input type="text" placeholder="Ex: Cérebro da IA Liberado! 🧠" required className="w-full p-3 border border-gray-700 rounded-xl bg-black outline-none focus:border-fuchsia-500" value={newChangelog.title} onChange={(e) => setNewChangelog({...newChangelog, title: e.target.value})} />
                         </div>
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1 block">Versão / Tag (Para o Canto Superior)</label>
+                        <input type="text" placeholder="Ex: v2.1 ou DICA #1" required className="w-full p-3 border border-gray-700 rounded-xl bg-black outline-none focus:border-fuchsia-500 font-mono" value={newChangelog.version} onChange={(e) => setNewChangelog({...newChangelog, version: e.target.value})} />
                     </div>
                     
                     {/* 🟢 MÍDIA DA ATUALIZAÇÃO (FOTO OU VÍDEO) */}
@@ -308,13 +350,45 @@ export default function AdminDashboard() {
                     </div>
 
                     <div>
-                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1 block">Texto Detalhado da Atualização</label>
-                        {/* 🟢 TEXTAREA MAIOR PARA TEXTOS LONGOS */}
-                        <textarea rows={12} placeholder="Descreva as novidades. Você pode pular linhas normalmente..." required className="w-full p-4 border border-gray-700 rounded-xl bg-black outline-none focus:border-fuchsia-500 resize-y min-h-[200px]" value={newChangelog.content} onChange={(e) => setNewChangelog({...newChangelog, content: e.target.value})} />
+                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1 block">Texto Detalhado</label>
+                        
+                        <div className="border border-gray-700 rounded-xl overflow-hidden bg-black focus-within:border-fuchsia-500 transition-colors shadow-inner">
+                            {/* 🟢 BARRA DE FERRAMENTAS (TOOLBAR) */}
+                            <div className="flex items-center gap-1 bg-gray-900/50 p-2 border-b border-gray-700/50">
+                                <button type="button" onClick={() => insertFormatting('**', '**')} className="p-1.5 hover:bg-gray-700 rounded-md text-gray-400 hover:text-white transition-colors" title="Negrito">
+                                    <Bold size={16} />
+                                </button>
+                                <button type="button" onClick={() => insertFormatting('*', '*')} className="p-1.5 hover:bg-gray-700 rounded-md text-gray-400 hover:text-white transition-colors" title="Itálico">
+                                    <Italic size={16} />
+                                </button>
+                                <div className="w-px h-4 bg-gray-700 mx-2"></div>
+                                <button type="button" onClick={() => insertFormatting('\n- ')} className="p-1.5 hover:bg-gray-700 rounded-md text-gray-400 hover:text-white transition-colors" title="Lista de Pontos">
+                                    <List size={16} />
+                                </button>
+                                <button type="button" onClick={() => insertFormatting('\n1. ')} className="p-1.5 hover:bg-gray-700 rounded-md text-gray-400 hover:text-white transition-colors" title="Lista Numerada">
+                                    <ListOrdered size={16} />
+                                </button>
+                                <div className="w-px h-4 bg-gray-700 mx-2"></div>
+                                <button type="button" onClick={() => insertFormatting('[', '](https://seulink.com)')} className="p-1.5 hover:bg-gray-700 rounded-md text-gray-400 hover:text-white transition-colors" title="Adicionar Link">
+                                    <LinkIcon size={16} />
+                                </button>
+                            </div>
+
+                            {/* CAIXA DE TEXTO */}
+                            <textarea 
+                                ref={textareaRef}
+                                rows={12} 
+                                placeholder="Descreva as novidades ou a dica motivacional. Selecione uma palavra e use os botões acima para formatar..." 
+                                required 
+                                className="w-full p-4 bg-transparent outline-none resize-y min-h-[200px] text-gray-200" 
+                                value={newChangelog.content} 
+                                onChange={(e) => setNewChangelog({...newChangelog, content: e.target.value})} 
+                            />
+                        </div>
                     </div>
 
                     <button type="submit" disabled={savingChangelog} className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold py-4 rounded-xl transition shadow-lg flex items-center justify-center gap-2 text-lg">
-                        {savingChangelog ? <Loader2 className="animate-spin" size={20}/> : <Rocket size={20}/>} Disparar Atualização para os Clientes
+                        {savingChangelog ? <Loader2 className="animate-spin" size={20}/> : <Rocket size={20}/>} Disparar para os Clientes
                     </button>
                 </form>
             </div>
@@ -325,7 +399,7 @@ export default function AdminDashboard() {
                 
                 {changelogs.length === 0 ? (
                     <div className="text-center py-10 border border-dashed border-gray-800 rounded-2xl">
-                        <p className="text-gray-500 text-sm">Nenhuma atualização registrada.</p>
+                        <p className="text-gray-500 text-sm">Nenhuma mensagem registrada.</p>
                     </div>
                 ) : (
                     <div className="space-y-4 max-h-[800px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-2">

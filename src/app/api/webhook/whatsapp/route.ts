@@ -615,6 +615,18 @@ REGRAS ABSOLUTAS:
 ${hasAudio ? "\n⚠️ ÁUDIO: Transcreva e responda com base no que foi dito." : ""}
 ${hasImage ? "\n📸 IMAGEM: Extraia valor, data e estabelecimento. Identifique a forma de pagamento." : ""}
 `.trim();
+// 🟢 GATILHO MOTIVACIONAL DA LUNA (O toque de empatia!)
+        let gatilhoMotivacional = "";
+        
+        // Verifica se o usuário tá no vermelho E se a Luna está configurada para ser descontraída/parceira
+        if (ctx.estado_conta === "CRÍTICO 🔴" && botPersona === "humorado") {
+            gatilhoMotivacional = `
+            ⚠️ INSTRUÇÃO DE EMPATIA (MUITO IMPORTANTE):
+            Notei no contexto que o estado da conta atual é "CRÍTICO" (saldo negativo).
+            Na sua "reply", além de confirmar o lançamento atual normalmente, faça uma brincadeira muito rápida e afetuosa usando a clássica frase de infância "na volta a gente compra" para quebrar o gelo sobre a falta de grana. 
+            Termine com uma palavra de apoio dizendo que organizar as contas é o primeiro passo e que você está ali para ajudar. Não seja longa, mantenha o tom de mensagem de WhatsApp.
+            `;
+        }
 
         const finalPrompt = [systemPrompt, ...promptParts];
 
