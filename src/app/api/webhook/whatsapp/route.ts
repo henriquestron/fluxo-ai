@@ -72,7 +72,16 @@ async function downloadMedia(url: string) {
 }
 
 // ============================================================================
-// CONTEXTO FINANCEIRO COMPLETO
+// CONTEXTO FINANCEIRO COMPLETO (CLONE EXATO DO PAGE.TSX)
+// ============================================================================
+// ============================================================================
+// CONTEXTO FINANCEIRO COMPLETO (CLONE EXATO DO PAGE.TSX)
+// ============================================================================
+// ============================================================================
+// CONTEXTO FINANCEIRO COMPLETO (CLONE DO PAGE.TSX ATUALIZADO 2.0)
+// ============================================================================
+// ============================================================================
+// CONTEXTO FINANCEIRO COMPLETO (CLONE DO PAGE.TSX ATUALIZADO 2.0)
 // ============================================================================
 async function getFinancialContext(supabase: any, userId: string, workspaceId: string) {
     const today = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
@@ -126,6 +135,7 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
             return arr.includes(tag) || arr.includes(tag.split('/')[0]);
         };
 
+        // 🟢 HELPER MÁGICO DE INDEPENDÊNCIA DE VALORES
         const getCustomValue = (item: any, tag: string, baseValue: number) => {
             if (!item.custom_values) return baseValue;
             const parsedCustom = typeof item.custom_values === 'string' ? JSON.parse(item.custom_values) : item.custom_values;
@@ -138,6 +148,7 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
             const standbyArr = safeArray(r.standby_months);
             if (standbyArr.includes(currentPaymentTag) && !paid) return false;
 
+            // 🟢 MATADOR DE FANTASMAS
             if (r.cancelled_from && currentYYYYMM >= r.cancelled_from) return false;
 
             const { m: startMonth, y: startYear } = getStartData(r);
@@ -146,10 +157,12 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
             return false;
         });
 
+        // ENTRADAS (Com CustomValues)
         const incomeFixed = activeRecurring.filter((r: any) => r.type === 'income' && !safeArray(r.skipped_months).includes(monthName)).reduce((acc: number, curr: any) => acc + getCustomValue(curr, currentPaymentTag, Number(curr.value)), 0);
         const incomeVariable = transactions.filter((t: any) => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc: number, curr: any) => acc + Number(curr.amount), 0);
         const incomeTotal = incomeFixed + incomeVariable;
 
+        // SAÍDAS (Com CustomValues e filtro de caixinhas restabelecido do jeito certo)
         const expenseFixed = activeRecurring.filter((r: any) => r.type === 'expense' && !safeArray(r.skipped_months).includes(monthName)).reduce((acc: number, curr: any) => acc + getCustomValue(curr, currentPaymentTag, Number(curr.value)), 0);
         const expenseVariable = transactions.filter((t: any) => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby' && !t.linked_goal_id).reduce((acc: number, curr: any) => acc + Number(curr.amount), 0);
 
@@ -159,6 +172,7 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
             const standbyArr = safeArray(curr.standby_months);
             if (standbyArr.includes(currentPaymentTag) && !paid) return acc;
 
+            // 🟢 MATADOR DE FANTASMAS
             if (curr.cancelled_from && currentYYYYMM >= curr.cancelled_from) return acc;
 
             const { m: startMonth, y: startYear } = getStartData(curr);
@@ -174,6 +188,7 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
             const currentInstNum = 1 + (curr.current_installment || 0) + monthsDiff - pastStandbys;
 
             if (currentInstNum >= 1 && currentInstNum <= curr.installments_count) {
+                // 🟢 CustomValues das parcelas
                 return acc + getCustomValue(curr, currentPaymentTag, Number(curr.value_per_month));
             }
             return acc;
@@ -181,6 +196,7 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
 
         const expenseTotal = expenseVariable + expenseFixed + installTotal;
 
+        // EXCLUSIVO WHATSAPP: TEXTO E STATUS (Lendo valores certos)
         let pendingAmount = 0;
         let pendingCount = 0;
         let paidCount = 0;
@@ -244,6 +260,7 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
         };
     };
 
+    // 🟢 MÁQUINA DO TEMPO (Efeito Cascata Exato)
     let previousSurplus = 0;
     for (let i = 0; i < activeMonthIdx; i++) {
         const pastData = getMonthData(MONTHS[i], i);
@@ -439,18 +456,26 @@ export async function POST(req: Request) {
             promptParts.push(messageContent);
         }
 
-        // ── ETAPA 6: VERIFICAR PLANO E NOME DO USUÁRIO (CORRIGIDO) ─────────────
+        // ── ETAPA 6: VERIFICAR PLANO ───────────────────────────────────────────
+        // ── ETAPA 6: VERIFICAR PLANO E NOME DO USUÁRIO ─────────────────────────
         
-        // Busca o plano e o nome seguro na tabela profiles (sem expor Admin API)
+        // 1. Busca APENAS o plano na tabela profiles (pra não dar erro no banco)
         const { data: profile } = await supabase
             .from('profiles')
-            .select('plan_tier, full_name')
+            .select('plan_tier')
             .eq('id', userSettings.user_id)
             .single();
             
         const plan = profile?.plan_tier || 'free';
-        const userName = profile?.full_name ? profile.full_name.split(' ')[0] : 'chefe';
 
+        // 2. Busca o nome real do usuário direto no sistema de Autenticação
+        const { data: authData } = await supabase.auth.admin.getUserById(userSettings.user_id);
+        const fullName = authData?.user?.user_metadata?.full_name;
+        
+        // Pega só o primeiro nome
+        const userName = fullName ? fullName.split(' ')[0] : 'chefe';
+
+        // 3. Verificação de acesso
         if (!['pro', 'agent', 'admin'].includes(plan)) {
             await sendWhatsAppMessage(targetPhone, `🚫 *Acesso PRO*\n\nPoxa ${userName}, esse recurso é exclusivo dos planos Pro e Consultor.`, 100);
             return NextResponse.json({ status: 'Blocked by Plan', plan });
@@ -460,7 +485,7 @@ export async function POST(req: Request) {
         const { data: workspaces } = await supabase.from('workspaces').select('id, title, whatsapp_rule').eq('user_id', userSettings.user_id);
         const primaryWorkspace = workspaces?.[0];
 
-        // BUSCAR CAIXINHAS ATIVAS DA IA
+        // 🟢 BUSCAR CAIXINHAS ATIVAS DA IA
         const { data: wallets } = await supabase.from('goals')
             .select('id, title, whatsapp_rule')
             .eq('user_id', userSettings.user_id)
@@ -488,6 +513,7 @@ export async function POST(req: Request) {
             workspacesContextPrompt = `Inclua "context": "${primaryWorkspace.id}" em todos os JSONs.\n`;
         }
 
+        // 🟢 MONTAR O PROMPT DINÂMICO DAS CAIXINHAS
         let walletsContextPrompt = "";
         if (wallets && wallets.length > 0) {
             walletsContextPrompt = `\n━━━ 👛 CAIXINHAS (ORÇAMENTOS) ━━━\nSe o gasto combinar com a regra de uma das caixinhas abaixo, inclua a chave "linked_goal_id" com o ID numérico exato.\n`;
@@ -501,6 +527,7 @@ export async function POST(req: Request) {
         const dataHojeBR = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
         const cartoesCadastrados = ['nubank', 'inter', 'bb', 'itau', 'santander', 'caixa', 'bradesco', 'c6'];
 
+        // 🟢 Lógica de Humor e Emoções Personalizadas da Luna
         const humor = userSettings.bot_humor_level || 5;
         const sinceridade = userSettings.bot_sincerity_level || 5;
         const formalidade = userSettings.bot_formality_level || 5;
@@ -563,7 +590,7 @@ Bancos: ${cartoesCadastrados.join(', ')}
 {"action":"add","table":"installments","context":"ID","data":{"title":"Nome","value_per_month":0.00,"installments_count":1,"payment_method":"banco","due_day":10,"start_date":"10/MM/YYYY","category":"Alimentação"}}
 
 2. 🔁 GASTO FIXO (fixo, todo mês, assinatura, aluguel):
-{"action":"add","table":"recurring","context":"ID","data":{"title":"Nome","value":0.00,"type":"expense","due_day":10,"category":"Moradia"}}
+{"action":"add","table":"recurring","context":"ID","data":{"title":"Nome","value":0.00,"type":"expense","due_day":10}}
 
 3. 💸 GASTO COMUM (débito, pix, dinheiro):
 (Lembrete: Inclua "linked_goal_id": NUMERO se bater com a regra de alguma Caixinha)
@@ -610,9 +637,6 @@ ${hasImage ? "\n📸 IMAGEM: Extraia valor, data e estabelecimento. Identifique 
         let replySent = false;
         const ALLOWED_TABLES = ['transactions', 'installments', 'recurring'];
         const validContextIds = new Set(workspaces?.map(w => w.id) || []);
-        
-        // 🟢 CÓDIGO NOVO: Conjunto seguro de Caixinhas do Usuário
-        const validWalletIds = new Set(wallets?.map(w => w.id) || []);
 
         for (const cmd of commands) {
             if (cmd.table && !ALLOWED_TABLES.includes(cmd.table)) {
@@ -629,21 +653,6 @@ ${hasImage ? "\n📸 IMAGEM: Extraia valor, data e estabelecimento. Identifique 
                 if (extractedValue <= 0) continue;
 
                 let payload: any = { ...cmd.data, user_id: userSettings.user_id, context: targetContext, created_at: new Date(), message_id: messageId };
-
-                // 🟢 VALIDAÇÃO DE DATA (Ignora texto quebrado que a IA mandar)
-                if (payload.start_date) {
-                    const isValid = /^\d{2}\/\d{2}\/\d{4}$/.test(payload.start_date);
-                    if (!isValid) delete payload.start_date;
-                }
-
-                // 🟢 VALIDAÇÃO DE CATEGORIA (Lista oficial para evitar lixo no banco)
-                const VALID_CATEGORIES = [
-                    'Alimentação', 'Transporte', 'Moradia', 'Saúde', 'Lazer',
-                    'Educação', 'Salário', 'Freelance', 'Outros', 'Fixa'
-                ];
-                if (payload.category && !VALID_CATEGORIES.includes(payload.category)) {
-                    payload.category = 'Outros';
-                }
 
                 if (cmd.table === 'installments') {
                     payload.current_installment = 0;
@@ -679,14 +688,9 @@ ${hasImage ? "\n📸 IMAGEM: Extraia valor, data e estabelecimento. Identifique 
                     payload.status = 'active';
                     payload.target_month = ctx.mes_atual;
 
-                    // 🟢 VALIDAÇÃO DE SEGURANÇA DA CAIXINHA (Anti Prompt-Injection)
+                    // 🟢 LIGAÇÃO MÁGICA COM A CAIXINHA
                     if (cmd.data.linked_goal_id) {
-                        const goalId = Number(cmd.data.linked_goal_id);
-                        if (validWalletIds.has(goalId)) {
-                            payload.linked_goal_id = goalId;
-                        } else {
-                            delete payload.linked_goal_id; // Deleta a tentativa de injeção!
-                        }
+                        payload.linked_goal_id = Number(cmd.data.linked_goal_id);
                     }
 
                     delete payload.value; delete payload.value_per_month;
