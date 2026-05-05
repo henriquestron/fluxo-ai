@@ -34,7 +34,6 @@ export async function GET(request: Request) {
             return NextResponse.json({ error: 'Configuração do servidor incompleta.' }, { status: 500 }); 
         } 
 
-        // 🟢 MUDANÇA 1: Adicionamos o partner_phone no select 
         const { data: usersSettings } = await supabase 
             .from('user_settings') 
             .select('user_id, whatsapp_phone, partner_phone, last_whatsapp_notification') 
@@ -45,7 +44,7 @@ export async function GET(request: Request) {
             return NextResponse.json({ message: 'Nenhum usuário com WhatsApp ativo.' }); 
         } 
 
-        // 🟢 2. TRATAMENTO DE DATAS À PROVA DE VERCEL (UTC) 
+        // 🟢 2. TRATAMENTO DE DATAS
         const dateOpts: any = { timeZone: "America/Sao_Paulo" }; 
         const hoje = new Date(); 
         const todayStr = hoje.toLocaleDateString('pt-BR', dateOpts); 
@@ -53,7 +52,7 @@ export async function GET(request: Request) {
         const [dayStr, mStr, yearStr] = todayStr.split('/'); 
         const dayNum = parseInt(dayStr, 10); 
         const currentYear = parseInt(yearStr, 10); 
-        const currentMonthIndex = parseInt(mStr, 10) - 1; // Para os cálculos (0 a 11)
+        const currentMonthIndex = parseInt(mStr, 10) - 1; 
         const currentYYYYMM = `${currentYear}-${mStr.padStart(2, '0')}`;
         
         const monthMap: Record<number, string> = { 1: 'Jan', 2: 'Fev', 3: 'Mar', 4: 'Abr', 5: 'Mai', 6: 'Jun', 7: 'Jul', 8: 'Ago', 9: 'Set', 10: 'Out', 11: 'Nov', 12: 'Dez' }; 
@@ -62,18 +61,40 @@ export async function GET(request: Request) {
 
         let disparos = 0; 
 
-        // 🟢 NOVA FUNÇÃO AUXILIAR: Descobre se a conta realmente é do mês atual
-        const getStartData = (item: any) => {
-            if (item.start_date && item.start_date.includes('/')) {
-                const p = item.start_date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+        // 🟢 CORREÇÃO 1: Função que transforma qualquer loucura do Supabase em um Array de verdade
+        const safeArray = (val: any) => {
+            if (Array.isArray(val)) return val;
+            if (typeof val === 'string') {
+                try { const p = JSON.parse(val); return Array.isArray(p) ? p : []; } catch { return []; }
             }
-            if (item.date && item.date.includes('/')) {
-                const p = item.date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+            return [];
+        };
+
+        // 🟢 CORREÇÃO 2: Interpretador de Datas Blindado (Aceita "/" e "-" ISO)
+        const getStartData = (item: any) => {
+            const parseStr = (val: string) => {
+                if (val.includes('/')) {
+                    const p = val.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+                }
+                if (val.includes('-')) {
+                    const d = new Date(val);
+                    return { m: d.getUTCMonth(), y: d.getUTCFullYear() };
+                }
+                return null;
+            };
+
+            if (item.start_date) {
+                const res = parseStr(item.start_date);
+                if (res) return res;
+            }
+            if (item.date) {
+                const res = parseStr(item.date);
+                if (res) return res;
             }
             if (item.created_at) {
                 const d = new Date(item.created_at); return { m: d.getMonth(), y: d.getFullYear() };
             }
-            return { m: 0, y: currentYear };
+            return { m: currentMonthIndex, y: currentYear };
         };
 
         const processUser = async (setting: any) => { 
@@ -84,7 +105,6 @@ export async function GET(request: Request) {
                 const lastStr = lastSent ? new Date(lastSent).toLocaleDateString('pt-BR', dateOpts) : null; 
                 if (lastStr === todayStr) return; // Já mandou hoje, pula. 
 
-                // 🟢 ATUALIZAMOS OS SELECTS PARA TRAZER OS CAMPOS DE DATA NECESSÁRIOS
                 const [transRes, recRes, instRes] = await Promise.all([ 
                     supabase.from('transactions').select('title, amount, date, status, is_paid').eq('user_id', userId).eq('type', 'expense').eq('is_paid', false), 
                     supabase.from('recurring').select('title, value, due_day, status, paid_months, standby_months, skipped_months, start_date, created_at, cancelled_from').eq('user_id', userId).eq('type', 'expense').eq('due_day', dayNum), 
@@ -100,34 +120,55 @@ export async function GET(request: Request) {
                 const billsDueToday = [ 
                     ...transactions.filter(t => t.status !== 'delayed' && t.status !== 'standby' && t.date === exactDateFilter), 
 
-                    // 🟢 FILTROS RECORRENTES COM PROTEÇÃO TEMPORAL
+                    // 🟢 FILTROS RECORRENTES
                     ...recurring.filter(r => {
                         if (r.status === 'delayed' || r.status === 'standby') return false;
-                        if (r.paid_months?.includes(currentTag) || r.paid_months?.includes(currentMonthName)) return false;
-                        if (r.standby_months?.includes(currentTag) || r.skipped_months?.includes(currentMonthName)) return false;
+                        
+                        // Usando o safeArray para não bugar com os textos do Supabase
+                        const paidArr = safeArray(r.paid_months);
+                        if (paidArr.includes(currentTag) || paidArr.includes(currentMonthName)) return false;
+                        
+                        const standbyArr = safeArray(r.standby_months);
+                        const skippedArr = safeArray(r.skipped_months);
+                        if (standbyArr.includes(currentTag) || skippedArr.includes(currentMonthName)) return false;
+                        
                         if (r.cancelled_from && currentYYYYMM >= r.cancelled_from) return false;
 
                         const { m: startM, y: startY } = getStartData(r);
-                        if (currentYear < startY) return false; // Ainda não chegou o ano de começar
-                        if (currentYear === startY && currentMonthIndex < startM) return false; // Ainda não chegou o mês de começar
+                        if (currentYear < startY) return false; 
+                        if (currentYear === startY && currentMonthIndex < startM) return false; 
 
                         return true;
                     }), 
 
-                    // 🟢 FILTROS PARCELADOS COM PROTEÇÃO TEMPORAL
+                    // 🟢 FILTROS PARCELADOS
                     ...installments.filter(i => {
                         if (i.status === 'delayed' || i.status === 'standby') return false;
-                        if (i.paid_months?.includes(currentTag) || i.standby_months?.includes(currentTag)) return false;
+                        
+                        const paidArr = safeArray(i.paid_months);
+                        if (paidArr.includes(currentTag) || paidArr.includes(currentMonthName)) return false;
+                        
+                        const standbyArr = safeArray(i.standby_months);
+                        if (standbyArr.includes(currentTag)) return false;
+                        
                         if (i.cancelled_from && currentYYYYMM >= i.cancelled_from) return false;
 
                         const { m: startM, y: startY } = getStartData(i);
-                        if (currentYear < startY) return false; // Ainda não chegou o ano
-                        if (currentYear === startY && currentMonthIndex < startM) return false; // Ainda não chegou o mês
+                        if (currentYear < startY) return false; 
+                        if (currentYear === startY && currentMonthIndex < startM) return false; 
 
-                        // Verifica se as parcelas já não acabaram
+                        // Verifica se as parcelas já não acabaram (e desconta os meses em standby)
+                        let pastStandbys = 0;
                         const monthsDiff = ((currentYear - startY) * 12) + (currentMonthIndex - startM);
-                        const actualInstallment = 1 + (i.current_installment || 0) + monthsDiff;
-                        if (actualInstallment > i.installments_count) return false; // Parcelamento já finalizado
+                        
+                        for (let j = 0; j < monthsDiff; j++) {
+                            const checkM = (startM + j) % 12;
+                            const checkY = startY + Math.floor((startM + j) / 12);
+                            if (standbyArr.includes(`${monthMap[checkM + 1]}/${checkY}`)) pastStandbys++;
+                        }
+
+                        const actualInstallment = 1 + (i.current_installment || 0) + monthsDiff - pastStandbys;
+                        if (actualInstallment > i.installments_count) return false;
 
                         return true;
                     }) 
