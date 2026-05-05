@@ -168,26 +168,27 @@ export default function DashboardHeader({
                     <div className="flex items-center justify-center w-full xl:w-auto gap-2 pl-0 xl:pl-2 mt-2 xl:mt-0 xl:border-none">
                         
                         {/* 🎯 BALÃO DOS SONHOS (Metas de Longo Prazo) */}
-                        <div className="hidden sm:flex items-center gap-2 bg-indigo-950/30 border border-indigo-500/30 px-3 h-11 rounded-xl cursor-default hover:bg-indigo-900/20 transition-colors" title="Dinheiro guardado para os seus sonhos">
-                            <div className="bg-indigo-500/20 p-1.5 rounded-lg">
-                                <Target size={14} className="text-indigo-400" />
+                        {/* 🎯 BALÃO DOS SONHOS (Metas de Longo Prazo) */}
+                        <div className="flex items-center gap-1.5 sm:gap-2 bg-indigo-950/30 border border-indigo-500/30 px-2 sm:px-3 h-11 rounded-xl cursor-default hover:bg-indigo-900/20 transition-colors" title="Dinheiro guardado para os seus sonhos">
+                            <div className="bg-indigo-500/20 p-1 sm:p-1.5 rounded-lg shrink-0">
+                                <Target className="text-indigo-400 w-3.5 h-3.5 sm:w-4 sm:h-4" />
                             </div>
                             <div className="flex flex-col text-left justify-center">
-                                <span className="text-[9px] uppercase tracking-widest text-indigo-400/80 font-bold leading-none mb-0.5">Metas</span>
-                                <span className="text-indigo-400 text-sm font-bold leading-none font-mono">
+                                <span className="text-[8px] sm:text-[9px] uppercase tracking-widest text-indigo-400/80 font-bold leading-none mb-0.5">Metas</span>
+                                <span className="text-indigo-400 text-xs sm:text-sm font-bold leading-none font-mono whitespace-nowrap">
                                     R$ {totalSonhosGuardado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                 </span>
                             </div>
                         </div>
 
                         {/* 👛 BALÃO DAS CAIXINHAS (Dinheiro Livre no Mês) */}
-                        <div className="hidden sm:flex items-center gap-2 bg-emerald-950/30 border border-emerald-500/30 px-3 h-11 rounded-xl cursor-default hover:bg-emerald-900/20 transition-colors" title="Dinheiro disponível para gastar nas caixinhas">
-                            <div className="bg-emerald-500/20 p-1.5 rounded-lg">
-                                <Wallet size={14} className="text-emerald-400" />
+                        <div className="flex items-center gap-1.5 sm:gap-2 bg-emerald-950/30 border border-emerald-500/30 px-2 sm:px-3 h-11 rounded-xl cursor-default hover:bg-emerald-900/20 transition-colors" title="Dinheiro disponível para gastar nas caixinhas">
+                            <div className="bg-emerald-500/20 p-1 sm:p-1.5 rounded-lg shrink-0">
+                                <Wallet className="text-emerald-400 w-3.5 h-3.5 sm:w-4 sm:h-4" />
                             </div>
                             <div className="flex flex-col text-left justify-center">
-                                <span className="text-[9px] uppercase tracking-widest text-emerald-500/80 font-bold leading-none mb-0.5">Caixinhas</span>
-                                <span className="text-emerald-400 text-sm font-bold leading-none font-mono">
+                                <span className="text-[8px] sm:text-[9px] uppercase tracking-widest text-emerald-500/80 font-bold leading-none mb-0.5">Caixinhas</span>
+                                <span className="text-emerald-400 text-xs sm:text-sm font-bold leading-none font-mono whitespace-nowrap">
                                     R$ {totalCaixinhasDisponivel.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                 </span>
                             </div>
