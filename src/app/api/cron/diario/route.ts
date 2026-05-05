@@ -72,14 +72,19 @@ export async function GET(request: Request) {
 
         // 🟢 CORREÇÃO 2: Interpretador de Datas Blindado (Aceita "/" e "-" ISO)
         // 🟢 CORREÇÃO 2: Interpretador de Datas Blindado (Com fuso horário BR)
+        // 🟢 CORREÇÃO 2: Interpretador de Datas Blindado (Cura o bug do "Invalid Date" e do NaN)
         const getStartData = (item: any) => {
             const parseStr = (val: string) => {
+                if (!val) return null;
                 if (val.includes('/')) {
                     const p = val.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
                 }
                 if (val.includes('-')) {
-                    const dLocal = new Date(new Date(val).toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
-                    return { m: dLocal.getMonth(), y: dLocal.getFullYear() };
+                    // 🟢 O SEGREDO 1: Trocar o espaço por 'T' para o JavaScript não surtar
+                    const safeVal = val.replace(' ', 'T');
+                    const dLocal = new Date(new Date(safeVal).toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+                    // Só retorna se a data for matematicamente válida
+                    if (!isNaN(dLocal.getTime())) return { m: dLocal.getMonth(), y: dLocal.getFullYear() };
                 }
                 return null;
             };
@@ -93,10 +98,15 @@ export async function GET(request: Request) {
                 if (res) return res;
             }
             if (item.created_at) {
-                const d = new Date(new Date(item.created_at).toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
-                return { m: d.getMonth(), y: d.getFullYear() };
+                // 🟢 O SEGREDO 2: Consertar a data de criação que vem do Supabase
+                const safeCreated = String(item.created_at).replace(' ', 'T');
+                const d = new Date(new Date(safeCreated).toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+                if (!isNaN(d.getTime())) {
+                    return { m: d.getMonth(), y: d.getFullYear() };
+                }
             }
-            return { m: currentMonthIndex, y: currentYear };
+            // Fallback seguro se tudo falhar
+            return { m: currentMonthIndex, y: currentYear }; 
         };
 
         const processUser = async (setting: any) => { 
