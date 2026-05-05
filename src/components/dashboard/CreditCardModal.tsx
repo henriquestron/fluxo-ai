@@ -68,7 +68,14 @@ const BANK_STYLES: any = {
         text: 'text-[#ff4d6f]', 
         icon: 'https://upload.wikimedia.org/wikipedia/commons/c/c3/Banco_Bradesco_logo.svg' 
     },
-    'picpay': { label: 'PicPay', color: 'bg-[#11C76F]', bg: 'bg-[#11C76F]/10', border: 'border-[#11C76F]/30', text: 'text-[#11C76F]', icon: 'https://upload.wikimedia.org/wikipedia/commons/5/5e/PicPay_Logogrande.png' },
+    'picpay': { 
+        label: 'PicPay', 
+        color: 'bg-[#11C76F]', 
+        bg: 'bg-[#11C76F]/10', 
+        border: 'border-[#11C76F]/30', 
+        text: 'text-[#11C76F]', 
+        icon: 'https://upload.wikimedia.org/wikipedia/commons/5/5e/PicPay_Logogrande.png' 
+    },
     'c6': { 
         label: 'C6 Bank', 
         color: 'bg-[#222]', 
@@ -76,6 +83,70 @@ const BANK_STYLES: any = {
         border: 'border-gray-600', 
         text: 'text-gray-300', 
         icon: 'https://upload.wikimedia.org/wikipedia/commons/7/77/Logo_C6_Bank.svg' 
+    },
+    'xp': { 
+        label: 'XP', 
+        color: 'bg-[#111111]', 
+        bg: 'bg-[#111111]/50', 
+        border: 'border-[#FFD700]/30', 
+        text: 'text-[#FFD700]', 
+        icon: '/logos/xp.svg' 
+    },
+    'btg': { 
+        label: 'BTG Pactual', 
+        color: 'bg-[#002A54]', 
+        bg: 'bg-[#002A54]/20', 
+        border: 'border-[#002A54]/40', 
+        text: 'text-[#4d8bce]', 
+        icon: '/logos/btg.svg' 
+    },
+    'pagbank': { 
+        label: 'PagBank', 
+        color: 'bg-[#00B152]', 
+        bg: 'bg-[#00B152]/10', 
+        border: 'border-[#00B152]/30', 
+        text: 'text-[#00B152]', 
+        icon: '/logos/pagbank.svg' 
+    },
+    'neon': { 
+        label: 'Neon', 
+        color: 'bg-[#00E5FF]', 
+        bg: 'bg-[#00E5FF]/10', 
+        border: 'border-[#00E5FF]/30', 
+        text: 'text-[#00E5FF]', 
+        icon: 'https://upload.wikimedia.org/wikipedia/commons/c/c2/Neon_Pagamentos_logo.svg' 
+    },
+    'will': { 
+        label: 'Will Bank', 
+        color: 'bg-[#FFD500]', 
+        bg: 'bg-[#FFD500]/10', 
+        border: 'border-[#FFD500]/30', 
+        text: 'text-[#FFD500]', 
+        icon: null // Usará o ícone padrão de cartão
+    },
+    'pan': { 
+        label: 'Banco Pan', 
+        color: 'bg-[#0054A6]', 
+        bg: 'bg-[#0054A6]/10', 
+        border: 'border-[#0054A6]/30', 
+        text: 'text-[#4da6ff]', 
+        icon: '/logos/pan.svg' 
+    },
+    'sicoob': { 
+        label: 'Sicoob', 
+        color: 'bg-[#003641]', 
+        bg: 'bg-[#00AE9D]/10', 
+        border: 'border-[#00AE9D]/30', 
+        text: 'text-[#00AE9D]', 
+        icon: '/logos/sicoob.svg' 
+    },
+    'sicredi': { 
+        label: 'Sicredi', 
+        color: 'bg-[#32A041]', 
+        bg: 'bg-[#32A041]/10', 
+        border: 'border-[#32A041]/30', 
+        text: 'text-[#32A041]', 
+        icon: '/logos/sicredi.svg' 
     },
     'money': { 
         label: 'Dinheiro', 

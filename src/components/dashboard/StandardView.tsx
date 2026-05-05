@@ -28,10 +28,22 @@ const BANK_STYLES: any = {
     'itau': { label: 'Itaú', color: 'bg-[#EC7000]', bg: 'bg-[#EC7000]/10', border: 'border-[#EC7000]/30', text: 'text-[#ff9233]', icon: 'https://upload.wikimedia.org/wikipedia/commons/1/19/Ita%C3%BA_Unibanco_logo_2023.svg' },
     'santander': { label: 'Santander', color: 'bg-[#CC0000]', bg: 'bg-[#CC0000]/10', border: 'border-[#CC0000]/30', text: 'text-[#ff4d4d]', icon: 'https://upload.wikimedia.org/wikipedia/commons/b/b8/Banco_Santander_Logotipo.svg' },
     'caixa': { label: 'Caixa', color: 'bg-[#005CA9]', bg: 'bg-[#005CA9]/10', border: 'border-[#005CA9]/30', text: 'text-[#4ea4eb]', icon: 'https://upload.wikimedia.org/wikipedia/commons/3/3c/Caixa_Econ%C3%B4mica_Federal_logo_1997.svg' },
-    'bradesco': { label: 'Bradesco', color: 'bg-[#CC092F]', bg: 'bg-[#CC092F]/10', border: 'border-[#CC092F]/30', text: 'text-[#ff4d6f]', icon: 'https://upload.wikimedia.org/wikipedia/commons/c/c3/Banco_Bradesco_logo.svg' },
-    'c6': { label: 'C6 Bank', color: 'bg-[#222]', bg: 'bg-gray-800', border: 'border-gray-600', text: 'text-gray-300', icon: 'https://upload.wikimedia.org/wikipedia/commons/7/77/Logo_C6_Bank.svg' },
-    'picpay': { label: 'PicPay', color: 'bg-[#11C76F]', bg: 'bg-[#11C76F]/10', border: 'border-[#11C76F]/30', text: 'text-[#11C76F]', icon: 'https://upload.wikimedia.org/wikipedia/commons/5/5e/PicPay_Logogrande.png' },    
     'mercadopago': { label: 'Mercado Pago', color: 'bg-[#009EE3]', bg: 'bg-[#009EE3]/10', border: 'border-[#009EE3]/30', text: 'text-[#009EE3]', icon: 'https://logodownload.org/wp-content/uploads/2019/06/mercado-pago-logo.png' },
+    'bradesco': { label: 'Bradesco', color: 'bg-[#CC092F]', bg: 'bg-[#CC092F]/10', border: 'border-[#CC092F]/30', text: 'text-[#ff4d6f]', icon: 'https://upload.wikimedia.org/wikipedia/commons/c/c3/Banco_Bradesco_logo.svg' },
+    'picpay': { label: 'PicPay', color: 'bg-[#11C76F]', bg: 'bg-[#11C76F]/10', border: 'border-[#11C76F]/30', text: 'text-[#11C76F]', icon: 'https://upload.wikimedia.org/wikipedia/commons/5/5e/PicPay_Logogrande.png' },
+    'c6': { label: 'C6 Bank', color: 'bg-[#222]', bg: 'bg-gray-800', border: 'border-gray-600', text: 'text-gray-300', icon: 'https://upload.wikimedia.org/wikipedia/commons/7/77/Logo_C6_Bank.svg' },
+    
+    // 🟢 NOVOS BANCOS
+    'xp': { label: 'XP', color: 'bg-[#111111]', bg: 'bg-[#111111]/50', border: 'border-[#FFD700]/30', text: 'text-[#FFD700]', icon: '/logos/xp.svg' },
+    'btg': { label: 'BTG Pactual', color: 'bg-[#002A54]', bg: 'bg-[#002A54]/20', border: 'border-[#002A54]/40', text: 'text-[#4d8bce]', icon: '/logos/btg.svg' },
+    'pagbank': { label: 'PagBank', color: 'bg-[#00B152]', bg: 'bg-[#00B152]/10', border: 'border-[#00B152]/30', text: 'text-[#00B152]', icon: '/logos/pagbank.svg'},
+    'neon': { label: 'Neon', color: 'bg-[#00E5FF]', bg: 'bg-[#00E5FF]/10', border: 'border-[#00E5FF]/30', text: 'text-[#00E5FF]', icon: '/logos/neon.svg' },
+    'will': { label: 'Will Bank', color: 'bg-[#FFD500]', bg: 'bg-[#FFD500]/10', border: 'border-[#FFD500]/30', text: 'text-[#FFD500]', icon: null },
+    'pan': { label: 'Banco Pan', color: 'bg-[#0054A6]', bg: 'bg-[#0054A6]/10', border: 'border-[#0054A6]/30', text: 'text-[#4da6ff]', icon: '/logos/pan.svg' },
+    'sicoob': { label: 'Sicoob', color: 'bg-[#003641]', bg: 'bg-[#₀₀AE9D]/1₀', border: 'border-[#₀₀AE9D]/3₀', text: 'text-[#₀₀AE9D]', icon: '/logos/sicoob.svg' },
+    'sicredi': { label: 'Sicredi', color: 'bg-[#32₀41]', bg: 'bg-[#32₀41]/1₀', border: 'border-[#32₀41]/3₀', text: 'text-[#32₀41]', icon: '/logos/sicredi.svg' },
+    
+    // 🟢 BASE
     'money': { label: 'Dinheiro', color: 'bg-emerald-600', bg: 'bg-emerald-900/10', border: 'border-emerald-500/30', text: 'text-emerald-400', icon: null },
     'outros': { label: 'Outros', color: 'bg-gray-700', bg: 'bg-gray-800/50', border: 'border-gray-700', text: 'text-gray-400', icon: null },
 };

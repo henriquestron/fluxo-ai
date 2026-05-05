@@ -23,6 +23,18 @@ export const ACCOUNTS = [
     { id: 'c6', label: 'C6 Bank', color: 'bg-[#222]', text: 'text-white' },
     { id: 'picpay', label: 'PicPay', color: 'bg-[#11C76F]', bg: 'bg-[#11C76F]/10', border: 'border-[#11C76F]/30', text: 'text-[#11C76F]' },
     { id: 'mercadopago', label: 'Mercado Pago', color: 'bg-[#009EE3]', text: 'text-white' },
+    
+    // 🟢 NOVOS BANCOS ADICIONADOS
+    { id: 'xp', label: 'XP', color: 'bg-[#111111]', text: 'text-[#FFD700]' },
+    { id: 'btg', label: 'BTG Pactual', color: 'bg-[#002A54]', text: 'text-white' },
+    { id: 'pagbank', label: 'PagBank', color: 'bg-[#00B152]', text: 'text-white' },
+    { id: 'neon', label: 'Neon', color: 'bg-[#00E5FF]', text: 'text-black' },
+    { id: 'will', label: 'Will Bank', color: 'bg-[#FFD500]', text: 'text-black' },
+    { id: 'pan', label: 'Banco Pan', color: 'bg-[#0054A6]', text: 'text-white' },
+    { id: 'sicoob', label: 'Sicoob', color: 'bg-[#003641]', text: 'text-white' },
+    { id: 'sicredi', label: 'Sicredi', color: 'bg-[#32A041]', text: 'text-white' },
+    
+    // Dinheiro e Outros sempre no final
     { id: 'money', label: 'Dinheiro', color: 'bg-emerald-600', text: 'text-white' },
     { id: 'outros', label: 'Outros', color: 'bg-gray-700', text: 'text-gray-300' },
 ];
