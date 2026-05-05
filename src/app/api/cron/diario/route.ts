@@ -71,14 +71,15 @@ export async function GET(request: Request) {
         };
 
         // 🟢 CORREÇÃO 2: Interpretador de Datas Blindado (Aceita "/" e "-" ISO)
+        // 🟢 CORREÇÃO 2: Interpretador de Datas Blindado (Com fuso horário BR)
         const getStartData = (item: any) => {
             const parseStr = (val: string) => {
                 if (val.includes('/')) {
                     const p = val.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
                 }
                 if (val.includes('-')) {
-                    const d = new Date(val);
-                    return { m: d.getUTCMonth(), y: d.getUTCFullYear() };
+                    const dLocal = new Date(new Date(val).toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+                    return { m: dLocal.getMonth(), y: dLocal.getFullYear() };
                 }
                 return null;
             };
@@ -92,7 +93,8 @@ export async function GET(request: Request) {
                 if (res) return res;
             }
             if (item.created_at) {
-                const d = new Date(item.created_at); return { m: d.getMonth(), y: d.getFullYear() };
+                const d = new Date(new Date(item.created_at).toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+                return { m: d.getMonth(), y: d.getFullYear() };
             }
             return { m: currentMonthIndex, y: currentYear };
         };
@@ -142,6 +144,7 @@ export async function GET(request: Request) {
                     }), 
 
                     // 🟢 FILTROS PARCELADOS
+                    // 🟢 FILTROS PARCELADOS
                     ...installments.filter(i => {
                         if (i.status === 'delayed' || i.status === 'standby') return false;
                         
@@ -168,7 +171,9 @@ export async function GET(request: Request) {
                         }
 
                         const actualInstallment = 1 + (i.current_installment || 0) + monthsDiff - pastStandbys;
-                        if (actualInstallment > i.installments_count) return false;
+                        
+                        // 🟢 O GRANDE AJUSTE ESTÁ AQUI: Tem que ser maior que zero (já começou) E menor/igual ao total (não acabou)!
+                        if (actualInstallment < 1 || actualInstallment > i.installments_count) return false;
 
                         return true;
                     }) 
