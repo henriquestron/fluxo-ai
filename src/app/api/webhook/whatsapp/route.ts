@@ -433,8 +433,9 @@ export async function POST(req: Request) {
         }
 
         // ── ETAPA 5: PROCESSAR MÍDIA ───────────────────────────────────────────
+        // ── ETAPA 5: PROCESSAR MÍDIA E DOCUMENTOS ──────────────────────────────
         let promptParts: any[] = [];
-        let hasAudio = false, hasImage = false;
+        let hasAudio = false, hasImage = false, hasDocument = false; // 🟢 Adicionado hasDocument
         const msgData = body.data?.message;
         const msgType = body.data?.messageType;
 
@@ -451,6 +452,28 @@ export async function POST(req: Request) {
                 promptParts.push({ inlineData: { mimeType: msgData?.imageMessage?.mimetype || "image/jpeg", data: imageBase64 } });
                 if (msgData?.imageMessage?.caption) promptParts.push(msgData.imageMessage.caption);
             } else { await sendWhatsAppMessage(targetPhone, "⚠️ Não consegui ler a imagem."); return NextResponse.json({ status: 'Image Failed' }); }
+        } else if (msgType === "documentMessage" || msgData?.documentMessage) {
+            // 🟢 NOVO: LÓGICA EXCLUSIVA PARA PDF
+            const docMsg = msgData?.documentMessage;
+            if (docMsg?.mimetype === "application/pdf") {
+                let pdfBase64 = body.data?.base64 || docMsg?.base64 || body.data?.message?.base64;
+                if (!pdfBase64) { 
+                    const url = docMsg?.url || body.data?.mediaUrl; 
+                    if (url) pdfBase64 = await downloadMedia(url); 
+                }
+                if (pdfBase64) {
+                    hasDocument = true;
+                    promptParts.push({ inlineData: { mimeType: "application/pdf", data: pdfBase64 } });
+                    if (docMsg?.caption) promptParts.push(docMsg.caption);
+                    if (messageContent && !docMsg?.caption) promptParts.push(messageContent);
+                } else { 
+                    await sendWhatsAppMessage(targetPhone, "⚠️ Não consegui baixar o PDF. Pode mandar de novo?"); 
+                    return NextResponse.json({ status: 'Document Failed' }); 
+                }
+            } else {
+                if (!messageContent) return NextResponse.json({ status: 'No Content' });
+                promptParts.push(messageContent);
+            }
         } else {
             if (!messageContent) return NextResponse.json({ status: 'No Content' });
             promptParts.push(messageContent);
@@ -630,6 +653,7 @@ REGRAS ABSOLUTAS:
 
 ${hasAudio ? "\n⚠️ ÁUDIO: Transcreva e responda com base no que foi dito." : ""}
 ${hasImage ? "\n📸 IMAGEM: Extraia valor, data e estabelecimento. Identifique a forma de pagamento." : ""}
+${hasDocument ? "\n📄 ARQUIVO PDF: O usuário enviou um documento PDF (provavelmente boleto, nota fiscal ou comprovante). Analise e extraia: VALOR TOTAL, DATA DE VENCIMENTO e NOME DO ESTABELECIMENTO. Se achar código de barras ou linha digitável (PIX Copia e Cola), coloque na sua 'reply'!" : ""}
 `.trim();
 // 🟢 GATILHO MOTIVACIONAL DA LUNA (O toque de empatia!)
         let gatilhoMotivacional = "";
