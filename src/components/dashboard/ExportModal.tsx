@@ -232,11 +232,11 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
                 if (t.status === 'standby') status = 'Stand-by';
                 else if (t.status === 'delayed') status = 'Atrasado';
 
-                const showItem = selectedTypes.includes(t.type) || 
-                               (t.status === 'standby' && selectedTypes.includes('standby')) ||
-                               (t.status === 'delayed' && selectedTypes.includes('delayed'));
+                // 🟢 CORREÇÃO: Se for Stand-by ou Atrasado e o checkbox NÃO estiver marcado, pula fora!
+                if (status === 'Stand-by' && !selectedTypes.includes('standby')) return;
+                if (status === 'Atrasado' && !selectedTypes.includes('delayed')) return;
 
-                if (showItem) {
+                if (selectedTypes.includes(t.type)) {
                     rows.push({ Data: t.date, Mes: monthStr, Descricao: t.title, Categoria: t.category, Tipo: t.type === 'income' ? 'Entrada' : 'Saída', Valor: Number(t.amount), Status: status });
                 }
             }
@@ -250,13 +250,16 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
             if (isVisible && !isCancelled && !safeArray(r.skipped_months).includes(monthStr)) {
                 let status = isPaid(r, paymentTag) ? 'Pago' : 'Pendente';
                 const isStandby = r.status === 'standby' || safeArray(r.standby_months).includes(paymentTag);
+                
                 if (isStandby && status !== 'Pago') status = 'Stand-by';
-                if (r.status === 'delayed' && status !== 'Pago') status = 'Atrasado';
+                else if (r.status === 'delayed' && status !== 'Pago') status = 'Atrasado';
 
-                const showItem = selectedTypes.includes('fixed') || (status === 'Stand-by' && selectedTypes.includes('standby')) || (status === 'Atrasado' && selectedTypes.includes('delayed'));
+                // 🟢 CORREÇÃO DOS FILTROS AQUI TAMBÉM:
+                if (status === 'Stand-by' && !selectedTypes.includes('standby')) return;
+                if (status === 'Atrasado' && !selectedTypes.includes('delayed')) return;
 
-                if (showItem) {
-                    const finalVal = getCustomValue(r, paymentTag, Number(r.value)); // 🟢 LÊ O VALOR CUSTOMIZADO DO MÊS!
+                if (selectedTypes.includes('fixed')) {
+                    const finalVal = getCustomValue(r, paymentTag, Number(r.value));
                     rows.push({ Data: `Dia ${r.due_day}`, Mes: monthStr, Descricao: r.title, Categoria: r.category, Tipo: r.type === 'income' ? 'Entrada (Fixa)' : 'Saída (Fixa)', Valor: finalVal, Status: status });
                 }
             }
@@ -279,20 +282,36 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
 
             const actual = 1 + (i.current_installment || 0) + monthsDiff - pastStandbys;
 
-            if (actual >= 1 && actual <= i.installments_count) {
-                let status = isPaid(i, paymentTag) ? 'Pago' : 'Pendente';
-                if (i.status === 'delayed' && status !== 'Pago') status = 'Atrasado';
+            let status = isPaid(i, paymentTag) ? 'Pago' : 'Pendente';
+            const isStandby = i.status === 'standby' || standbyArr.includes(paymentTag);
+            
+            if (isStandby && status !== 'Pago') status = 'Stand-by';
+            else if (i.status === 'delayed' && status !== 'Pago') status = 'Atrasado';
+
+            // 🟢 A MÁGICA: Arrastar contas pausadas/atrasadas pro mês atual!
+            // Se a conta de 1x de Fevereiro não foi paga, o "actual" dela em Maio vira 4.
+            // Para não deixar ela sumir, nós arrastamos ela forçadamente se estiver em Stand-by ou Atrasada!
+            const isCarriedOverDebt = actual > i.installments_count && (status === 'Stand-by' || status === 'Atrasado');
+
+            if ((actual >= 1 && actual <= i.installments_count) || isCarriedOverDebt) {
                 
-                const isStandby = i.status === 'standby' || standbyArr.includes(paymentTag);
-                if (isStandby && status !== 'Pago') status = 'Stand-by';
+                // Os filtros que consertamos antes continuam aqui
+                if (status === 'Stand-by' && !selectedTypes.includes('standby')) return;
+                if (status === 'Atrasado' && !selectedTypes.includes('delayed')) return;
 
-                const showItem = selectedTypes.includes('installment') || 
-                               (status === 'Stand-by' && selectedTypes.includes('standby')) || 
-                               (status === 'Atrasado' && selectedTypes.includes('delayed'));
-
-                if (showItem) {
-                    const finalVal = getCustomValue(i, paymentTag, Number(i.value_per_month)); // 🟢 LÊ O VALOR CUSTOMIZADO DO MÊS!
-                    rows.push({ Data: `Dia ${i.due_day}`, Mes: monthStr, Descricao: `${i.title} (${actual}/${i.installments_count})`, Categoria: 'Parcelado', Tipo: 'Saída', Valor: finalVal, Status: status });
+                if (selectedTypes.includes('installment')) {
+                    const finalVal = getCustomValue(i, paymentTag, Number(i.value_per_month));
+                    const displayActual = Math.min(actual, i.installments_count); // Trava visualmente (ex: não deixa passar de 1/1)
+                    
+                    rows.push({ 
+                        Data: `Dia ${i.due_day}`, 
+                        Mes: monthStr, 
+                        Descricao: `${i.title} (${displayActual}/${i.installments_count})`, 
+                        Categoria: 'Parcelado', 
+                        Tipo: 'Saída', 
+                        Valor: finalVal, 
+                        Status: status 
+                    });
                 }
             }
         });
