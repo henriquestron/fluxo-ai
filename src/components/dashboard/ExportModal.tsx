@@ -26,41 +26,115 @@ const TYPES = [
     { id: 'delayed', label: 'Atrasados' }
 ];
 
+// --- 🟢 MOTORES MATEMÁTICOS EXATOS DO MEU ALIADO ---
+const safeArray = (val: any) => {
+    if (Array.isArray(val)) return val;
+    if (typeof val === 'string') {
+        try { const p = JSON.parse(val); return Array.isArray(p) ? p : []; } catch { return []; }
+    }
+    return [];
+};
+
+const getStartData = (item: any, fallbackYear: number) => {
+    if (item.start_date && item.start_date.includes('/')) {
+        const p = item.start_date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+    }
+    if (item.date && item.date.includes('/')) {
+        const p = item.date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+    }
+    if (item.created_at) {
+        const d = new Date(item.created_at); return { m: d.getMonth(), y: d.getFullYear() };
+    }
+    return { m: 0, y: fallbackYear };
+};
+
+const isPaid = (item: any, tag: string) => {
+    if (!item.paid_months) return false;
+    const arr = safeArray(item.paid_months);
+    return arr.includes(tag) || arr.includes(tag.split('/')[0]);
+};
+
+// AQUI ESTAVA O PROBLEMA! O Excel não lia as edições personalizadas dos meses!
+const getCustomValue = (item: any, tag: string, baseValue: number) => {
+    if (!item.custom_values) return baseValue;
+    const parsedCustom = typeof item.custom_values === 'string' ? JSON.parse(item.custom_values) : item.custom_values;
+    return parsedCustom[tag] !== undefined ? Number(parsedCustom[tag]) : baseValue;
+};
+
+// O MESMO MOTOR DO DASHBOARD E DA LUNA
+const getMonthTotals = (monthIndex: number, trans: any[], inst: any[], recur: any[], year: number) => {
+    const monthName = MONTHS[monthIndex];
+    const mCode = (monthIndex + 1).toString().padStart(2, '0');
+    const dateFilter = `/${mCode}/${year}`;
+    const paymentTag = `${monthName}/${year}`;
+    const currentYYYYMM = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
+
+    const activeRecurring = recur.filter((r: any) => {
+        const pd = isPaid(r, paymentTag);
+        if ((r.status === 'delayed' || r.status === 'standby') && !pd) return false;
+        const standbyArr = safeArray(r.standby_months);
+        if (standbyArr.includes(paymentTag) && !pd) return false;
+        if (r.cancelled_from && currentYYYYMM >= r.cancelled_from) return false;
+
+        const { m: startMonth, y: startYear } = getStartData(r, year);
+        if (year > startYear) return true;
+        if (year === startYear && monthIndex >= startMonth) return true;
+        return false;
+    });
+
+    const incomeFixed = activeRecurring.filter((r: any) => r.type === 'income' && !safeArray(r.skipped_months).includes(monthName)).reduce((acc: number, curr: any) => acc + getCustomValue(curr, paymentTag, Number(curr.value)), 0);
+    const incomeVariable = trans.filter((t: any) => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc: number, curr: any) => acc + Number(curr.amount), 0);
+    const incomeTotal = incomeFixed + incomeVariable;
+
+    const expenseFixed = activeRecurring.filter((r: any) => r.type === 'expense' && !safeArray(r.skipped_months).includes(monthName)).reduce((acc: number, curr: any) => acc + getCustomValue(curr, paymentTag, Number(curr.value)), 0);
+    const expenseVariable = trans.filter((t: any) => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby' && !t.linked_goal_id).reduce((acc: number, curr: any) => acc + Number(curr.amount), 0);
+
+    const installTotal = inst.reduce((acc: number, curr: any) => {
+        const pd = isPaid(curr, paymentTag);
+        if ((curr.status === 'delayed' || curr.status === 'standby') && !pd) return acc;
+        const standbyArr = safeArray(curr.standby_months);
+        if (standbyArr.includes(paymentTag) && !pd) return acc;
+        if (curr.cancelled_from && currentYYYYMM >= curr.cancelled_from) return acc;
+
+        const { m: startMonth, y: startYear } = getStartData(curr, year);
+        const monthsDiff = ((year - startYear) * 12) + (monthIndex - startMonth);
+
+        let pastStandbys = 0;
+        for (let i = 0; i < monthsDiff; i++) {
+            const checkM = (startMonth + i) % 12;
+            const checkY = startYear + Math.floor((startMonth + i) / 12);
+            if (standbyArr.includes(`${MONTHS[checkM]}/${checkY}`)) pastStandbys++;
+        }
+
+        const currentInstNum = 1 + (curr.current_installment || 0) + monthsDiff - pastStandbys;
+
+        if (currentInstNum >= 1 && currentInstNum <= curr.installments_count) {
+            return acc + getCustomValue(curr, paymentTag, Number(curr.value_per_month));
+        }
+        return acc;
+    }, 0);
+
+    const expenseTotal = expenseVariable + expenseFixed + installTotal;
+
+    return { inc: incomeTotal, exp: expenseTotal, balance: incomeTotal - expenseTotal };
+};
+
+
 export default function ExportModal({ isOpen, onClose, user, userPlan, clients, activeTab, selectedYear: initialYear, currentWorkspace }: ExportModalProps) {
     if (!isOpen || !user) return null;
 
     const isAgent = userPlan === 'agent';
 
-    // --- ESTADOS ---
     const [exportYear, setExportYear] = useState(initialYear);
     const [selectedMonths, setSelectedMonths] = useState<string[]>([activeTab]);
     const [selectedTypes, setSelectedTypes] = useState<string[]>(['income', 'expense', 'fixed', 'installment', 'delayed', 'standby']);
-    // 🟢 CORREÇÃO: Já inicia com a conta do Consultor e todos os clientes marcados!
     const [selectedClients, setSelectedClients] = useState<string[]>(isAgent ? [user.id, ...(clients || []).map(c => c.client_id)] : (user ? [user.id] : []));
     
     const [isGenerating, setIsGenerating] = useState(false);
     const [includeDashboard, setIncludeDashboard] = useState(true);
 
-    // --- HELPER: DATAS ---
-    const getStartData = (item: any) => {
-        if (item.start_date && item.start_date.includes('/')) {
-            const p = item.start_date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
-        }
-        if (item.date && item.date.includes('/')) {
-            const p = item.date.split('/'); return { m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
-        }
-        if (item.created_at) {
-            const d = new Date(item.created_at); return { m: d.getMonth(), y: d.getFullYear() };
-        }
-        return { m: 0, y: exportYear };
-    };
+    const sanitizeSheetName = (name: string) => name.replace(/[\\/?*[\]:]/g, "").substring(0, 31);
 
-    const sanitizeSheetName = (name: string) => {
-        let safe = name.replace(/[\\/?*[\]:]/g, "");
-        return safe.substring(0, 31);
-    };
-
-    // --- FUNÇÕES DE SELEÇÃO ---
     const toggleMonth = (m: string) => setSelectedMonths(prev => prev.includes(m) ? prev.filter(i => i !== m) : [...prev, m]);
     const toggleType = (t: string) => setSelectedTypes(prev => prev.includes(t) ? prev.filter(i => i !== t) : [...prev, t]);
     const toggleClient = (id: string) => setSelectedClients(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
@@ -70,14 +144,13 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
         else setSelectedClients([user.id, ...(clients || []).map(c => c.client_id)]);
     };
 
-    // --- 1. CONFIGURAR COLUNAS ---
     const setupSheetColumns = (sheet: ExcelJS.Worksheet) => {
         sheet.columns = [
             { header: 'Data', key: 'Data', width: 15 },
             { header: 'Mês', key: 'Mes', width: 10 },
-            { header: 'Descrição', key: 'Descricao', width: 40 },
+            { header: 'Descrição', key: 'Descricao', width: 45 },
             { header: 'Categoria', key: 'Categoria', width: 20 },
-            { header: 'Tipo', key: 'Tipo', width: 15 },
+            { header: 'Tipo', key: 'Tipo', width: 20 },
             { header: 'Valor (R$)', key: 'Valor', width: 20 },
             { header: 'Status', key: 'Status', width: 15 },
         ];
@@ -97,8 +170,16 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
                 row.getCell('Data').alignment = { horizontal: 'center' };
                 row.getCell('Mes').alignment = { horizontal: 'center' };
                 
+                const descCell = row.getCell('Descricao');
+                const isSurplusRow = descCell.value === '💰 Saldo Acumulado do Mês Anterior';
+
+                if (isSurplusRow) {
+                    row.eachCell(c => c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } }); 
+                    descCell.font = { bold: true, color: { argb: 'FF38BDF8' } }; 
+                }
+
                 const valueCell = row.getCell('Valor');
-                if (valueCell.value) {
+                if (valueCell.value !== undefined && valueCell.value !== null) {
                     valueCell.numFmt = '"R$" #,##0.00;[Red]-"R$" #,##0.00';
                     valueCell.font = { bold: true };
                 }
@@ -112,28 +193,41 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
                     statusCell.font = { color: { argb: 'FFEF4444' }, bold: true };
                 } else if (statusText === 'Stand-by') {
                     statusCell.font = { color: { argb: 'FFCA8A04' }, italic: true };
-                    row.getCell('Valor').font = { strike: true, color: { argb: 'FF9CA3AF' } };
+                    if (!isSurplusRow) row.getCell('Valor').font = { strike: true, color: { argb: 'FF9CA3AF' } };
                 }
             }
         });
     };
 
-    // 🟢 HELPER DA IMUNIDADE: Conta paga não pode sumir!
-    const isPaidThisMonth = (item: any, tag: string) => {
-        if (!item.paid_months) return false;
-        return item.paid_months.includes(tag) || item.paid_months.includes(tag.split('/')[0]);
-    };
-
-    // --- 3. GERAR DADOS DO MÊS ---
     const processDataForMonth = (monthStr: string, trans: any[], inst: any[], recur: any[]) => {
         const rows: any[] = [];
         const monthIndex = MONTHS.indexOf(monthStr);
         const monthNum = (monthIndex + 1).toString().padStart(2, '0');
         const dateSuffix = `/${monthNum}/${exportYear}`;
         const paymentTag = `${monthStr}/${exportYear}`;
+        const currentYYYYMM = `${exportYear}-${monthNum}`;
+
+        // MÁQUINA DO TEMPO EXATA PARA A ABA!
+        let saldoAnterior = 0;
+        for (let i = 0; i < monthIndex; i++) {
+            const { balance } = getMonthTotals(i, trans, inst, recur, exportYear);
+            saldoAnterior += balance;
+        }
+
+        if (saldoAnterior !== 0) {
+            rows.push({
+                Data: `01/${monthNum}/${exportYear}`,
+                Mes: monthStr,
+                Descricao: '💰 Saldo Acumulado do Mês Anterior',
+                Categoria: 'Caixa Inicial',
+                Tipo: saldoAnterior >= 0 ? 'Entrada (Saldo)' : 'Saída (Dívida)',
+                Valor: Number(saldoAnterior),
+                Status: 'Pago'
+            });
+        }
 
         trans?.forEach(t => {
-            if (t.date?.includes(dateSuffix)) {
+            if (t.date?.includes(dateSuffix) && !t.linked_goal_id) {
                 let status = t.is_paid ? 'Pago' : 'Pendente';
                 if (t.status === 'standby') status = 'Stand-by';
                 else if (t.status === 'delayed') status = 'Atrasado';
@@ -149,32 +243,47 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
         });
 
         recur?.forEach(r => {
-            const { m: sM, y: sY } = getStartData(r);
+            const { m: sM, y: sY } = getStartData(r, exportYear);
             const isVisible = exportYear > sY || (exportYear === sY && monthIndex >= sM);
+            const isCancelled = r.cancelled_from && currentYYYYMM >= r.cancelled_from;
             
-            if (isVisible && !r.skipped_months?.includes(monthStr)) {
-                let status = isPaidThisMonth(r, paymentTag) ? 'Pago' : 'Pendente';
-                const isStandby = r.status === 'standby' || r.standby_months?.includes(paymentTag);
+            if (isVisible && !isCancelled && !safeArray(r.skipped_months).includes(monthStr)) {
+                let status = isPaid(r, paymentTag) ? 'Pago' : 'Pendente';
+                const isStandby = r.status === 'standby' || safeArray(r.standby_months).includes(paymentTag);
                 if (isStandby && status !== 'Pago') status = 'Stand-by';
+                if (r.status === 'delayed' && status !== 'Pago') status = 'Atrasado';
 
-                const showItem = selectedTypes.includes('fixed') || (status === 'Stand-by' && selectedTypes.includes('standby'));
+                const showItem = selectedTypes.includes('fixed') || (status === 'Stand-by' && selectedTypes.includes('standby')) || (status === 'Atrasado' && selectedTypes.includes('delayed'));
 
                 if (showItem) {
-                    rows.push({ Data: `Dia ${r.due_day}`, Mes: monthStr, Descricao: r.title, Categoria: r.category, Tipo: r.type === 'income' ? 'Entrada (Fixa)' : 'Saída (Fixa)', Valor: Number(r.value), Status: status });
+                    const finalVal = getCustomValue(r, paymentTag, Number(r.value)); // 🟢 LÊ O VALOR CUSTOMIZADO DO MÊS!
+                    rows.push({ Data: `Dia ${r.due_day}`, Mes: monthStr, Descricao: r.title, Categoria: r.category, Tipo: r.type === 'income' ? 'Entrada (Fixa)' : 'Saída (Fixa)', Valor: finalVal, Status: status });
                 }
             }
         });
 
         inst?.forEach(i => {
-            const { m: sM, y: sY } = getStartData(i);
+            const isCancelled = i.cancelled_from && currentYYYYMM >= i.cancelled_from;
+            if (isCancelled) return;
+
+            const { m: sM, y: sY } = getStartData(i, exportYear);
             const monthsDiff = ((exportYear - sY) * 12) + (monthIndex - sM);
-            const actual = 1 + (i.current_installment || 0) + monthsDiff;
+            
+            const standbyArr = safeArray(i.standby_months);
+            let pastStandbys = 0;
+            for (let j = 0; j < monthsDiff; j++) {
+                const checkM = (sM + j) % 12;
+                const checkY = sY + Math.floor((sM + j) / 12);
+                if (standbyArr.includes(`${MONTHS[checkM]}/${checkY}`)) pastStandbys++;
+            }
+
+            const actual = 1 + (i.current_installment || 0) + monthsDiff - pastStandbys;
 
             if (actual >= 1 && actual <= i.installments_count) {
-                let status = isPaidThisMonth(i, paymentTag) ? 'Pago' : 'Pendente';
-                if (i.status === 'delayed') status = 'Atrasado';
+                let status = isPaid(i, paymentTag) ? 'Pago' : 'Pendente';
+                if (i.status === 'delayed' && status !== 'Pago') status = 'Atrasado';
                 
-                const isStandby = i.status === 'standby' || i.standby_months?.includes(paymentTag);
+                const isStandby = i.status === 'standby' || standbyArr.includes(paymentTag);
                 if (isStandby && status !== 'Pago') status = 'Stand-by';
 
                 const showItem = selectedTypes.includes('installment') || 
@@ -182,26 +291,25 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
                                (status === 'Atrasado' && selectedTypes.includes('delayed'));
 
                 if (showItem) {
-                    rows.push({ Data: `Dia ${i.due_day}`, Mes: monthStr, Descricao: `${i.title} (${actual}/${i.installments_count})`, Categoria: 'Parcelado', Tipo: 'Saída', Valor: Number(i.value_per_month), Status: status });
+                    const finalVal = getCustomValue(i, paymentTag, Number(i.value_per_month)); // 🟢 LÊ O VALOR CUSTOMIZADO DO MÊS!
+                    rows.push({ Data: `Dia ${i.due_day}`, Mes: monthStr, Descricao: `${i.title} (${actual}/${i.installments_count})`, Categoria: 'Parcelado', Tipo: 'Saída', Valor: finalVal, Status: status });
                 }
             }
         });
 
         return rows.sort((a,b) => {
+            if (a.Descricao === '💰 Saldo Acumulado do Mês Anterior') return -1;
+            if (b.Descricao === '💰 Saldo Acumulado do Mês Anterior') return 1;
             const d1 = parseInt(a.Data.match(/\d+/)?.[0] || '99');
             const d2 = parseInt(b.Data.match(/\d+/)?.[0] || '99');
             return d1 - d2;
         });
     };
 
-    // --- 4. GERAR DASHBOARD ---
-    // --- 4. GERAR DASHBOARD ---
-    // --- 4. GERAR DASHBOARD ---
     const generateDashboardSheet = (workbook: ExcelJS.Workbook, trans: any[], inst: any[], recur: any[], ownerName: string) => {
         const sheetName = sanitizeSheetName(`Dash - ${ownerName}`);
         const sheet = workbook.addWorksheet(sheetName, { views: [{ showGridLines: false }] });
 
-        // 🟢 MUDOU DE F2 PARA G2 (Para cobrir a nova coluna adicionada)
         sheet.mergeCells('B2:G2');
         const title = sheet.getCell('B2');
         title.value = `DASHBOARD FINANCEIRO ${exportYear}`;
@@ -211,7 +319,6 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
 
         sheet.addRow([]);
         
-        // 🟢 ADICIONADA A COLUNA 'SALDO ANTERIOR' E O CABEÇALHO ATUALIZADO
         const header = sheet.addRow(['', 'MÊS', 'SALDO ANTERIOR', 'ENTRADAS', 'SAÍDAS', 'SALDO DO MÊS', 'SALDO ACUMULADO']);
         ['B', 'C', 'D', 'E', 'F', 'G'].forEach(col => {
             const cell = header.getCell(col);
@@ -221,75 +328,38 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
         });
         header.height = 20;
 
-        // A MÁQUINA DO TEMPO (Efeito Cascata para a Planilha)
         let previousSurplus = 0;
 
         MONTHS.forEach((month, idx) => {
-            const mCode = (idx + 1).toString().padStart(2, '0');
-            const dateFilter = `/${mCode}/${exportYear}`;
-            const paymentTag = `${month}/${exportYear}`;
+            // Puxa exatamente o motor financeiro principal
+            const { inc, exp, balance } = getMonthTotals(idx, trans, inst, recur, exportYear);
 
-            // Entradas
-            const inc = (trans.filter(t => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc, i) => acc + Number(i.amount), 0)) +
-                        (recur.filter(r => {
-                            const { m: sM, y: sY } = getStartData(r);
-                            const paid = isPaidThisMonth(r, paymentTag);
-                            if ((r.status === 'delayed' || r.status === 'standby' || r.standby_months?.includes(paymentTag)) && !paid) return false;
-                            return r.type === 'income' && (exportYear > sY || (exportYear === sY && idx >= sM)) && !r.skipped_months?.includes(month);
-                        }).reduce((acc, i) => acc + Number(i.value), 0));
-
-            // Saídas
-            const exp = (trans.filter(t => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc, i) => acc + Number(i.amount), 0)) +
-                        (recur.filter(r => {
-                            const { m: sM, y: sY } = getStartData(r);
-                            const paid = isPaidThisMonth(r, paymentTag);
-                            if ((r.status === 'delayed' || r.status === 'standby' || r.standby_months?.includes(paymentTag)) && !paid) return false;
-                            return r.type === 'expense' && (exportYear > sY || (exportYear === sY && idx >= sM)) && !r.skipped_months?.includes(month);
-                        }).reduce((acc, i) => acc + Number(i.value), 0)) +
-                        (inst.reduce((acc, i) => {
-                            const paid = isPaidThisMonth(i, paymentTag);
-                            if ((i.status === 'delayed' || i.status === 'standby' || i.standby_months?.includes(paymentTag)) && !paid) return acc;
-                            
-                            const { m: sM, y: sY } = getStartData(i);
-                            const diff = ((exportYear - sY) * 12) + (idx - sM);
-                            const act = 1 + (i.current_installment || 0) + diff;
-                            return (act >= 1 && act <= i.installments_count) ? acc + Number(i.value_per_month) : acc;
-                        }, 0));
-
-            // 🟢 LÓGICA DE SALDO CLARA (Com a nova coluna)
             const saldoAnterior = previousSurplus;
-            const saldoMensal = inc - exp;
+            const saldoMensal = balance;
             const saldoAcumulado = saldoMensal + saldoAnterior;
 
-            // Define o que sobra para o próximo mês da planilha (Arrasta lucro e dívida)
             previousSurplus = saldoAcumulado;
 
-            // 🟢 Passando as 6 colunas de dados agora
             const r = sheet.addRow(['', month, saldoAnterior, inc, exp, saldoMensal, saldoAcumulado]);
             
-            // Formatando como Moeda (Da coluna C até a G)
             ['C', 'D', 'E', 'F', 'G'].forEach(col => r.getCell(col).numFmt = '"R$" #,##0.00;[Red]-"R$" #,##0.00');
             
-            // Pintando de Verde (Positivo) ou Vermelho (Negativo)
             r.getCell('C').font = { color: { argb: saldoAnterior >= 0 ? 'FF166534' : 'FFDC2626' } };
             r.getCell('F').font = { color: { argb: saldoMensal >= 0 ? 'FF166534' : 'FFDC2626' } };
             r.getCell('G').font = { color: { argb: saldoAcumulado >= 0 ? 'FF166534' : 'FFDC2626' }, bold: true };
         });
 
-        // 🟢 Largura das colunas (Adicionada a Coluna G)
         sheet.getColumn('B').width = 10;
-        sheet.getColumn('C').width = 18; // Saldo Anterior
-        sheet.getColumn('D').width = 18; // Entradas
-        sheet.getColumn('E').width = 18; // Saídas
-        sheet.getColumn('F').width = 18; // Saldo do Mês
-        sheet.getColumn('G').width = 22; // Saldo Acumulado
+        sheet.getColumn('C').width = 18; 
+        sheet.getColumn('D').width = 18; 
+        sheet.getColumn('E').width = 18; 
+        sheet.getColumn('F').width = 18; 
+        sheet.getColumn('G').width = 22; 
     };
 
-    // --- EXPORTAÇÃO FINAL ---
     const handleExport = async () => {
         if (selectedMonths.length === 0) return toast.warning("Selecione pelo menos um mês.");
         
-        // 🟢 TRAVA DE SEGURANÇA: Exige ao menos uma conta selecionada (para não dar erro)
         if (isAgent && selectedClients.length === 0) {
             return toast.warning("Selecione pelo menos a sua conta ou a de um cliente.");
         }
@@ -309,17 +379,12 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
                 targets = [{ client_id: user.id, client_email: 'Meus Dados' }];
             }
 
-            // Loop por cada "Pessoa"
-            // Loop por cada "Pessoa"
             for (const target of targets) {
                 let workspaceId = null;
 
-                // 🟢 A GRANDE SACADA: 
-                // Se for o seu próprio usuário, usa EXATAMENTE a aba (workspace) que está aberta na tela!
                 if (target.client_id === user.id && currentWorkspace) {
                     workspaceId = currentWorkspace.id;
                 } else {
-                    // Se for um cliente (Visão do Consultor), pega a primeira área de trabalho do cliente
                     const { data: ws } = await supabase.from('workspaces').select('id').eq('user_id', target.client_id).order('created_at', { ascending: true }).limit(1).maybeSingle();
                     if (ws) workspaceId = ws.id;
                 }
@@ -327,7 +392,6 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
                 let t, i, r;
 
                 if (workspaceId) {
-                    // Puxa APENAS os dados da área de trabalho correta
                     const [resT, resI, resR] = await Promise.all([
                         supabase.from('transactions').select('*').eq('user_id', target.client_id).eq('context', workspaceId),
                         supabase.from('installments').select('*').eq('user_id', target.client_id).eq('context', workspaceId),
@@ -335,7 +399,6 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
                     ]);
                     t = resT.data; i = resI.data; r = resR.data;
                 } else {
-                    // Fallback (caso o usuário seja muito antigo e não tenha workspace)
                     const [resT, resI, resR] = await Promise.all([
                         supabase.from('transactions').select('*').eq('user_id', target.client_id),
                         supabase.from('installments').select('*').eq('user_id', target.client_id),
@@ -346,12 +409,10 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
 
                 const owner = target.client_email.split('@')[0];
 
-                // 1. Gera Dashboard Anual
                 if (includeDashboard) {
                     generateDashboardSheet(workbook, t || [], i || [], r || [], owner);
                 }
 
-                // 2. Gera Abas Mensais
                 for (const month of selectedMonths) {
                     const baseName = targets.length > 1 ? `${month} ${owner}` : month;
                     const sheetName = sanitizeSheetName(baseName);
@@ -362,7 +423,7 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
                     const sheet = workbook.addWorksheet(finalSheetName);
                     setupSheetColumns(sheet);
                     const rows = processDataForMonth(month, t || [], i || [], r || []);
-                    rows.forEach(r => sheet.addRow(r));
+                    rows.forEach(rowItem => sheet.addRow(rowItem));
                     styleSheetRows(sheet);
                 }
             }
@@ -447,7 +508,6 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[160px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 pr-1">
                                 
-                                {/* A CONTA DO PRÓPRIO CONSULTOR */}
                                 <button 
                                     onClick={() => toggleClient(user.id)} 
                                     className={`flex items-center gap-3 p-3 rounded-xl border transition text-sm text-left ${selectedClients.includes(user.id) ? 'bg-gray-800 border-emerald-500 text-emerald-400' : 'bg-gray-900 border-gray-800 text-gray-500 hover:bg-gray-800'}`}
@@ -459,7 +519,6 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
                                     <span className="truncate font-bold">Minha Conta (Pessoal)</span>
                                 </button>
 
-                                {/* A CONTA DOS CLIENTES */}
                                 {(clients || []).map(client => (
                                     <button 
                                         key={client.client_id} 
