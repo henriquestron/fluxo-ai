@@ -207,13 +207,12 @@ export default function ChangelogModal({ isOpen, onClose, data, user }: Changelo
                                 </div>
                             )}
 
-                            {/* TEXTO - Suporte a Markdown */}
-                            <div className="prose prose-invert prose-p:text-gray-300 prose-p:leading-relaxed prose-a:text-cyan-400 prose-strong:text-white max-w-none w-full text-sm md:text-base break-words overflow-x-hidden whitespace-pre-wrap">
+                            {/* TEXTO - Suporte a Markdown Turbinado e Blindado contra vazamentos */}
+                            <div className="prose prose-invert prose-p:text-gray-300 prose-p:leading-relaxed prose-a:text-cyan-400 prose-strong:text-white max-w-none w-full text-sm md:text-base break-words overflow-hidden">
                                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
                                     {displayContent}
                                 </ReactMarkdown>
                             </div>
-
                             {/* VÍDEO */}
                             {displayVideo && (
                                 <div className="mt-6 border-t border-gray-800 pt-6">
