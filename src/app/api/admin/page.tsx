@@ -2,8 +2,13 @@
 
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { ArrowLeft, Rocket, Users, Settings, Save, ShieldCheck, Tag, Ticket, Megaphone, Video, FileText, History, Trash2, PlusCircle, Loader2, ImagePlus, X, Lightbulb, Bold, Italic, List, ListOrdered, Link as LinkIcon } from "lucide-react";
+import { ArrowLeft, Rocket, Users, Settings, Save, ShieldCheck, Tag, Ticket, Megaphone, Video, History, Trash2, PlusCircle, Loader2, ImagePlus, X, Lightbulb } from "lucide-react";
 import { toast } from "sonner";
+import dynamic from 'next/dynamic';
+
+// 🟢 1. IMPORTAÇÃO DINÂMICA DO EDITOR (Evita erros no Next.js)
+
+const MDEditor = dynamic(() => import('@uiw/react-md-editor'), { ssr: false });
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -46,36 +51,14 @@ export default function AdminDashboard() {
   const [settings, setSettings] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
 
-  // 🟢 STATES DA CENTRAL DE COMUNICAÇÃO (Com o novo campo "type")
   const [changelogs, setChangelogs] = useState<any[]>([]);
   const [newChangelog, setNewChangelog] = useState({ type: 'Atualização', version: '', title: '', content: '', video_url: '', image_url: '' });
   const [savingChangelog, setSavingChangelog] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false); 
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     checkAdminAndFetchData();
   }, []);
-
-  const insertFormatting = (prefix: string, suffix: string = '') => {
-      if (!textareaRef.current) return;
-      const textarea = textareaRef.current;
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const text = newChangelog.content;
-      const selectedText = text.substring(start, end);
-      
-      // Monta o texto novo com as tags (ex: **palavra**)
-      const newText = text.substring(0, start) + prefix + selectedText + suffix + text.substring(end);
-      
-      setNewChangelog({ ...newChangelog, content: newText });
-      
-      // Devolve o cursor pro lugar certo logo após atualizar o state
-      setTimeout(() => {
-          textarea.focus();
-          textarea.setSelectionRange(start + prefix.length, end + prefix.length);
-      }, 0);
-  };
 
   async function checkAdminAndFetchData() {
     setLoading(true);
@@ -141,7 +124,6 @@ export default function AdminDashboard() {
     
     setSavingChangelog(true);
 
-    // 🟢 MÁGICA: Adiciona o prefixo no título para que o Front-End reconheça o tipo de aviso!
     const finalTitle = newChangelog.type === 'Atualização' 
         ? newChangelog.title 
         : `${newChangelog.type}: ${newChangelog.title}`;
@@ -217,7 +199,6 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-[#0a0a0a] text-gray-900 dark:text-gray-100 pb-20">
-      {/* HEADER FIXO */}
       <div className="bg-white dark:bg-[#111111] border-b border-gray-200 dark:border-gray-800 sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -237,7 +218,6 @@ export default function AdminDashboard() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-10 space-y-10">
 
-        {/* MOTOR DE PREÇOS */}
         <section className="bg-white dark:bg-[#111111] p-8 rounded-3xl shadow-xl border border-gray-100 dark:border-gray-800 relative">
           <div className="flex items-center gap-3 mb-8 border-b border-gray-200 dark:border-gray-800 pb-6">
             <div className="p-3 bg-cyan-500/10 rounded-xl text-cyan-500"><Settings size={24} /></div>
@@ -277,7 +257,6 @@ export default function AdminDashboard() {
           )}
         </section>
 
-        {/* 🟢 CENTRAL DE NOTAS E AVISOS */}
         <section className="bg-white dark:bg-[#111111] rounded-3xl shadow-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
           <div className="p-8 border-b border-gray-100 dark:border-gray-800 flex flex-col md:flex-row gap-6 md:items-center justify-between bg-fuchsia-950/10">
             <div className="flex items-center gap-3">
@@ -290,12 +269,10 @@ export default function AdminDashboard() {
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-2">
-            {/* LADO ESQUERDO: FORMULÁRIO */}
             <div className="p-8 border-r border-gray-800">
                 <h3 className="font-bold text-lg mb-6 flex items-center gap-2"><PlusCircle size={20} className="text-fuchsia-500"/> Disparar Mensagem</h3>
                 <form onSubmit={handleCreateChangelog} className="space-y-5">
                     
-                    {/* 🟢 SELETOR DE TIPO */}
                     <div className="grid grid-cols-3 gap-4">
                         <div className="col-span-1">
                             <label className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1 block flex items-center gap-1">Tipo <Lightbulb size={12}/></label>
@@ -321,7 +298,6 @@ export default function AdminDashboard() {
                         <input type="text" placeholder="Ex: v2.1 ou DICA #1" required className="w-full p-3 border border-gray-700 rounded-xl bg-black outline-none focus:border-fuchsia-500 font-mono" value={newChangelog.version} onChange={(e) => setNewChangelog({...newChangelog, version: e.target.value})} />
                     </div>
                     
-                    {/* 🟢 MÍDIA DA ATUALIZAÇÃO (FOTO OU VÍDEO) */}
                     <div className="bg-gray-900/50 p-4 rounded-xl border border-gray-800 space-y-4">
                         <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">Mídia de Apoio (Opcional)</p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -349,51 +325,28 @@ export default function AdminDashboard() {
                         </div>
                     </div>
 
+                    {/* 🟢 2. O NOVO EDITOR VISUAL */}
                     <div>
                         <label className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1 block">Texto Detalhado</label>
-                        
-                        <div className="border border-gray-700 rounded-xl overflow-hidden bg-black focus-within:border-fuchsia-500 transition-colors shadow-inner">
-                            {/* 🟢 BARRA DE FERRAMENTAS (TOOLBAR) */}
-                            <div className="flex items-center gap-1 bg-gray-900/50 p-2 border-b border-gray-700/50">
-                                <button type="button" onClick={() => insertFormatting('**', '**')} className="p-1.5 hover:bg-gray-700 rounded-md text-gray-400 hover:text-white transition-colors" title="Negrito">
-                                    <Bold size={16} />
-                                </button>
-                                <button type="button" onClick={() => insertFormatting('*', '*')} className="p-1.5 hover:bg-gray-700 rounded-md text-gray-400 hover:text-white transition-colors" title="Itálico">
-                                    <Italic size={16} />
-                                </button>
-                                <div className="w-px h-4 bg-gray-700 mx-2"></div>
-                                <button type="button" onClick={() => insertFormatting('\n- ')} className="p-1.5 hover:bg-gray-700 rounded-md text-gray-400 hover:text-white transition-colors" title="Lista de Pontos">
-                                    <List size={16} />
-                                </button>
-                                <button type="button" onClick={() => insertFormatting('\n1. ')} className="p-1.5 hover:bg-gray-700 rounded-md text-gray-400 hover:text-white transition-colors" title="Lista Numerada">
-                                    <ListOrdered size={16} />
-                                </button>
-                                <div className="w-px h-4 bg-gray-700 mx-2"></div>
-                                <button type="button" onClick={() => insertFormatting('[', '](https://seulink.com)')} className="p-1.5 hover:bg-gray-700 rounded-md text-gray-400 hover:text-white transition-colors" title="Adicionar Link">
-                                    <LinkIcon size={16} />
-                                </button>
-                            </div>
-
-                            {/* CAIXA DE TEXTO */}
-                            <textarea 
-                                ref={textareaRef}
-                                rows={12} 
-                                placeholder="Descreva as novidades ou a dica motivacional. Selecione uma palavra e use os botões acima para formatar..." 
-                                required 
-                                className="w-full p-4 bg-transparent outline-none resize-y min-h-[200px] text-gray-200" 
-                                value={newChangelog.content} 
-                                onChange={(e) => setNewChangelog({...newChangelog, content: e.target.value})} 
+                        <div data-color-mode="dark" className="mt-2 rounded-xl overflow-hidden border border-gray-700 shadow-xl">
+                            <MDEditor
+                                value={newChangelog.content}
+                                onChange={(val) => setNewChangelog({...newChangelog, content: val || ''})}
+                                height={350}
+                                preview="edit"
+                                textareaProps={{
+                                    placeholder: "Escreva as novidades aqui. Você pode ver o resultado clicando no ícone de Preview!"
+                                }}
                             />
                         </div>
                     </div>
 
-                    <button type="submit" disabled={savingChangelog} className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold py-4 rounded-xl transition shadow-lg flex items-center justify-center gap-2 text-lg">
+                    <button type="submit" disabled={savingChangelog} className="w-full bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold py-4 rounded-xl transition shadow-lg flex items-center justify-center gap-2 text-lg mt-4">
                         {savingChangelog ? <Loader2 className="animate-spin" size={20}/> : <Rocket size={20}/>} Disparar para os Clientes
                     </button>
                 </form>
             </div>
 
-            {/* LADO DIREITO: HISTÓRICO */}
             <div className="bg-[#0a0a0a] p-8">
                 <h3 className="font-bold text-lg mb-6 flex items-center gap-2 text-gray-300"><History size={20}/> Histórico de Lançamentos</h3>
                 
@@ -417,7 +370,6 @@ export default function AdminDashboard() {
                                 <h4 className="font-bold text-white mb-2 text-lg">{log.title}</h4>
                                 <p className="text-sm text-gray-400 line-clamp-3 whitespace-pre-wrap">{log.content}</p>
                                 
-                                {/* Mostrar badge se tiver mídia */}
                                 {(log.video_url || log.image_url) && (
                                     <div className="mt-4 flex gap-2">
                                         {log.image_url && <span className="text-[10px] bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-2 py-1 rounded flex items-center gap-1"><ImagePlus size={10}/> Tem Imagem</span>}
@@ -432,7 +384,6 @@ export default function AdminDashboard() {
           </div>
         </section>
 
-        {/* BASE DE CLIENTES */}
         <section className="bg-white dark:bg-[#111111] rounded-3xl shadow-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
           <div className="p-8 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
             <div className="flex items-center gap-3">

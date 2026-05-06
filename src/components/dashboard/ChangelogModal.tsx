@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Megaphone, CheckCircle2, PlayCircle, Sparkles, ChevronLeft, ChevronRight, Image as ImageIcon, Loader2, Lightbulb, Wrench } from 'lucide-react';
 import { supabase } from '@/supabase';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface ChangelogModalProps {
     isOpen: boolean;
@@ -207,8 +208,10 @@ export default function ChangelogModal({ isOpen, onClose, data, user }: Changelo
                             )}
 
                             {/* TEXTO - Suporte a Markdown */}
-                            <div className="prose prose-invert prose-p:text-gray-300 prose-p:leading-relaxed prose-a:text-cyan-400 prose-strong:text-white max-w-none text-sm md:text-base">
-                                <ReactMarkdown>{displayContent}</ReactMarkdown>
+                            <div className="prose prose-invert prose-p:text-gray-300 prose-p:leading-relaxed prose-a:text-cyan-400 prose-strong:text-white max-w-none w-full text-sm md:text-base break-words overflow-x-hidden whitespace-pre-wrap">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                    {displayContent}
+                                </ReactMarkdown>
                             </div>
 
                             {/* VÍDEO */}
