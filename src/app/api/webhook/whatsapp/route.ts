@@ -72,15 +72,6 @@ async function downloadMedia(url: string) {
 }
 
 // ============================================================================
-// CONTEXTO FINANCEIRO COMPLETO (CLONE EXATO DO PAGE.TSX)
-// ============================================================================
-// ============================================================================
-// CONTEXTO FINANCEIRO COMPLETO (CLONE EXATO DO PAGE.TSX)
-// ============================================================================
-// ============================================================================
-// CONTEXTO FINANCEIRO COMPLETO (CLONE DO PAGE.TSX ATUALIZADO 2.0)
-// ============================================================================
-// ============================================================================
 // CONTEXTO FINANCEIRO COMPLETO (CLONE DO PAGE.TSX ATUALIZADO 2.0)
 // ============================================================================
 async function getFinancialContext(supabase: any, userId: string, workspaceId: string) {
@@ -135,7 +126,6 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
             return arr.includes(tag) || arr.includes(tag.split('/')[0]);
         };
 
-        // 🟢 HELPER MÁGICO DE INDEPENDÊNCIA DE VALORES
         const getCustomValue = (item: any, tag: string, baseValue: number) => {
             if (!item.custom_values) return baseValue;
             const parsedCustom = typeof item.custom_values === 'string' ? JSON.parse(item.custom_values) : item.custom_values;
@@ -147,22 +137,17 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
             if ((r.status === 'delayed' || r.status === 'standby') && !paid) return false;
             const standbyArr = safeArray(r.standby_months);
             if (standbyArr.includes(currentPaymentTag) && !paid) return false;
-
-            // 🟢 MATADOR DE FANTASMAS
             if (r.cancelled_from && currentYYYYMM >= r.cancelled_from) return false;
-
             const { m: startMonth, y: startYear } = getStartData(r);
             if (currentYear > startYear) return true;
             if (currentYear === startYear && monthIndex >= startMonth) return true;
             return false;
         });
 
-        // ENTRADAS (Com CustomValues)
         const incomeFixed = activeRecurring.filter((r: any) => r.type === 'income' && !safeArray(r.skipped_months).includes(monthName)).reduce((acc: number, curr: any) => acc + getCustomValue(curr, currentPaymentTag, Number(curr.value)), 0);
         const incomeVariable = transactions.filter((t: any) => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby').reduce((acc: number, curr: any) => acc + Number(curr.amount), 0);
         const incomeTotal = incomeFixed + incomeVariable;
 
-        // SAÍDAS (Com CustomValues e filtro de caixinhas restabelecido do jeito certo)
         const expenseFixed = activeRecurring.filter((r: any) => r.type === 'expense' && !safeArray(r.skipped_months).includes(monthName)).reduce((acc: number, curr: any) => acc + getCustomValue(curr, currentPaymentTag, Number(curr.value)), 0);
         const expenseVariable = transactions.filter((t: any) => t.type === 'expense' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby' && !t.linked_goal_id).reduce((acc: number, curr: any) => acc + Number(curr.amount), 0);
 
@@ -171,8 +156,6 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
             if ((curr.status === 'delayed' || curr.status === 'standby') && !paid) return acc;
             const standbyArr = safeArray(curr.standby_months);
             if (standbyArr.includes(currentPaymentTag) && !paid) return acc;
-
-            // 🟢 MATADOR DE FANTASMAS
             if (curr.cancelled_from && currentYYYYMM >= curr.cancelled_from) return acc;
 
             const { m: startMonth, y: startYear } = getStartData(curr);
@@ -188,7 +171,6 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
             const currentInstNum = 1 + (curr.current_installment || 0) + monthsDiff - pastStandbys;
 
             if (currentInstNum >= 1 && currentInstNum <= curr.installments_count) {
-                // 🟢 CustomValues das parcelas
                 return acc + getCustomValue(curr, currentPaymentTag, Number(curr.value_per_month));
             }
             return acc;
@@ -196,7 +178,6 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
 
         const expenseTotal = expenseVariable + expenseFixed + installTotal;
 
-        // EXCLUSIVO WHATSAPP: TEXTO E STATUS (Lendo valores certos)
         let pendingAmount = 0;
         let pendingCount = 0;
         let paidCount = 0;
@@ -260,7 +241,6 @@ async function getFinancialContext(supabase: any, userId: string, workspaceId: s
         };
     };
 
-    // 🟢 MÁQUINA DO TEMPO (Efeito Cascata Exato)
     let previousSurplus = 0;
     for (let i = 0; i < activeMonthIdx; i++) {
         const pastData = getMonthData(MONTHS[i], i);
@@ -332,16 +312,17 @@ export async function POST(req: Request) {
         const inQuery = variations.join(',');
         console.log(`📩 senderId: ${senderId} | variações: ${inQuery}`);
 
+        // 🟢 MÁGICA 1: Adicionamos o "partner_name" em todos os selects do banco
         let { data: userSettings } = await supabase
             .from('user_settings')
-            .select('user_id, whatsapp_phone, whatsapp_id, partner_phone, partner_whatsapp_id, bot_persona, bot_humor_level, bot_sincerity_level, bot_formality_level')
+            .select('user_id, whatsapp_phone, whatsapp_id, partner_phone, partner_whatsapp_id, partner_name, bot_persona, bot_humor_level, bot_sincerity_level, bot_formality_level')
             .or(`whatsapp_id.eq.${senderId},partner_whatsapp_id.eq.${senderId},whatsapp_phone.in.(${inQuery}),partner_phone.in.(${inQuery})`)
             .maybeSingle();
 
         if (!userSettings && senderRaw !== senderId) {
             const { data: found } = await supabase
                 .from('user_settings')
-                .select('user_id, whatsapp_phone, whatsapp_id, partner_phone, partner_whatsapp_id, bot_persona, bot_humor_level, bot_sincerity_level, bot_formality_level')
+                .select('user_id, whatsapp_phone, whatsapp_id, partner_phone, partner_whatsapp_id, partner_name, bot_persona, bot_humor_level, bot_sincerity_level, bot_formality_level')
                 .or(`whatsapp_id.eq.${senderRaw},partner_whatsapp_id.eq.${senderRaw}`)
                 .maybeSingle();
             if (found) {
@@ -358,7 +339,7 @@ export async function POST(req: Request) {
                 const inQueryPossible = possiblePhones.join(',');
                 const { data: userToLink } = await supabase
                     .from('user_settings')
-                    .select('user_id, whatsapp_phone, partner_phone, bot_persona, bot_humor_level, bot_sincerity_level, bot_formality_level')
+                    .select('user_id, whatsapp_phone, partner_phone, partner_name, bot_persona, bot_humor_level, bot_sincerity_level, bot_formality_level')
                     .or(`whatsapp_phone.in.(${inQueryPossible}),partner_phone.in.(${inQueryPossible})`)
                     .maybeSingle();
 
@@ -380,7 +361,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "User unknown" });
         }
 
-        // ── ETAPA 2: TARGET PHONE ──────────────────────────────────────────────
+        // ── ETAPA 2: TARGET PHONE E QUEM ESTÁ FALANDO? ─────────────────────────
         const partnerClean = userSettings.partner_phone?.replace(/\D/g, '') || '';
         const isPartnerMessage =
             userSettings.partner_whatsapp_id === senderId ||
@@ -434,7 +415,7 @@ export async function POST(req: Request) {
 
         // ── ETAPA 5: PROCESSAR MÍDIA E DOCUMENTOS ──────────────────────────────
         let promptParts: any[] = [];
-        let hasAudio = false, hasImage = false, hasDocument = false; // 🟢 Adicionado hasDocument
+        let hasAudio = false, hasImage = false, hasDocument = false;
         const msgData = body.data?.message;
         const msgType = body.data?.messageType;
 
@@ -452,7 +433,6 @@ export async function POST(req: Request) {
                 if (msgData?.imageMessage?.caption) promptParts.push(msgData.imageMessage.caption);
             } else { await sendWhatsAppMessage(targetPhone, "⚠️ Não consegui ler a imagem."); return NextResponse.json({ status: 'Image Failed' }); }
         } else if (msgType === "documentMessage" || msgData?.documentMessage) {
-            // 🟢 NOVO: LÓGICA EXCLUSIVA PARA PDF
             const docMsg = msgData?.documentMessage;
             if (docMsg?.mimetype === "application/pdf") {
                 let pdfBase64 = body.data?.base64 || docMsg?.base64 || body.data?.message?.base64;
@@ -478,10 +458,8 @@ export async function POST(req: Request) {
             promptParts.push(messageContent);
         }
 
-        // ── ETAPA 6: VERIFICAR PLANO ───────────────────────────────────────────
         // ── ETAPA 6: VERIFICAR PLANO E NOME DO USUÁRIO ─────────────────────────
         
-        // 1. Busca APENAS o plano na tabela profiles (pra não dar erro no banco)
         const { data: profile } = await supabase
             .from('profiles')
             .select('plan_tier')
@@ -490,16 +468,19 @@ export async function POST(req: Request) {
             
         const plan = profile?.plan_tier || 'free';
 
-        // 2. Busca o nome real do usuário direto no sistema de Autenticação
+        // 🟢 MÁGICA 2: Descobrindo o nome de quem está falando agora!
         const { data: authData } = await supabase.auth.admin.getUserById(userSettings.user_id);
-        const fullName = authData?.user?.user_metadata?.full_name;
-        
-        // Pega só o primeiro nome
-        const userName = fullName ? fullName.split(' ')[0] : 'chefe';
+        const fullPrimaryName = authData?.user?.user_metadata?.full_name;
+        const primaryFirstName = fullPrimaryName ? fullPrimaryName.split(' ')[0] : 'chefe';
 
-        // 3. Verificação de acesso
+        const fullPartnerName = userSettings.partner_name || 'Parceiro';
+        const partnerFirstName = fullPartnerName.split(' ')[0];
+
+        // Se a mensagem for do parceiro, a Luna chama pelo nome do parceiro!
+        const currentSpeakerName = isPartnerMessage ? partnerFirstName : primaryFirstName;
+
         if (!['pro', 'agent', 'admin'].includes(plan)) {
-            await sendWhatsAppMessage(targetPhone, `🚫 *Acesso PRO*\n\nPoxa ${userName}, esse recurso é exclusivo dos planos Pro e Consultor.`, 100);
+            await sendWhatsAppMessage(targetPhone, `🚫 *Acesso PRO*\n\nPoxa ${currentSpeakerName}, esse recurso é exclusivo dos planos Pro e Consultor.`, 100);
             return NextResponse.json({ status: 'Blocked by Plan', plan });
         }
 
@@ -507,7 +488,6 @@ export async function POST(req: Request) {
         const { data: workspaces } = await supabase.from('workspaces').select('id, title, whatsapp_rule').eq('user_id', userSettings.user_id);
         const primaryWorkspace = workspaces?.[0];
 
-        // 🟢 BUSCAR CAIXINHAS ATIVAS DA IA
         const { data: wallets } = await supabase.from('goals')
             .select('id, title, whatsapp_rule')
             .eq('user_id', userSettings.user_id)
@@ -535,7 +515,6 @@ export async function POST(req: Request) {
             workspacesContextPrompt = `Inclua "context": "${primaryWorkspace.id}" em todos os JSONs.\n`;
         }
 
-        // 🟢 MONTAR O PROMPT DINÂMICO DAS CAIXINHAS
         let walletsContextPrompt = "";
         if (wallets && wallets.length > 0) {
             walletsContextPrompt = `\n━━━ 👛 CAIXINHAS (ORÇAMENTOS) ━━━\nSe o gasto combinar com a regra de uma das caixinhas abaixo, inclua a chave "linked_goal_id" com o ID numérico exato.\n`;
@@ -549,7 +528,6 @@ export async function POST(req: Request) {
         const dataHojeBR = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
         const cartoesCadastrados = ['nubank', 'inter', 'bb', 'itau', 'santander', 'caixa', 'bradesco', 'c6'];
 
-        // 🟢 Lógica de Humor e Emoções Personalizadas da Luna
         const humor = userSettings.bot_humor_level || 5;
         const sinceridade = userSettings.bot_sincerity_level || 5;
         const formalidade = userSettings.bot_formality_level || 5;
@@ -577,9 +555,10 @@ Ajuste seu tom de fala exatamente para refletir essa combinação única em toda
                 break;
         }
 
+        // 🟢 MÁGICA 2.1: Passando o currentSpeakerName pro Prompt
         const systemPrompt = `
 IDENTIDADE: O seu nome é Luna. Você é a inteligência artificial oficial do sistema "Meu Aliado".
-USUÁRIO ATUAL: Você está falando com ${userName}. Responda diretamente e o chame pelo nome de vez em quando.
+USUÁRIO ATUAL: Você está falando com ${currentSpeakerName}. Responda diretamente e o chame pelo nome de vez em quando.
 PERSONALIDADE: ${personaPrompt}
 
 REGRAS DE CONVERSAÇÃO:
@@ -654,10 +633,8 @@ ${hasAudio ? "\n⚠️ ÁUDIO: Transcreva e responda com base no que foi dito." 
 ${hasImage ? "\n📸 IMAGEM: Extraia valor, data e estabelecimento. Identifique a forma de pagamento." : ""}
 ${hasDocument ? "\n📄 ARQUIVO PDF: O usuário enviou um documento PDF (provavelmente boleto, nota fiscal ou comprovante). Analise e extraia: VALOR TOTAL, DATA DE VENCIMENTO e NOME DO ESTABELECIMENTO. Se achar código de barras ou linha digitável (PIX Copia e Cola), coloque na sua 'reply'!" : ""}
 `.trim();
-// 🟢 GATILHO MOTIVACIONAL DA LUNA (O toque de empatia!)
+
         let gatilhoMotivacional = "";
-        
-        // Verifica se o usuário tá no vermelho E se a Luna está configurada para ser descontraída/parceira
         if (ctx.estado_conta === "CRÍTICO 🔴" && botPersona === "humorado") {
             gatilhoMotivacional = `
             ⚠️ INSTRUÇÃO DE EMPATIA (MUITO IMPORTANTE):
@@ -695,8 +672,14 @@ ${hasDocument ? "\n📄 ARQUIVO PDF: O usuário enviou um documento PDF (provave
             }
 
             if (cmd.action === 'add') {
-                if (isPartnerMessage && cmd.data?.title && !cmd.data.title.includes('[Parceiro]')) {
-                    cmd.data.title = `[Parceiro] ${cmd.data.title}`;
+                // 🟢 MÁGICA 3: Substitui [Parceiro] pelo Nome Real do Parceiro!
+                if (isPartnerMessage && cmd.data?.title) {
+                    // Tira a tag genérica se a IA tiver inventado de colocar sozinha
+                    cmd.data.title = cmd.data.title.replace(/\[Parceiro\]\s*/gi, '');
+                    // Adiciona o nome real se já não estiver lá
+                    if (!cmd.data.title.includes(`[${partnerFirstName}]`)) {
+                        cmd.data.title = `[${partnerFirstName}] ${cmd.data.title}`;
+                    }
                 }
 
                 const targetContext = (cmd.context && validContextIds.has(cmd.context)) ? cmd.context : (primaryWorkspace?.id || null);
@@ -739,7 +722,6 @@ ${hasDocument ? "\n📄 ARQUIVO PDF: O usuário enviou um documento PDF (provave
                     payload.status = 'active';
                     payload.target_month = ctx.mes_atual;
 
-                    // 🟢 LIGAÇÃO MÁGICA COM A CAIXINHA
                     if (cmd.data.linked_goal_id) {
                         payload.linked_goal_id = Number(cmd.data.linked_goal_id);
                     }

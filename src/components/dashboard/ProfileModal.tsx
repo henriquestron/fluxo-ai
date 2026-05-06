@@ -37,8 +37,9 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
   // STATES DO WHATSAPP
   const [whatsapp, setWhatsapp] = useState('');
   const [partnerWhatsapp, setPartnerWhatsapp] = useState('');
+  const [partnerName, setPartnerName] = useState(''); // 🟢 NOVO: State do nome do parceiro
 
-  // 🟢 STATES DO CÉREBRO DA IA (Regras e Emoções)
+  // STATES DO CÉREBRO DA IA (Regras e Emoções)
   const [botPersona, setBotPersona] = useState('humorado'); 
   const [humorLevel, setHumorLevel] = useState(5);
   const [sincerityLevel, setSincerityLevel] = useState(5);
@@ -70,16 +71,17 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
       const fetchData = async () => {
         setLoadingAI(true);
         
-        // 🟢 Busca Whatsapp e Níveis de Emoção
+        // 🟢 Busca Whatsapp, Nome do Parceiro e Níveis de Emoção
         const { data: settingsData } = await supabase
           .from('user_settings')
-          .select('whatsapp_phone, partner_phone, bot_persona, bot_humor_level, bot_sincerity_level, bot_formality_level')
+          .select('whatsapp_phone, partner_phone, partner_name, bot_persona, bot_humor_level, bot_sincerity_level, bot_formality_level') // 🟢 Adicionado partner_name na busca
           .eq('user_id', user.id)
           .maybeSingle();
         
         if (settingsData) {
             if (settingsData.whatsapp_phone) setWhatsapp(settingsData.whatsapp_phone);
             if (settingsData.partner_phone) setPartnerWhatsapp(settingsData.partner_phone);
+            if (settingsData.partner_name) setPartnerName(settingsData.partner_name); // 🟢 Seta o nome do parceiro
             if (settingsData.bot_persona) setBotPersona(settingsData.bot_persona);
             if (settingsData.bot_humor_level) setHumorLevel(settingsData.bot_humor_level);
             if (settingsData.bot_sincerity_level) setSincerityLevel(settingsData.bot_sincerity_level);
@@ -129,7 +131,6 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
       const file = e.target.files?.[0];
       if (!file) return;
 
-      // 🟢 VALIDAÇÃO DE SEGURANÇA (TIPO E TAMANHO)
       const ALLOWED = ['image/jpeg', 'image/png', 'image/webp'];
       const MAX_MB = 3;
       if (!ALLOWED.includes(file.type)) { toast.error('Use JPG, PNG ou WEBP.'); return; }
@@ -160,7 +161,6 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
       const file = e.target.files?.[0];
       if (!file) return;
 
-      // 🟢 VALIDAÇÃO DE SEGURANÇA (TIPO E TAMANHO)
       const ALLOWED = ['image/jpeg', 'image/png', 'image/webp'];
       const MAX_MB = 3;
       if (!ALLOWED.includes(file.type)) { toast.error('Use JPG, PNG ou WEBP.'); return; }
@@ -196,7 +196,6 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
   const handleUpdateProfile = async () => {
     setLoading(true);
     try {
-      // 🟢 VALIDAÇÃO DO CNPJ/CPF (Impede lixo no banco de dados)
       if (isConsultant) {
         const cleanCnpj = cnpj.replace(/\D/g, '');
         if (cleanCnpj.length > 0 && cleanCnpj.length !== 11 && cleanCnpj.length !== 14) {
@@ -247,7 +246,8 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
         .upsert({ 
             user_id: user.id, 
             whatsapp_phone: cleanPhone,
-            partner_phone: cleanPartnerPhone || null
+            partner_phone: cleanPartnerPhone || null,
+            partner_name: partnerName || null // 🟢 NOVO: Salvando o nome no banco!
         }, { onConflict: 'user_id' });
       
       if (dbError) throw dbError;
@@ -260,11 +260,9 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
     }
   };
 
-  // 🟢 SALVA O CÉREBRO E AS EMOÇÕES (COM UPSERT E CAST BOOLEAN)
   const handleSaveAIConfig = async () => {
     setSavingRules(true);
     try {
-      // Usando Upsert para garantir que crie a linha se o usuário for novo
       await supabase.from('user_settings')
         .upsert({ 
             user_id: user.id,
@@ -285,7 +283,7 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
         await supabase.from('goals')
             .update({ 
                 whatsapp_rule: wg.whatsapp_rule?.slice(0, 300) || null, 
-                ai_enabled: wg.ai_enabled === true // 🟢 Força conversão para booleano
+                ai_enabled: wg.ai_enabled === true 
             })
             .eq('id', wg.id)
             .eq('user_id', user.id);
@@ -433,7 +431,6 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
 
                     <div>
                         <label className="text-xs text-gray-400 font-bold ml-1 mb-1 block">Sua Biografia / Especialidade</label>
-                        {/* 🟢 Adicionado maxLength de 500 para proteger o banco de dados */}
                         <textarea maxLength={500} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Ex: Especialista em recuperação de crédito e organização financeira para autônomos..." className="w-full bg-black border border-gray-800 rounded-xl p-3 text-white focus:border-purple-500 outline-none transition resize-none h-20" />
                     </div>
 
@@ -494,12 +491,21 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
                         </div>
                         <input type="text" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="Ex: 556299999999" className="w-full bg-gray-900 border border-gray-800 rounded-lg p-3 text-white outline-none focus:border-emerald-500 transition" />
                     </div>
-                    <div>
-                        <label className="text-xs text-gray-500 font-bold mb-2 flex items-center gap-1"><Users size={12}/> WhatsApp do Parceiro(a) <span className="font-normal text-[10px]">(Opcional)</span></label>
-                        <input type="text" value={partnerWhatsapp} onChange={(e) => setPartnerWhatsapp(e.target.value)} placeholder="Ex: 556288888888" className="w-full bg-gray-900 border border-gray-800 rounded-lg p-3 text-white outline-none focus:border-emerald-500 transition" />
+                    
+                    {/* 🟢 MUDANÇA AQUI: Layout do parceiro com Nome e Telefone lado a lado */}
+                    <div className="pt-3 border-t border-gray-800 mt-4">
+                        <label className="text-xs text-gray-500 font-bold mb-3 flex items-center gap-1"><Users size={12}/> Acesso do Casal <span className="font-normal text-[10px]">(Opcional)</span></label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <input type="text" value={partnerName} onChange={(e) => setPartnerName(e.target.value)} placeholder="Nome do Parceiro(a)" className="w-full bg-gray-900 border border-gray-800 rounded-lg p-3 text-white outline-none focus:border-emerald-500 transition text-sm" />
+                            </div>
+                            <div>
+                                <input type="text" value={partnerWhatsapp} onChange={(e) => setPartnerWhatsapp(e.target.value)} placeholder="WhatsApp: Ex: 556288888888" className="w-full bg-gray-900 border border-gray-800 rounded-lg p-3 text-white outline-none focus:border-emerald-500 transition text-sm" />
+                            </div>
+                        </div>
                     </div>
 
-                    <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                    <div className="flex flex-col sm:flex-row gap-3 pt-4">
                       <button onClick={handleSavePhones} disabled={savingPhones} className="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-bold py-2.5 rounded-xl transition flex items-center justify-center gap-2 border border-gray-700">
                         {savingPhones ? <Loader2 className="animate-spin size-4"/> : <Save size={16}/>} Salvar Números
                       </button>
@@ -555,7 +561,7 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
         </div>
       </div>
 
-      {/* 🟢 SUB-MODAL: CÉREBRO DA IA */}
+      {/* SUB-MODAL: CÉREBRO DA IA */}
       {isAIConfigOpen && (
         <div className="fixed inset-0 bg-black/95 backdrop-blur-xl z-[400] flex items-center justify-center p-4 animate-in zoom-in duration-200">
           <div className="bg-[#0a0a0a] border border-gray-800 w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col max-h-[85vh]">
@@ -590,7 +596,7 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
                             <option value="personalizado">🎛️ Personalizado (Ajuste Fino de Emoções)</option>
                         </select>
 
-                        {/* 🟢 SLIDERS CUSTOMIZADOS */}
+                        {/* SLIDERS CUSTOMIZADOS */}
                         {botPersona === 'personalizado' && (
                             <div className="mt-5 p-5 bg-black rounded-xl border border-gray-800 space-y-6 animate-in fade-in duration-300">
                                 <div className="text-center mb-2">
