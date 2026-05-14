@@ -12,6 +12,20 @@ export default function PricingModal({ isOpen, onClose, handleCheckout }: Pricin
     const [settings, setSettings] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
+    // Função para formatar o preço em BRL
+// Função para formatar o preço em BRL à prova de erros (NaN)
+    const fmtPrice = (v: any) => {
+        if (v === null || v === undefined || v === '') return '0,00';
+        
+        // Se vier com vírgula do banco (ex: "29,90"), troca por ponto ("29.90") para o JS entender
+        const safeValue = typeof v === 'string' ? v.replace(',', '.') : v;
+        const num = Number(safeValue);
+        
+        // Se mesmo assim não for um número válido, retorna 0,00 pra não quebrar a tela
+        if (isNaN(num)) return '0,00';
+        
+        return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
     useEffect(() => {
         if (isOpen) {
             fetchSettings();
@@ -20,9 +34,28 @@ export default function PricingModal({ isOpen, onClose, handleCheckout }: Pricin
 
     async function fetchSettings() {
         setLoading(true);
-        const { data } = await supabase.from('app_settings').select('*').single();
-        if (data) setSettings(data);
-        setLoading(false);
+        try {
+            // Seleciona apenas os dados necessários para exibição, blindando os IDs sensíveis no backend
+            const { data, error } = await supabase.from('app_settings')
+                .select(`
+                    is_promo_active, promo_text,
+                    price_start_normal, price_start_promo,
+                    price_premium_normal, price_premium_promo,
+                    price_pro_normal, price_pro_promo,
+                    price_agent_normal, price_agent_promo,
+                    desc_start, desc_premium, desc_pro, desc_agent
+                `)
+                .single();
+
+            if (error) throw error;
+            if (data) setSettings(data);
+        } catch (err) {
+            console.error('Erro ao carregar preços:', err);
+            // Aqui você pode adicionar um toast de erro se desejar
+        } finally {
+            // Garante que o loading saia da tela, mesmo se der erro
+            setLoading(false);
+        }
     }
 
     if (!isOpen) return null;
@@ -65,11 +98,11 @@ export default function PricingModal({ isOpen, onClose, handleCheckout }: Pricin
                                     <div className="text-3xl font-black text-white mb-6">
                                         {settings.is_promo_active ? (
                                             <div className="flex flex-col">
-                                                <span className="text-sm line-through text-gray-500 font-normal">R$ {settings.price_start_normal}</span>
-                                                <span>R$ {settings.price_start_promo}<span className="text-sm font-normal text-gray-500">/mês</span></span>
+                                                <span className="text-sm line-through text-gray-500 font-normal">R$ {fmtPrice(settings.price_start_normal)}</span>
+                                                <span>R$ {fmtPrice(settings.price_start_promo)}<span className="text-sm font-normal text-gray-500">/mês</span></span>
                                             </div>
                                         ) : (
-                                            <span>R$ {settings.price_start_normal}<span className="text-sm font-normal text-gray-500">/mês</span></span>
+                                            <span>R$ {fmtPrice(settings.price_start_normal)}<span className="text-sm font-normal text-gray-500">/mês</span></span>
                                         )}
                                     </div>
 
@@ -93,28 +126,22 @@ export default function PricingModal({ isOpen, onClose, handleCheckout }: Pricin
                                     <div className="text-4xl font-black text-white mb-6">
                                         {settings.is_promo_active ? (
                                             <div className="flex flex-col">
-                                                <span className="text-sm line-through text-gray-500 font-normal">R$ {settings.price_premium_normal}</span>
-                                                <span>R$ {settings.price_premium_promo}<span className="text-sm font-normal text-gray-500">/mês</span></span>
+                                                <span className="text-sm line-through text-gray-500 font-normal">R$ {fmtPrice(settings.price_premium_normal)}</span>
+                                                <span>R$ {fmtPrice(settings.price_premium_promo)}<span className="text-sm font-normal text-gray-500">/mês</span></span>
                                             </div>
                                         ) : (
-                                            <span>R$ {settings.price_premium_normal}<span className="text-sm font-normal text-gray-500">/mês</span></span>
+                                            <span>R$ {fmtPrice(settings.price_premium_normal)}<span className="text-sm font-normal text-gray-500">/mês</span></span>
                                         )}
                                     </div>
 
                                     <ul className="space-y-4 mb-8 flex-1 text-sm text-white">
                                         <li className="flex gap-3 font-bold text-cyan-400"><CheckCircle2 size={18} className="shrink-0" /> Tudo do Plano Start</li>
-
-                                        {/* 🟢 IA POTENTE NO SITE */}
                                         <li className="flex gap-3 font-black text-cyan-500 italic"><Sparkles size={18} className="shrink-0" /> IA do Site: Lançamentos & Simulações</li>
-
                                         <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500 shrink-0" /> Adição Automática via Texto, Comprovante ou Foto</li>
                                         <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500 shrink-0" /> Inteligência de Identificação (Fixa, Variável ou Parcela)</li>
                                         <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500 shrink-0" /> Simulação de Cenários e Consultoria Digital</li>
-
-                                        {/* 🟢 MULTIPERFIS */}
                                         <li className="flex gap-3"><CheckCircle2 size={18} className="text-cyan-500 shrink-0" /> Personalização de Layout e Cores</li>
                                         <li className="flex gap-3 font-bold"><CheckCircle2 size={18} className="text-cyan-500 shrink-0" /> Criação de Múltiplos Perfis de Conta</li>
-
                                         <li className="flex gap-3 text-gray-500 line-through"><Smartphone size={18} className="shrink-0" /> IA integrada no WhatsApp</li>
                                     </ul>
                                     <button onClick={() => handleCheckout('PREMIUM')} className="w-full py-4 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black transition shadow-lg text-lg">Quero o Premium</button>
@@ -128,11 +155,11 @@ export default function PricingModal({ isOpen, onClose, handleCheckout }: Pricin
                                     <div className="text-3xl font-black text-white mb-6">
                                         {settings.is_promo_active ? (
                                             <div className="flex flex-col">
-                                                <span className="text-sm line-through text-gray-500 font-normal">R$ {settings.price_pro_normal}</span>
-                                                <span>R$ {settings.price_pro_promo}<span className="text-sm font-normal text-gray-500">/mês</span></span>
+                                                <span className="text-sm line-through text-gray-500 font-normal">R$ {fmtPrice(settings.price_pro_normal)}</span>
+                                                <span>R$ {fmtPrice(settings.price_pro_promo)}<span className="text-sm font-normal text-gray-500">/mês</span></span>
                                             </div>
                                         ) : (
-                                            <span>R$ {settings.price_pro_normal}<span className="text-sm font-normal text-gray-500">/mês</span></span>
+                                            <span>R$ {fmtPrice(settings.price_pro_normal)}<span className="text-sm font-normal text-gray-500">/mês</span></span>
                                         )}
                                     </div>
 
@@ -172,11 +199,11 @@ export default function PricingModal({ isOpen, onClose, handleCheckout }: Pricin
                                     <div className="text-4xl md:text-5xl font-black text-white">
                                         {settings.is_promo_active ? (
                                             <div className="flex flex-col items-center">
-                                                <span className="text-sm line-through text-gray-500 font-normal">R$ {settings.price_agent_normal}</span>
-                                                <span>R$ {settings.price_agent_promo}<span className="text-lg font-normal text-gray-500">/mês</span></span>
+                                                <span className="text-sm line-through text-gray-500 font-normal">R$ {fmtPrice(settings.price_agent_normal)}</span>
+                                                <span>R$ {fmtPrice(settings.price_agent_promo)}<span className="text-lg font-normal text-gray-500">/mês</span></span>
                                             </div>
                                         ) : (
-                                            <span>R$ {settings.price_agent_normal}<span className="text-lg font-normal text-gray-500">/mês</span></span>
+                                            <span>R$ {fmtPrice(settings.price_agent_normal)}<span className="text-lg font-normal text-gray-500">/mês</span></span>
                                         )}
                                     </div>
                                     <button onClick={() => handleCheckout('AGENT')} className="w-full px-10 py-5 bg-amber-600 hover:bg-amber-500 text-white text-xl font-black rounded-2xl transition shadow-xl shadow-amber-900/40">
