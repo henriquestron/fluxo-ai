@@ -7,7 +7,6 @@ import { toast } from "sonner";
 import dynamic from 'next/dynamic';
 
 // 🟢 1. IMPORTAÇÃO DINÂMICA DO EDITOR (Evita erros no Next.js)
-
 const MDEditor = dynamic(() => import('@uiw/react-md-editor'), { ssr: false });
 
 const supabase = createClient(
@@ -120,7 +119,14 @@ export default function AdminDashboard() {
 
   async function handleCreateChangelog(e: React.FormEvent) {
     e.preventDefault();
-    if (!newChangelog.version || !newChangelog.title || !newChangelog.content) return toast.error("Preencha Versão, Título e Texto!");
+    
+    // 🟢 Validação nova: Precisa de título e versão, mas o conteúdo não é mais obrigatório se tiver mídia
+    if (!newChangelog.version || !newChangelog.title) {
+        return toast.error("Preencha Versão e Título!");
+    }
+    if (!newChangelog.content && !newChangelog.image_url && !newChangelog.video_url) {
+        return toast.error("Adicione um Texto, uma Imagem ou um Vídeo!");
+    }
     
     setSavingChangelog(true);
 
@@ -131,7 +137,7 @@ export default function AdminDashboard() {
     const { error } = await supabase.from('changelogs').insert([{
         version: newChangelog.version,
         title: finalTitle,
-        content: newChangelog.content,
+        content: newChangelog.content || null, // Garante que salva nulo se estiver vazio
         video_url: newChangelog.video_url || null,
         image_url: newChangelog.image_url || null 
     }]);
@@ -289,7 +295,7 @@ export default function AdminDashboard() {
                         </div>
                         <div className="col-span-2">
                             <label className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1 block">Título</label>
-                            <input type="text" placeholder="Ex: Cérebro da IA Liberado! 🧠" required className="w-full p-3 border border-gray-700 rounded-xl bg-black outline-none focus:border-fuchsia-500" value={newChangelog.title} onChange={(e) => setNewChangelog({...newChangelog, title: e.target.value})} />
+                            <input type="text" placeholder="Ex: Nova Dashboard Liberada! 📊" required className="w-full p-3 border border-gray-700 rounded-xl bg-black outline-none focus:border-fuchsia-500" value={newChangelog.title} onChange={(e) => setNewChangelog({...newChangelog, title: e.target.value})} />
                         </div>
                     </div>
 
@@ -299,20 +305,20 @@ export default function AdminDashboard() {
                     </div>
                     
                     <div className="bg-gray-900/50 p-4 rounded-xl border border-gray-800 space-y-4">
-                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">Mídia de Apoio (Opcional)</p>
+                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">Mídia de Apoio</p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
-                                <label className="text-xs text-gray-500 mb-1 flex items-center gap-1"><Video size={14}/> Link do YouTube</label>
+                                <label className="text-xs text-gray-500 mb-1 flex items-center gap-1"><Video size={14}/> Link do YouTube (Opcional)</label>
                                 <input type="text" placeholder="https://youtu.be/..." className="w-full p-2.5 border border-gray-700 rounded-lg bg-black text-sm outline-none focus:border-fuchsia-500" value={newChangelog.video_url} onChange={(e) => setNewChangelog({...newChangelog, video_url: e.target.value})} />
                             </div>
                             
                             <div>
-                                <label className="text-xs text-gray-500 mb-1 flex items-center gap-1"><ImagePlus size={14}/> Imagem / Print Screen</label>
+                                <label className="text-xs text-gray-500 mb-1 flex items-center gap-1"><ImagePlus size={14}/> Imagem / Foto (Opcional)</label>
+                                {/* 🟢 3. PREVIEW RESPONSIVO E SEGURO PARA QUALQUER PROPORÇÃO */}
                                 {newChangelog.image_url ? (
-                                    <div className="relative w-full h-10 bg-black rounded-lg border border-fuchsia-500/50 flex items-center justify-between px-3 overflow-hidden">
-                                        <span className="text-xs text-fuchsia-400 truncate">Imagem Anexada</span>
-                                        <button type="button" onClick={() => setNewChangelog({...newChangelog, image_url: ''})} className="text-gray-400 hover:text-red-400 bg-black/50 p-1 rounded-md z-10"><X size={14}/></button>
-                                        <img src={newChangelog.image_url} alt="Preview" className="absolute inset-0 opacity-20 object-cover w-full h-full pointer-events-none" />
+                                    <div className="relative w-full bg-black rounded-lg border border-fuchsia-500/50 flex flex-col items-center justify-center p-2 overflow-hidden">
+                                        <button type="button" onClick={() => setNewChangelog({...newChangelog, image_url: ''})} className="absolute top-2 right-2 text-white hover:text-red-400 bg-red-600/80 p-1.5 rounded-md z-10 transition shadow-lg"><X size={14}/></button>
+                                        <img src={newChangelog.image_url} alt="Preview" className="max-h-48 w-auto object-contain rounded" />
                                     </div>
                                 ) : (
                                     <label className={`w-full h-10 border border-gray-700 border-dashed rounded-lg bg-black text-sm outline-none hover:border-fuchsia-500 hover:text-fuchsia-400 transition cursor-pointer flex items-center justify-center gap-2 text-gray-400 ${uploadingImage ? 'opacity-50 pointer-events-none' : ''}`}>
@@ -325,9 +331,8 @@ export default function AdminDashboard() {
                         </div>
                     </div>
 
-                    {/* 🟢 2. O NOVO EDITOR VISUAL */}
                     <div>
-                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1 block">Texto Detalhado</label>
+                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1 block">Texto Detalhado (Opcional)</label>
                         <div data-color-mode="dark" className="mt-2 rounded-xl overflow-hidden border border-gray-700 shadow-xl">
                             <MDEditor
                                 value={newChangelog.content}
@@ -335,7 +340,7 @@ export default function AdminDashboard() {
                                 height={350}
                                 preview="edit"
                                 textareaProps={{
-                                    placeholder: "Escreva as novidades aqui. Você pode ver o resultado clicando no ícone de Preview!"
+                                    placeholder: "Você pode deixar em branco se quiser enviar só uma imagem ou vídeo..."
                                 }}
                             />
                         </div>
@@ -368,7 +373,10 @@ export default function AdminDashboard() {
                                     </button>
                                 </div>
                                 <h4 className="font-bold text-white mb-2 text-lg">{log.title}</h4>
-                                <p className="text-sm text-gray-400 line-clamp-3 whitespace-pre-wrap">{log.content}</p>
+                                
+                                {log.content && (
+                                    <p className="text-sm text-gray-400 line-clamp-3 whitespace-pre-wrap">{log.content}</p>
+                                )}
                                 
                                 {(log.video_url || log.image_url) && (
                                     <div className="mt-4 flex gap-2">
