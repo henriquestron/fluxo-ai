@@ -193,6 +193,7 @@ export default function FinancialDashboard() {
         }
     }, [userPlan, transactions, user]);
 
+
     useEffect(() => {
         // 1. Procura se tem intenção de compra da Landing Page
         const intentPlan = localStorage.getItem('intent_plan');
@@ -220,6 +221,13 @@ export default function FinancialDashboard() {
         } else {
             // Se NÃO tem post-it, é um usuário normal que só clicou em "Acessar"
             // Deixa a vida seguir normal...
+        }
+    }, []);
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('signup') === 'true') {
+            setIsAuthModalOpen(true);
+            setAuthMode('signup');
         }
     }, []);
 

@@ -37,7 +37,7 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
   // STATES DO WHATSAPP
   const [whatsapp, setWhatsapp] = useState('');
   const [partnerWhatsapp, setPartnerWhatsapp] = useState('');
-  const [partnerName, setPartnerName] = useState(''); // 🟢 NOVO: State do nome do parceiro
+  const [partnerName, setPartnerName] = useState('');
 
   // STATES DO CÉREBRO DA IA (Regras e Emoções)
   const [botPersona, setBotPersona] = useState('humorado'); 
@@ -50,6 +50,12 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
   const [loadingAI, setLoadingAI] = useState(false);
   const [savingRules, setSavingRules] = useState(false);
   const [savingPhones, setSavingPhones] = useState(false);
+
+  // STATES DA LANDING PAGE DO CONSULTOR
+  const [slug, setSlug] = useState('');
+  const [welcomeText, setWelcomeText] = useState('');
+  const [instagram, setInstagram] = useState('');
+  const [socialWhatsapp, setSocialWhatsapp] = useState('');
   
   // States de Segurança
   const [password, setPassword] = useState('');
@@ -71,27 +77,27 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
       const fetchData = async () => {
         setLoadingAI(true);
         
-        // 🟢 Busca Whatsapp, Nome do Parceiro e Níveis de Emoção
+        // Busca Whatsapp, Nome do Parceiro e Níveis de Emoção
         const { data: settingsData } = await supabase
           .from('user_settings')
-          .select('whatsapp_phone, partner_phone, partner_name, bot_persona, bot_humor_level, bot_sincerity_level, bot_formality_level') // 🟢 Adicionado partner_name na busca
+          .select('whatsapp_phone, partner_phone, partner_name, bot_persona, bot_humor_level, bot_sincerity_level, bot_formality_level') 
           .eq('user_id', user.id)
           .maybeSingle();
         
         if (settingsData) {
             if (settingsData.whatsapp_phone) setWhatsapp(settingsData.whatsapp_phone);
             if (settingsData.partner_phone) setPartnerWhatsapp(settingsData.partner_phone);
-            if (settingsData.partner_name) setPartnerName(settingsData.partner_name); // 🟢 Seta o nome do parceiro
+            if (settingsData.partner_name) setPartnerName(settingsData.partner_name);
             if (settingsData.bot_persona) setBotPersona(settingsData.bot_persona);
             if (settingsData.bot_humor_level) setHumorLevel(settingsData.bot_humor_level);
             if (settingsData.bot_sincerity_level) setSincerityLevel(settingsData.bot_sincerity_level);
             if (settingsData.bot_formality_level) setFormalityLevel(settingsData.bot_formality_level);
         }
 
-        // Busca Dados do Consultor
+        // Busca Dados do Consultor (Incluindo dados da Landing Page)
         const { data: profileData } = await supabase
           .from('profiles')
-          .select('company_logo, company_name, cnpj, bio')
+          .select('company_logo, company_name, cnpj, bio, slug, page_welcome_text, social_instagram, social_whatsapp')
           .eq('id', user.id)
           .maybeSingle();
 
@@ -100,6 +106,10 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
           if (profileData.company_name) setCompanyName(profileData.company_name);
           if (profileData.cnpj) setCnpj(profileData.cnpj);
           if (profileData.bio) setBio(profileData.bio);
+          if (profileData.slug) setSlug(profileData.slug);
+          if (profileData.page_welcome_text) setWelcomeText(profileData.page_welcome_text);
+          if (profileData.social_instagram) setInstagram(profileData.social_instagram);
+          if (profileData.social_whatsapp) setSocialWhatsapp(profileData.social_whatsapp);
         }
 
         // Busca Workspaces
@@ -211,12 +221,30 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
       if (authError) throw authError;
 
       if (isConsultant) {
+        // Formatar o slug: remover espaços, acentos e caracteres especiais
+        const cleanSlug = slug.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+
         const { error: profileError } = await supabase
           .from('profiles')
-          .update({ company_name: companyName, cnpj: cnpj, bio: bio })
+          .update({ 
+            company_name: companyName, 
+            cnpj: cnpj, 
+            bio: bio,
+            slug: cleanSlug || null, 
+            page_welcome_text: welcomeText || null, 
+            social_instagram: instagram || null, 
+            social_whatsapp: socialWhatsapp || null 
+          })
           .eq('id', user.id);
           
-        if (profileError) throw profileError;
+        if (profileError) {
+            if (profileError.code === '23505') { // Erro de unique constraint no banco
+                toast.error("Este link personalizado já está em uso por outro consultor. Escolha outro.");
+                setLoading(false);
+                return;
+            }
+            throw profileError;
+        }
       }
 
       toast.success("Perfil atualizado com sucesso!");
@@ -247,7 +275,7 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
             user_id: user.id, 
             whatsapp_phone: cleanPhone,
             partner_phone: cleanPartnerPhone || null,
-            partner_name: partnerName || null // 🟢 NOVO: Salvando o nome no banco!
+            partner_name: partnerName || null
         }, { onConflict: 'user_id' });
       
       if (dbError) throw dbError;
@@ -449,6 +477,42 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
                         <p className="text-[10px] text-gray-500 mt-2 leading-tight">Essa imagem aparecerá no topo dos contratos e nos relatórios gerados para seus clientes.</p>
                       </div>
                     </div>
+
+                    {/* 🟢 NOVA SEÇÃO: PÁGINA DE CAPTAÇÃO */}
+                    <div className="border-t border-purple-500/20 pt-5 mt-5">
+                        <h4 className="text-purple-400 font-bold text-sm uppercase tracking-wider mb-4 flex items-center gap-2">
+                            Página de Captação (Seu Link)
+                        </h4>
+                        
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-xs text-gray-400 font-bold ml-1 mb-1 block">Seu Link Exclusivo</label>
+                                <div className="flex items-center bg-black border border-gray-800 rounded-xl overflow-hidden focus-within:border-purple-500 transition">
+                                    <span className="bg-gray-900 text-gray-500 text-sm px-3 py-3 border-r border-gray-800">usealiado.com.br/consultoria/</span>
+                                    <input type="text" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="seunome" className="w-full bg-transparent p-3 text-white outline-none text-sm" />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-xs text-gray-400 font-bold ml-1 mb-1 block">Mensagem de Boas-vindas</label>
+                                <textarea maxLength={300} value={welcomeText} onChange={(e) => setWelcomeText(e.target.value)} placeholder="Ex: Crie sua conta abaixo para eu gerenciar suas finanças..." className="w-full bg-black border border-gray-800 rounded-xl p-3 text-white focus:border-purple-500 outline-none transition resize-none h-20 text-sm" />
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-xs text-gray-400 font-bold ml-1 mb-1 block">Usuário do Instagram</label>
+                                    <div className="flex items-center bg-black border border-gray-800 rounded-xl overflow-hidden focus-within:border-purple-500 transition">
+                                        <span className="bg-gray-900 text-gray-500 px-3 py-3 border-r border-gray-800">@</span>
+                                        <input type="text" value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="seu_insta" className="w-full bg-transparent p-3 text-white outline-none text-sm" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-xs text-gray-400 font-bold ml-1 mb-1 block">WhatsApp Profissional</label>
+                                    <input type="text" value={socialWhatsapp} onChange={(e) => setSocialWhatsapp(e.target.value)} placeholder="Ex: 556299999999" className="w-full bg-black border border-gray-800 rounded-xl p-3 text-white focus:border-purple-500 outline-none transition text-sm" />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -492,7 +556,6 @@ export default function ProfileModal({ isOpen, onClose, user, userPlan }: Profil
                         <input type="text" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="Ex: 556299999999" className="w-full bg-gray-900 border border-gray-800 rounded-lg p-3 text-white outline-none focus:border-emerald-500 transition" />
                     </div>
                     
-                    {/* 🟢 MUDANÇA AQUI: Layout do parceiro com Nome e Telefone lado a lado */}
                     <div className="pt-3 border-t border-gray-800 mt-4">
                         <label className="text-xs text-gray-500 font-bold mb-3 flex items-center gap-1"><Users size={12}/> Acesso do Casal <span className="font-normal text-[10px]">(Opcional)</span></label>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
