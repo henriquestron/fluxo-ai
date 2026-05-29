@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Edit2, Target, Plus, Trash2, CheckCircle2, Link as LinkIcon, Check, Wallet, Lock, Bot } from 'lucide-react';
+import { X, Edit2, Target, Plus, Trash2, CheckCircle2, Link as LinkIcon, Check, Wallet, Lock, Bot, CalendarDays } from 'lucide-react';
 
 export interface GoalItem {
     id: string;
@@ -19,8 +19,9 @@ export interface Goal {
     color: string;
     items?: GoalItem[];
     type?: string; 
-    whatsapp_rule?: string; // 🟢 NOVO: Regra da IA
-    ai_enabled?: boolean;   // 🟢 NOVO: Status da IA
+    whatsapp_rule?: string; 
+    ai_enabled?: boolean;   
+    reference_month?: string; 
 }
 
 interface GoalModalProps {
@@ -28,7 +29,7 @@ interface GoalModalProps {
     onClose: () => void;
     onSubmit: (e: React.FormEvent<HTMLFormElement>) => void;
     editingGoal: Goal | null;
-    userPlan: string; // 🟢 NOVO: Para bloquear recursos Premium
+    userPlan: string; 
 }
 
 export default function GoalModal({ isOpen, onClose, onSubmit, editingGoal, userPlan }: GoalModalProps) {
@@ -38,15 +39,30 @@ export default function GoalModal({ isOpen, onClose, onSubmit, editingGoal, user
     const [newItemLink, setNewItemLink] = useState('');
     const [editingItemId, setEditingItemId] = useState<string | null>(null);
     
-    // States de Controle
     const [goalType, setGoalType] = useState<'saving' | 'wallet'>('saving');
     
-    // 🟢 STATES DA INTELIGÊNCIA ARTIFICIAL
     const [aiEnabled, setAiEnabled] = useState(false);
     const [whatsappRule, setWhatsappRule] = useState('');
+    const [referenceMonth, setReferenceMonth] = useState('');
+    
+    // 🟢 NOVO STATE: Botão de descontar do saldo principal
+    const [deductFromBalance, setDeductFromBalance] = useState(true);
 
-    // Verifica se o plano permite IA
     const canUseWhatsapp = ['pro', 'agent', 'admin'].includes(userPlan?.toLowerCase() || '');
+
+    const generateMonthOptions = () => {
+        const options = [];
+        const today = new Date();
+        for (let i = -1; i <= 11; i++) {
+            const date = new Date(today.getFullYear(), today.getMonth() + i, 1);
+            const val = `${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
+            const labelStr = date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+            const label = labelStr.charAt(0).toUpperCase() + labelStr.slice(1);
+            options.push({ value: val, label });
+        }
+        return options;
+    };
+    const monthOptions = generateMonthOptions();
 
     useEffect(() => {
         if (isOpen) {
@@ -57,9 +73,15 @@ export default function GoalModal({ isOpen, onClose, onSubmit, editingGoal, user
             setEditingItemId(null);
             setGoalType((editingGoal?.type as 'saving' | 'wallet') || 'saving');
             
-            // 🟢 Carrega os dados da IA se estiver editando
             setAiEnabled(editingGoal?.ai_enabled || false);
             setWhatsappRule(editingGoal?.whatsapp_rule || '');
+
+            const today = new Date();
+            const currentMonthStr = `${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
+            setReferenceMonth(editingGoal?.reference_month || currentMonthStr);
+            
+            // Sempre que abrir o modal, por padrão, ele vem marcado para descontar
+            setDeductFromBalance(true);
         }
     }, [isOpen, editingGoal]);
 
@@ -133,9 +155,8 @@ export default function GoalModal({ isOpen, onClose, onSubmit, editingGoal, user
                 <form onSubmit={onSubmit} className="space-y-5">
                     <input type="hidden" name="type" value={goalType} />
                     <input type="hidden" name="items" value={JSON.stringify(items)} />
+                    <input type="hidden" name="deduct_from_balance" value={deductFromBalance.toString()} />
                     {hasItems && !isWallet && <input type="hidden" name="target_amount" value={autoTargetAmount} />}
-                    
-                    {/* 🟢 INPUTS OCULTOS DA IA PARA O SUBMIT LER */}
                     {isWallet && <input type="hidden" name="ai_enabled" value={aiEnabled.toString()} />}
 
                     <div>
@@ -149,6 +170,24 @@ export default function GoalModal({ isOpen, onClose, onSubmit, editingGoal, user
                             className={`w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white outline-none transition ${isWallet ? 'focus:border-emerald-500' : 'focus:border-indigo-500'}`}
                             required
                         />
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1 flex items-center gap-1">
+                            <CalendarDays size={14} /> Mês de Referência
+                        </label>
+                        <select
+                            name="reference_month"
+                            value={referenceMonth}
+                            onChange={(e) => setReferenceMonth(e.target.value)}
+                            className={`w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white outline-none transition appearance-none ${isWallet ? 'focus:border-emerald-500' : 'focus:border-indigo-500'}`}
+                            required
+                        >
+                            {monthOptions.map(opt => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                        </select>
+                        <p className="text-[10px] text-gray-500 mt-1 ml-1">Usado para separar os gastos e depósitos mês a mês.</p>
                     </div>
 
                     {!isWallet && (
@@ -214,6 +253,21 @@ export default function GoalModal({ isOpen, onClose, onSubmit, editingGoal, user
                             </label>
                             <input name="current_amount" type="number" step="0.01" defaultValue={editingGoal?.current_amount || 0} placeholder="0.00" className={`w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-white outline-none transition ${isWallet ? 'focus:border-emerald-500' : 'focus:border-indigo-500'}`} />
                         </div>
+                        
+                        {/* 🟢 NOVO: BOTÃO DE ABATER DO SALDO */}
+                        <div className="col-span-2 flex items-center justify-between bg-gray-900/40 p-3 rounded-xl border border-gray-800">
+                            <div>
+                                <label className="text-[11px] font-bold text-gray-300 block uppercase">Abater do Saldo Principal?</label>
+                                <span className="text-[10px] text-gray-500 leading-tight block mt-0.5">Cria um recibo no extrato para descontar esse valor da sua tela inicial.</span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setDeductFromBalance(!deductFromBalance)}
+                                className={`w-10 h-5 shrink-0 rounded-full relative transition-colors ${deductFromBalance ? (isWallet ? 'bg-emerald-500' : 'bg-indigo-500') : 'bg-gray-700'}`}
+                            >
+                                <div className={`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform ${deductFromBalance ? 'translate-x-5' : 'translate-x-0'}`}></div>
+                            </button>
+                        </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -242,7 +296,6 @@ export default function GoalModal({ isOpen, onClose, onSubmit, editingGoal, user
                         </div>
                     </div>
 
-                    {/* 🟢 BLOCO VIP DA INTELIGÊNCIA ARTIFICIAL (SÓ PARA CAIXINHAS) */}
                     {isWallet && (
                         <div className="bg-gradient-to-br from-emerald-950/30 to-black border border-emerald-500/20 p-4 rounded-2xl">
                             <div className="flex justify-between items-center">

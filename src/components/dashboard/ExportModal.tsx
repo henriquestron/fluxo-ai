@@ -54,14 +54,12 @@ const isPaid = (item: any, tag: string) => {
     return arr.includes(tag) || arr.includes(tag.split('/')[0]);
 };
 
-// AQUI ESTAVA O PROBLEMA! O Excel não lia as edições personalizadas dos meses!
 const getCustomValue = (item: any, tag: string, baseValue: number) => {
     if (!item.custom_values) return baseValue;
     const parsedCustom = typeof item.custom_values === 'string' ? JSON.parse(item.custom_values) : item.custom_values;
     return parsedCustom[tag] !== undefined ? Number(parsedCustom[tag]) : baseValue;
 };
 
-// O MESMO MOTOR DO DASHBOARD E DA LUNA
 const getMonthTotals = (monthIndex: number, trans: any[], inst: any[], recur: any[], year: number) => {
     const monthName = MONTHS[monthIndex];
     const mCode = (monthIndex + 1).toString().padStart(2, '0');
@@ -123,7 +121,7 @@ const getMonthTotals = (monthIndex: number, trans: any[], inst: any[], recur: an
 export default function ExportModal({ isOpen, onClose, user, userPlan, clients, activeTab, selectedYear: initialYear, currentWorkspace }: ExportModalProps) {
     if (!isOpen || !user) return null;
 
-    const isAgent = userPlan === 'agent';
+    const isAgent = userPlan === 'agent' || userPlan === 'admin';
 
     const [exportYear, setExportYear] = useState(initialYear);
     const [selectedMonths, setSelectedMonths] = useState<string[]>([activeTab]);
@@ -144,12 +142,15 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
         else setSelectedClients([user.id, ...(clients || []).map(c => c.client_id)]);
     };
 
+    // 🟢 FUNÇÕES DE DESIGN PREMIUM DO EXCEL 
     const setupSheetColumns = (sheet: ExcelJS.Worksheet) => {
+        sheet.views = [{ state: 'frozen', xSplit: 0, ySplit: 1, showGridLines: false }];
+
         sheet.columns = [
             { header: 'Data', key: 'Data', width: 15 },
-            { header: 'Mês', key: 'Mes', width: 10 },
-            { header: 'Descrição', key: 'Descricao', width: 45 },
-            { header: 'Categoria', key: 'Categoria', width: 20 },
+            { header: 'Mês', key: 'Mes', width: 12 },
+            { header: 'Descrição', key: 'Descricao', width: 50 },
+            { header: 'Categoria', key: 'Categoria', width: 25 },
             { header: 'Tipo', key: 'Tipo', width: 20 },
             { header: 'Valor (R$)', key: 'Valor', width: 20 },
             { header: 'Status', key: 'Status', width: 15 },
@@ -157,44 +158,67 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
 
         const headerRow = sheet.getRow(1);
         headerRow.eachCell((cell) => {
-            cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 12 };
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2937' } };
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11, name: 'Segoe UI' };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0E7490' } }; // Ciano Escuro
             cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            cell.border = { bottom: { style: 'medium', color: { argb: 'FF083344' } } };
         });
-        headerRow.height = 25;
+        headerRow.height = 30; 
     };
 
     const styleSheetRows = (sheet: ExcelJS.Worksheet) => {
         sheet.eachRow((row, rowNumber) => {
             if (rowNumber > 1) {
-                row.getCell('Data').alignment = { horizontal: 'center' };
-                row.getCell('Mes').alignment = { horizontal: 'center' };
+                row.font = { name: 'Segoe UI', size: 11, color: { argb: 'FF374151' } };
+
+                const isEven = rowNumber % 2 === 0;
+                const rowColor = isEven ? 'FFF9FAFB' : 'FFFFFFFF';
+                
+                row.eachCell(c => {
+                    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowColor } };
+                    c.border = {
+                        top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                        bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                        left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                        right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
+                    };
+                });
+
+                row.getCell('Data').alignment = { horizontal: 'center', vertical: 'middle' };
+                row.getCell('Mes').alignment = { horizontal: 'center', vertical: 'middle' };
+                row.getCell('Descricao').alignment = { vertical: 'middle' };
+                row.getCell('Categoria').alignment = { vertical: 'middle', horizontal: 'center' };
+                row.getCell('Tipo').alignment = { vertical: 'middle', horizontal: 'center' };
+                row.getCell('Status').alignment = { vertical: 'middle', horizontal: 'center' };
                 
                 const descCell = row.getCell('Descricao');
                 const isSurplusRow = descCell.value === '💰 Saldo Acumulado do Mês Anterior';
 
                 if (isSurplusRow) {
-                    row.eachCell(c => c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } }); 
-                    descCell.font = { bold: true, color: { argb: 'FF38BDF8' } }; 
+                    row.eachCell(c => c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFECFEFF' } }); 
+                    descCell.font = { bold: true, color: { argb: 'FF0891B2' }, name: 'Segoe UI' }; 
                 }
 
                 const valueCell = row.getCell('Valor');
                 if (valueCell.value !== undefined && valueCell.value !== null) {
                     valueCell.numFmt = '"R$" #,##0.00;[Red]-"R$" #,##0.00';
-                    valueCell.font = { bold: true };
+                    valueCell.font = { bold: true, color: { argb: 'FF111827' }, name: 'Segoe UI' };
+                    valueCell.alignment = { vertical: 'middle', horizontal: 'right' };
                 }
                 
                 const statusCell = row.getCell('Status');
                 const statusText = statusCell.value?.toString() || '';
 
                 if (statusText === 'Pago') {
-                    statusCell.font = { color: { argb: 'FF10B981' }, bold: true };
+                    statusCell.font = { color: { argb: 'FF059669' }, bold: true, name: 'Segoe UI' }; 
                 } else if (statusText === 'Atrasado') {
-                    statusCell.font = { color: { argb: 'FFEF4444' }, bold: true };
+                    statusCell.font = { color: { argb: 'FFDC2626' }, bold: true, name: 'Segoe UI' }; 
                 } else if (statusText === 'Stand-by') {
-                    statusCell.font = { color: { argb: 'FFCA8A04' }, italic: true };
+                    statusCell.font = { color: { argb: 'FFD97706' }, italic: true, name: 'Segoe UI' };
                     if (!isSurplusRow) row.getCell('Valor').font = { strike: true, color: { argb: 'FF9CA3AF' } };
                 }
+                
+                row.height = 22;
             }
         });
     };
@@ -207,7 +231,6 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
         const paymentTag = `${monthStr}/${exportYear}`;
         const currentYYYYMM = `${exportYear}-${monthNum}`;
 
-        // MÁQUINA DO TEMPO EXATA PARA A ABA!
         let saldoAnterior = 0;
         for (let i = 0; i < monthIndex; i++) {
             const { balance } = getMonthTotals(i, trans, inst, recur, exportYear);
@@ -232,7 +255,6 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
                 if (t.status === 'standby') status = 'Stand-by';
                 else if (t.status === 'delayed') status = 'Atrasado';
 
-                // 🟢 CORREÇÃO: Se for Stand-by ou Atrasado e o checkbox NÃO estiver marcado, pula fora!
                 if (status === 'Stand-by' && !selectedTypes.includes('standby')) return;
                 if (status === 'Atrasado' && !selectedTypes.includes('delayed')) return;
 
@@ -254,7 +276,6 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
                 if (isStandby && status !== 'Pago') status = 'Stand-by';
                 else if (r.status === 'delayed' && status !== 'Pago') status = 'Atrasado';
 
-                // 🟢 CORREÇÃO DOS FILTROS AQUI TAMBÉM:
                 if (status === 'Stand-by' && !selectedTypes.includes('standby')) return;
                 if (status === 'Atrasado' && !selectedTypes.includes('delayed')) return;
 
@@ -288,20 +309,16 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
             if (isStandby && status !== 'Pago') status = 'Stand-by';
             else if (i.status === 'delayed' && status !== 'Pago') status = 'Atrasado';
 
-            // 🟢 A MÁGICA: Arrastar contas pausadas/atrasadas pro mês atual!
-            // Se a conta de 1x de Fevereiro não foi paga, o "actual" dela em Maio vira 4.
-            // Para não deixar ela sumir, nós arrastamos ela forçadamente se estiver em Stand-by ou Atrasada!
             const isCarriedOverDebt = actual > i.installments_count && (status === 'Stand-by' || status === 'Atrasado');
 
             if ((actual >= 1 && actual <= i.installments_count) || isCarriedOverDebt) {
                 
-                // Os filtros que consertamos antes continuam aqui
                 if (status === 'Stand-by' && !selectedTypes.includes('standby')) return;
                 if (status === 'Atrasado' && !selectedTypes.includes('delayed')) return;
 
                 if (selectedTypes.includes('installment')) {
                     const finalVal = getCustomValue(i, paymentTag, Number(i.value_per_month));
-                    const displayActual = Math.min(actual, i.installments_count); // Trava visualmente (ex: não deixa passar de 1/1)
+                    const displayActual = Math.min(actual, i.installments_count); 
                     
                     rows.push({ 
                         Data: `Dia ${i.due_day}`, 
@@ -325,55 +342,109 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
         });
     };
 
-    const generateDashboardSheet = (workbook: ExcelJS.Workbook, trans: any[], inst: any[], recur: any[], ownerName: string) => {
+    const generateDashboardSheet = (workbook: ExcelJS.Workbook, trans: any[], inst: any[], recur: any[], ownerName: string, logoId: number | null) => {
         const sheetName = sanitizeSheetName(`Dash - ${ownerName}`);
-        const sheet = workbook.addWorksheet(sheetName, { views: [{ showGridLines: false }] });
+        const sheet = workbook.addWorksheet(sheetName);
 
-        sheet.mergeCells('B2:G2');
-        const title = sheet.getCell('B2');
-        title.value = `DASHBOARD FINANCEIRO ${exportYear}`;
-        title.font = { size: 16, bold: true, color: { argb: 'FFFFFFFF' } };
-        title.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF000000' } };
-        title.alignment = { horizontal: 'center' };
+        // Congela o painel abaixo do cabeçalho
+        sheet.views = [{ showGridLines: false, state: 'frozen', ySplit: 4, xSplit: 0 }];
 
-        sheet.addRow([]);
+        // 🟢 LINHA 1 E 2: ÁREA DA LOGO
+        sheet.getRow(1).height = 15; // Pequeno respiro no topo
+        sheet.getRow(2).height = 50; // Altura para a logo
+
+        // Se a logo foi carregada, insere ela aqui
+        if (logoId !== null) {
+            sheet.addImage(logoId, {
+                tl: { col: 1.2, row: 1.2 }, // Coluna B, Linha 2 (com pequeno offset)
+                ext: { width: 150, height: 45 }, // Dimensões da logo na planilha
+                editAs: 'oneCell'
+            });
+        }
+
+        // TÍTULO DO RELATÓRIO (Movido para B3:G3)
+        sheet.mergeCells('B3:G3');
+        const title = sheet.getCell('B3');
+        title.value = `📊 Relatório Executivo Anual - ${exportYear}`;
+        title.font = { size: 16, bold: true, color: { argb: 'FFFFFFFF' }, name: 'Segoe UI' };
+        title.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF083344' } }; // Azul Marinho escuro
+        title.alignment = { horizontal: 'center', vertical: 'middle' };
+        sheet.getRow(3).height = 35;
+
+        // CABEÇALHO DA TABELA (Movido para Linha 4)
+        const header = sheet.getRow(4);
+        header.values = ['', 'MÊS REFERÊNCIA', 'SALDO ANTERIOR', 'ENTRADAS (Receitas)', 'SAÍDAS (Despesas)', 'RESULTADO DO MÊS', 'SALDO ACUMULADO'];
         
-        const header = sheet.addRow(['', 'MÊS', 'SALDO ANTERIOR', 'ENTRADAS', 'SAÍDAS', 'SALDO DO MÊS', 'SALDO ACUMULADO']);
         ['B', 'C', 'D', 'E', 'F', 'G'].forEach(col => {
             const cell = header.getCell(col);
-            cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4B5563' } };
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10, name: 'Segoe UI' };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0E7490' } };
             cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.border = {
+                top: { style: 'medium', color: { argb: 'FFFFFFFF' } },
+                bottom: { style: 'medium', color: { argb: 'FF083344' } },
+                left: { style: 'thin', color: { argb: 'FF164E63' } },
+                right: { style: 'thin', color: { argb: 'FF164E63' } }
+            };
         });
-        header.height = 20;
+        header.height = 25;
 
         let previousSurplus = 0;
 
         MONTHS.forEach((month, idx) => {
-            // Puxa exatamente o motor financeiro principal
             const { inc, exp, balance } = getMonthTotals(idx, trans, inst, recur, exportYear);
-
             const saldoAnterior = previousSurplus;
             const saldoMensal = balance;
             const saldoAcumulado = saldoMensal + saldoAnterior;
-
             previousSurplus = saldoAcumulado;
 
-            const r = sheet.addRow(['', month, saldoAnterior, inc, exp, saldoMensal, saldoAcumulado]);
+            // Dados começam na Linha 5
+            const row = sheet.addRow(['', month, saldoAnterior, inc, exp, saldoMensal, saldoAcumulado]);
+            row.height = 22;
             
-            ['C', 'D', 'E', 'F', 'G'].forEach(col => r.getCell(col).numFmt = '"R$" #,##0.00;[Red]-"R$" #,##0.00');
+            const rowColor = (idx % 2 === 0) ? 'FFF9FAFB' : 'FFFFFFFF';
             
-            r.getCell('C').font = { color: { argb: saldoAnterior >= 0 ? 'FF166534' : 'FFDC2626' } };
-            r.getCell('F').font = { color: { argb: saldoMensal >= 0 ? 'FF166534' : 'FFDC2626' } };
-            r.getCell('G').font = { color: { argb: saldoAcumulado >= 0 ? 'FF166534' : 'FFDC2626' }, bold: true };
+            ['B', 'C', 'D', 'E', 'F', 'G'].forEach(col => {
+                const cell = row.getCell(col);
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowColor } };
+                cell.font = { name: 'Segoe UI', size: 11, color: { argb: 'FF374151' } };
+                cell.border = {
+                    bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                    left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                    right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
+                };
+            });
+
+            ['C', 'D', 'E', 'F', 'G'].forEach(col => {
+                row.getCell(col).numFmt = '"R$" #,##0.00;[Red]-"R$" #,##0.00';
+                row.getCell(col).alignment = { horizontal: 'right', vertical: 'middle' };
+            });
+            row.getCell('B').alignment = { horizontal: 'center', vertical: 'middle' };
+            
+            row.getCell('C').font = { color: { argb: saldoAnterior >= 0 ? 'FF059669' : 'FFDC2626' }, name: 'Segoe UI' };
+            row.getCell('F').font = { color: { argb: saldoMensal >= 0 ? 'FF059669' : 'FFDC2626' }, name: 'Segoe UI', bold: true };
+            row.getCell('G').font = { color: { argb: saldoAcumulado >= 0 ? 'FF059669' : 'FFDC2626' }, bold: true, name: 'Segoe UI', size: 12 };
         });
 
-        sheet.getColumn('B').width = 10;
-        sheet.getColumn('C').width = 18; 
-        sheet.getColumn('D').width = 18; 
-        sheet.getColumn('E').width = 18; 
-        sheet.getColumn('F').width = 18; 
-        sheet.getColumn('G').width = 22; 
+        // Rodapé Automático (Somas nas linhas D5:D16, E5:E16, F5:F16)
+        const footerRow = sheet.addRow(['', 'TOTAL NO ANO', '', { formula: 'SUM(D5:D16)' }, { formula: 'SUM(E5:E16)' }, { formula: 'SUM(F5:F16)' }, '']);
+        footerRow.height = 30;
+        
+        ['B', 'C', 'D', 'E', 'F', 'G'].forEach(col => {
+            const cell = footerRow.getCell(col);
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF083344' } }; 
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, name: 'Segoe UI' };
+            cell.alignment = { horizontal: col === 'B' ? 'center' : 'right', vertical: 'middle' };
+            if (['D', 'E', 'F'].includes(col)) cell.numFmt = '"R$" #,##0.00;[Red]-"R$" #,##0.00';
+        });
+        sheet.mergeCells(`B${sheet.lastRow!.number}:C${sheet.lastRow!.number}`); 
+
+        sheet.getColumn('B').width = 18;
+        sheet.getColumn('C').width = 20; 
+        sheet.getColumn('D').width = 22; 
+        sheet.getColumn('E').width = 22; 
+        sheet.getColumn('F').width = 22; 
+        sheet.getColumn('G').width = 25; 
     };
 
     const handleExport = async () => {
@@ -384,11 +455,31 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
         }
 
         setIsGenerating(true);
-        const toastId = toast.loading("Gerando arquivo Excel...");
+        const toastId = toast.loading("Gerando arquivo Excel premium...");
 
         try {
             const workbook = new ExcelJS.Workbook();
             workbook.creator = "Meu Aliado Financeiro";
+
+            // 🟢 MOTOR DE CARREGAMENTO DA LOGO
+            let logoId: number | null = null;
+            try {
+                // Busca a logo na pasta public
+                const response = await fetch('/logo-excel.png');
+                if (response.ok) {
+                    const blob = await response.blob();
+                    // Converte Blob para ArrayBuffer para o exceljs
+                    const buffer = await blob.arrayBuffer();
+                    
+                    logoId = workbook.addImage({
+                        buffer: buffer,
+                        extension: 'png',
+                    });
+                }
+            } catch (logoError) {
+                console.error("Erro ao carregar logo:", logoError);
+                // Não trava o processo se a logo falhar
+            }
             
             let targets: any[] = [];
             if (isAgent) {
@@ -429,7 +520,8 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
                 const owner = target.client_email.split('@')[0];
 
                 if (includeDashboard) {
-                    generateDashboardSheet(workbook, t || [], i || [], r || [], owner);
+                    // Passa o logoId para a função do Dashboard
+                    generateDashboardSheet(workbook, t || [], i || [], r || [], owner, logoId);
                 }
 
                 for (const month of selectedMonths) {
@@ -442,15 +534,15 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
                     const sheet = workbook.addWorksheet(finalSheetName);
                     setupSheetColumns(sheet);
                     const rows = processDataForMonth(month, t || [], i || [], r || []);
-                    rows.forEach(rowItem => sheet.addRow(rowItem));
+                    rows.forEach((rowItem: any) => sheet.addRow(rowItem));
                     styleSheetRows(sheet);
                 }
             }
 
             const buffer = await workbook.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-            saveAs(blob, `Relatorio_${exportYear}_${new Date().toISOString().slice(0,10)}.xlsx`);
-            toast.success("Download concluído!");
+            saveAs(blob, `Relatorio_Premium_${exportYear}_${new Date().toISOString().slice(0,10)}.xlsx`);
+            toast.success("Download concluído! Relatório premium gerado.");
             onClose();
 
         } catch (error: any) {
@@ -469,8 +561,8 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
                 {/* HEADER */}
                 <div className="p-6 border-b border-gray-800 bg-[#0a0a0a] flex justify-between items-center shrink-0">
                     <div>
-                        <h2 className="text-xl font-bold text-white flex items-center gap-2"><FileSpreadsheet className="text-emerald-500" size={24} /> Exportar Excel</h2>
-                        <p className="text-xs text-gray-500 mt-1">Gere relatórios detalhados e organizados.</p>
+                        <h2 className="text-xl font-bold text-white flex items-center gap-2"><FileSpreadsheet className="text-emerald-500" size={24} /> Exportar Excel Premium</h2>
+                        <p className="text-xs text-gray-500 mt-1">Gere relatórios detalhados com design exclusivo.</p>
                     </div>
                     <button onClick={onClose} className="text-gray-500 hover:text-white p-2 rounded-lg hover:bg-gray-800"><X size={24}/></button>
                 </div>
@@ -516,7 +608,7 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
                         </div>
                     </div>
 
-                    {/* 🟢 SELEÇÃO DE CLIENTES (SÓ PARA AGENTES E ADMINS) */}
+                    {/* 🟢 SELEÇÃO DE CLIENTES */}
                     {isAgent && (
                         <div className="space-y-3 border-t border-gray-800/50 pt-4 mt-2">
                             <div className="flex justify-between items-end">
@@ -560,8 +652,8 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
                             {includeDashboard && <CheckSquare size={14} className="text-black"/>}
                         </div>
                         <div>
-                            <span className="text-sm font-bold text-white block">Gerar Dashboard Anual</span>
-                            <span className="text-xs text-gray-500">Cria uma aba extra com o resumo total de {exportYear}.</span>
+                            <span className="text-sm font-bold text-white block">Gerar Dashboard Anual Premium</span>
+                            <span className="text-xs text-gray-500">Cria uma aba extra com o resumo total e logo da empresa.</span>
                         </div>
                         <BarChart3 className={`ml-auto shrink-0 ${includeDashboard ? 'text-cyan-500' : 'text-gray-600'}`} size={20}/>
                     </div>
@@ -571,7 +663,7 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
                 <div className="p-6 border-t border-gray-800 bg-[#0a0a0a] shrink-0">
                     <button onClick={handleExport} disabled={isGenerating} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl shadow-lg transition flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.98]">
                         {isGenerating ? <Loader2 className="animate-spin"/> : <Download size={20}/>}
-                        {isGenerating ? "Processando..." : `Baixar Relatório (${exportYear})`}
+                        {isGenerating ? "Processando..." : `Baixar Relatório Premium (${exportYear})`}
                     </button>
                 </div>
             </div>

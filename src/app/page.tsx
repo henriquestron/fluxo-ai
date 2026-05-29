@@ -1656,22 +1656,27 @@ export default function FinancialDashboard() {
         const formData = new FormData(e.currentTarget);
         const type = formData.get('type') as string;
 
+        const referenceMonth = formData.get('reference_month') as string || activeTab;
+        const deductFromBalance = formData.get('deduct_from_balance') === 'true';
+
         const payload = {
             user_id: getActiveUserId(),
-            title: formData.get('title'),
+            title: formData.get('title') as string,
             target_amount: Number(formData.get('target_amount')),
             current_amount: Number(formData.get('current_amount') || 0),
-            deadline: formData.get('deadline') || null,
-            icon: formData.get('icon'),
-            color: formData.get('color'),
-            items: JSON.parse(formData.get('items') as string || '[]'),
-            whatsapp_rule: formData.get('whatsapp_rule') || null,
-            ai_enabled: formData.get('ai_enabled'),
-            type: type || 'saving'
+            deadline: (formData.get('deadline') as string) || null,
+            icon: formData.get('icon') as string,
+            color: formData.get('color') as string,
+            items: JSON.parse((formData.get('items') as string) || '[]'),
+            whatsapp_rule: (formData.get('whatsapp_rule') as string) || undefined,
+            ai_enabled: formData.get('ai_enabled') === 'true',
+            type: type || 'saving',
+            reference_month: referenceMonth
         };
 
-        const activeId = getActiveUserId();
         const todayStr = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+        const currentMonthStr = todayStr.substring(3);
+        const transactionDate = (referenceMonth === currentMonthStr) ? todayStr : `01/${referenceMonth}`;
 
         try {
             if (editingGoal) {
@@ -1679,53 +1684,74 @@ export default function FinancialDashboard() {
                 const newAmount = payload.current_amount;
                 const diff = newAmount - oldAmount;
 
-                // 🟢 AGORA ELE GERA O EXTRATO PARA CAIXINHAS TAMBÉM!
-                if (diff !== 0) {
+                // 1. Gera a transação SE houver diferença E o botão estiver marcado
+                if (diff !== 0 && deductFromBalance) {
                     const transType = diff > 0 ? 'expense' : 'income';
                     const transTitle = diff > 0 ? `🎯 Ida para Meta: ${payload.title}` : `↩️ Resgate da Meta: ${payload.title}`;
 
-                    await supabase.from('transactions').insert([{
-                        user_id: activeId,
+                    // 🟢 MUDANÇA AQUI: Adicionado .select().single() para pegar os dados gerados
+                    const { data: newTx } = await supabase.from('transactions').insert([{
+                        user_id: getActiveUserId(),
                         context: currentWorkspace?.id,
                         title: transTitle,
                         amount: Math.abs(diff),
                         type: transType,
-                        category: 'Metas',
-                        date: todayStr,
+                        category: 'Transferência', 
+                        date: transactionDate,
                         status: 'active',
                         is_paid: true,
-                        target_month: activeTab
-                    }]);
+                        target_month: referenceMonth
+                    }]).select().single();
+
+                    // 🟢 MÁGICA NA TELA: Injeta a transação nova no painel de Saldo instantaneamente
+                    if (newTx && typeof setTransactions === 'function') {
+                        setTransactions(prev => [...prev, newTx]);
+                    }
                 }
 
                 await supabase.from('goals').update(payload).eq('id', editingGoal.id);
+                setGoals(prevGoals => prevGoals.map(g => g.id === editingGoal.id ? { ...g, ...payload } : g));
                 toast.success(payload.type === 'wallet' ? 'Caixinha atualizada!' : 'Meta e Extrato atualizados!');
 
             } else {
-                // 🟢 GERA O EXTRATO NA CRIAÇÃO DA CAIXINHA
-                if (payload.current_amount > 0) {
-                    await supabase.from('transactions').insert([{
-                        user_id: activeId,
+                const { data: newGoalData, error: goalError } = await supabase.from('goals').insert([payload]).select().single();
+                if (goalError) throw goalError;
+
+                if (payload.current_amount > 0 && deductFromBalance) {
+                    const { data: newTx } = await supabase.from('transactions').insert([{
+                        user_id: getActiveUserId(),
                         context: currentWorkspace?.id,
                         title: `🎯 Ida para Meta: ${payload.title}`,
                         amount: payload.current_amount,
                         type: 'expense',
-                        category: 'Metas', // ⚠️ Dica: Isso não aumenta o visual de "Saídas" pra não parecer que vc gastou, mas DERRUBA seu Saldo Previsto!
-                        date: todayStr,
+                        category: 'Transferência', 
+                        date: transactionDate,
                         status: 'active',
                         is_paid: true,
-                        target_month: activeTab
-                    }]);
+                        target_month: referenceMonth
+                    }]).select().single();
+
+                    // 🟢 Injeta também na criação
+                    if (newTx && typeof setTransactions === 'function') {
+                        setTransactions(prev => [...prev, newTx]);
+                    }
                 }
 
-                await supabase.from('goals').insert([payload]);
+                setGoals(prevGoals => [...prevGoals, newGoalData]);
                 toast.success(payload.type === 'wallet' ? 'Caixinha criada com sucesso!' : 'Meta criada com sucesso!');
             }
 
-            if (activeId) loadData(activeId, currentWorkspace?.id);
             setIsGoalModalOpen(false);
 
+            // 🟢 REDE DE SEGURANÇA: Recarrega o banco de forma invisível após 1 segundo
+            if (getActiveUserId() && typeof loadData === 'function') {
+                setTimeout(() => {
+                    loadData(getActiveUserId()!, currentWorkspace?.id);
+                }, 1000);
+            }
+
         } catch (error) {
+            console.error(error);
             toast.error("Ocorreu um erro ao salvar.");
         }
     };
