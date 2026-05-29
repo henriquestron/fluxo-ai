@@ -209,13 +209,16 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
                 const statusCell = row.getCell('Status');
                 const statusText = statusCell.value?.toString() || '';
 
-                if (statusText === 'Pago') {
-                    statusCell.font = { color: { argb: 'FF059669' }, bold: true, name: 'Segoe UI' }; 
+                // 🟢 CORREÇÃO DOS STATUS NO ESTILO
+                if (statusText === 'Pago' || statusText === 'Recebido') {
+                    statusCell.font = { color: { argb: 'FF059669' }, bold: true, name: 'Segoe UI' }; // Verde
                 } else if (statusText === 'Atrasado') {
-                    statusCell.font = { color: { argb: 'FFDC2626' }, bold: true, name: 'Segoe UI' }; 
+                    statusCell.font = { color: { argb: 'FFDC2626' }, bold: true, name: 'Segoe UI' }; // Vermelho
                 } else if (statusText === 'Stand-by') {
-                    statusCell.font = { color: { argb: 'FFD97706' }, italic: true, name: 'Segoe UI' };
+                    statusCell.font = { color: { argb: 'FFD97706' }, italic: true, name: 'Segoe UI' }; // Laranja
                     if (!isSurplusRow) row.getCell('Valor').font = { strike: true, color: { argb: 'FF9CA3AF' } };
+                } else if (statusText === 'Pendente' || statusText === 'A Receber') {
+                    statusCell.font = { color: { argb: 'FF6B7280' }, italic: true, name: 'Segoe UI' }; // Cinza discreto
                 }
                 
                 row.height = 22;
@@ -245,13 +248,20 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
                 Categoria: 'Caixa Inicial',
                 Tipo: saldoAnterior >= 0 ? 'Entrada (Saldo)' : 'Saída (Dívida)',
                 Valor: Number(saldoAnterior),
-                Status: 'Pago'
+                Status: 'Recebido'
             });
         }
 
         trans?.forEach(t => {
             if (t.date?.includes(dateSuffix) && !t.linked_goal_id) {
-                let status = t.is_paid ? 'Pago' : 'Pendente';
+                // 🟢 CORREÇÃO: Nomes de status fazem sentido para Entrada ou Saída
+                let status = '';
+                if (t.type === 'income') {
+                    status = t.is_paid ? 'Recebido' : 'A Receber';
+                } else {
+                    status = t.is_paid ? 'Pago' : 'Pendente';
+                }
+
                 if (t.status === 'standby') status = 'Stand-by';
                 else if (t.status === 'delayed') status = 'Atrasado';
 
@@ -270,11 +280,19 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
             const isCancelled = r.cancelled_from && currentYYYYMM >= r.cancelled_from;
             
             if (isVisible && !isCancelled && !safeArray(r.skipped_months).includes(monthStr)) {
-                let status = isPaid(r, paymentTag) ? 'Pago' : 'Pendente';
+                
+                // 🟢 CORREÇÃO: Fixas também podem ser Entradas
+                let status = '';
+                if (r.type === 'income') {
+                    status = isPaid(r, paymentTag) ? 'Recebido' : 'A Receber';
+                } else {
+                    status = isPaid(r, paymentTag) ? 'Pago' : 'Pendente';
+                }
+
                 const isStandby = r.status === 'standby' || safeArray(r.standby_months).includes(paymentTag);
                 
-                if (isStandby && status !== 'Pago') status = 'Stand-by';
-                else if (r.status === 'delayed' && status !== 'Pago') status = 'Atrasado';
+                if (isStandby && status !== 'Pago' && status !== 'Recebido') status = 'Stand-by';
+                else if (r.status === 'delayed' && status !== 'Pago' && status !== 'Recebido') status = 'Atrasado';
 
                 if (status === 'Stand-by' && !selectedTypes.includes('standby')) return;
                 if (status === 'Atrasado' && !selectedTypes.includes('delayed')) return;
@@ -303,11 +321,17 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
 
             const actual = 1 + (i.current_installment || 0) + monthsDiff - pastStandbys;
 
-            let status = isPaid(i, paymentTag) ? 'Pago' : 'Pendente';
+            let status = '';
+            if (i.type === 'income') {
+                status = isPaid(i, paymentTag) ? 'Recebido' : 'A Receber';
+            } else {
+                status = isPaid(i, paymentTag) ? 'Pago' : 'Pendente';
+            }
+
             const isStandby = i.status === 'standby' || standbyArr.includes(paymentTag);
             
-            if (isStandby && status !== 'Pago') status = 'Stand-by';
-            else if (i.status === 'delayed' && status !== 'Pago') status = 'Atrasado';
+            if (isStandby && status !== 'Pago' && status !== 'Recebido') status = 'Stand-by';
+            else if (i.status === 'delayed' && status !== 'Pago' && status !== 'Recebido') status = 'Atrasado';
 
             const isCarriedOverDebt = actual > i.installments_count && (status === 'Stand-by' || status === 'Atrasado');
 
@@ -325,7 +349,7 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
                         Mes: monthStr, 
                         Descricao: `${i.title} (${displayActual}/${i.installments_count})`, 
                         Categoria: 'Parcelado', 
-                        Tipo: 'Saída', 
+                        Tipo: i.type === 'income' ? 'Entrada' : 'Saída', 
                         Valor: finalVal, 
                         Status: status 
                     });
@@ -342,36 +366,32 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
         });
     };
 
-    const generateDashboardSheet = (workbook: ExcelJS.Workbook, trans: any[], inst: any[], recur: any[], ownerName: string, logoId: number | null) => {
+    // 🟢 PASSAMOS A RECEBER AS METAS (goals) PARA INCLUIR NO DASHBOARD
+    const generateDashboardSheet = (workbook: ExcelJS.Workbook, trans: any[], inst: any[], recur: any[], goals: any[], ownerName: string, logoId: number | null) => {
         const sheetName = sanitizeSheetName(`Dash - ${ownerName}`);
         const sheet = workbook.addWorksheet(sheetName);
 
-        // Congela o painel abaixo do cabeçalho
         sheet.views = [{ showGridLines: false, state: 'frozen', ySplit: 4, xSplit: 0 }];
 
-        // 🟢 LINHA 1 E 2: ÁREA DA LOGO
-        sheet.getRow(1).height = 15; // Pequeno respiro no topo
-        sheet.getRow(2).height = 50; // Altura para a logo
+        sheet.getRow(1).height = 15; 
+        sheet.getRow(2).height = 50; 
 
-        // Se a logo foi carregada, insere ela aqui
         if (logoId !== null) {
             sheet.addImage(logoId, {
-                tl: { col: 1.2, row: 1.2 }, // Coluna B, Linha 2 (com pequeno offset)
-                ext: { width: 150, height: 45 }, // Dimensões da logo na planilha
+                tl: { col: 1.2, row: 1.2 }, 
+                ext: { width: 150, height: 45 }, 
                 editAs: 'oneCell'
             });
         }
 
-        // TÍTULO DO RELATÓRIO (Movido para B3:G3)
         sheet.mergeCells('B3:G3');
         const title = sheet.getCell('B3');
         title.value = `📊 Relatório Executivo Anual - ${exportYear}`;
         title.font = { size: 16, bold: true, color: { argb: 'FFFFFFFF' }, name: 'Segoe UI' };
-        title.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF083344' } }; // Azul Marinho escuro
+        title.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF083344' } }; 
         title.alignment = { horizontal: 'center', vertical: 'middle' };
         sheet.getRow(3).height = 35;
 
-        // CABEÇALHO DA TABELA (Movido para Linha 4)
         const header = sheet.getRow(4);
         header.values = ['', 'MÊS REFERÊNCIA', 'SALDO ANTERIOR', 'ENTRADAS (Receitas)', 'SAÍDAS (Despesas)', 'RESULTADO DO MÊS', 'SALDO ACUMULADO'];
         
@@ -398,7 +418,6 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
             const saldoAcumulado = saldoMensal + saldoAnterior;
             previousSurplus = saldoAcumulado;
 
-            // Dados começam na Linha 5
             const row = sheet.addRow(['', month, saldoAnterior, inc, exp, saldoMensal, saldoAcumulado]);
             row.height = 22;
             
@@ -426,7 +445,6 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
             row.getCell('G').font = { color: { argb: saldoAcumulado >= 0 ? 'FF059669' : 'FFDC2626' }, bold: true, name: 'Segoe UI', size: 12 };
         });
 
-        // Rodapé Automático (Somas nas linhas D5:D16, E5:E16, F5:F16)
         const footerRow = sheet.addRow(['', 'TOTAL NO ANO', '', { formula: 'SUM(D5:D16)' }, { formula: 'SUM(E5:E16)' }, { formula: 'SUM(F5:F16)' }, '']);
         footerRow.height = 30;
         
@@ -439,12 +457,82 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
         });
         sheet.mergeCells(`B${sheet.lastRow!.number}:C${sheet.lastRow!.number}`); 
 
-        sheet.getColumn('B').width = 18;
+        // 🟢 ADICIONANDO AS CAIXINHAS E METAS AO DASHBOARD
+        if (goals && goals.length > 0) {
+            const startRow = sheet.lastRow!.number + 4; // Deixa 3 linhas em branco
+            
+            sheet.mergeCells(`B${startRow}:G${startRow}`);
+            const goalsTitle = sheet.getCell(`B${startRow}`);
+            goalsTitle.value = `🎯 RESUMO DE CAIXINHAS E METAS`;
+            goalsTitle.font = { size: 14, bold: true, color: { argb: 'FFFFFFFF' }, name: 'Segoe UI' };
+            goalsTitle.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF083344' } };
+            goalsTitle.alignment = { horizontal: 'center', vertical: 'middle' };
+            sheet.getRow(startRow).height = 35;
+
+            const gHeader = sheet.getRow(startRow + 1);
+            gHeader.values = ['', 'NOME DA META / CAIXINHA', 'TIPO', 'VALOR ATUAL', 'META / LIMITE', 'RESTANTE / FALTA', 'PROGRESSO (%)'];
+            
+            ['B', 'C', 'D', 'E', 'F', 'G'].forEach(col => {
+                const cell = gHeader.getCell(col);
+                cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10, name: 'Segoe UI' };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0E7490' } };
+                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                cell.border = {
+                    top: { style: 'medium', color: { argb: 'FFFFFFFF' } },
+                    bottom: { style: 'medium', color: { argb: 'FF083344' } },
+                    left: { style: 'thin', color: { argb: 'FF164E63' } },
+                    right: { style: 'thin', color: { argb: 'FF164E63' } }
+                };
+            });
+            gHeader.height = 25;
+
+            goals.forEach((g, idx) => {
+                const isWallet = g.type === 'wallet';
+                const cat = isWallet ? '👛 Caixinha' : '🎯 Meta';
+                const current = Number(g.current_amount || 0);
+                const target = Number(g.target_amount || 0);
+                const diff = target - current; // Restante ou Falta
+                const pct = target > 0 ? (current / target) : 0;
+
+                const gRow = sheet.addRow(['', g.title, cat, current, target, diff, pct]);
+                gRow.height = 22;
+                
+                const rowColor = (idx % 2 === 0) ? 'FFF9FAFB' : 'FFFFFFFF';
+                
+                ['B', 'C', 'D', 'E', 'F', 'G'].forEach(col => {
+                    const cell = gRow.getCell(col);
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowColor } };
+                    cell.font = { name: 'Segoe UI', size: 11, color: { argb: 'FF374151' } };
+                    cell.border = {
+                        bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                        left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+                        right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
+                    };
+                });
+
+                gRow.getCell('B').alignment = { horizontal: 'left', vertical: 'middle' };
+                gRow.getCell('C').alignment = { horizontal: 'center', vertical: 'middle' };
+                
+                ['D', 'E', 'F'].forEach(col => {
+                    gRow.getCell(col).numFmt = '"R$" #,##0.00;[Red]-"R$" #,##0.00';
+                    gRow.getCell(col).alignment = { horizontal: 'right', vertical: 'middle' };
+                });
+
+                gRow.getCell('G').numFmt = '0.00%';
+                gRow.getCell('G').alignment = { horizontal: 'center', vertical: 'middle' };
+                
+                if (pct >= 1) {
+                    gRow.getCell('G').font = { color: { argb: 'FF059669' }, bold: true, name: 'Segoe UI' }; 
+                }
+            });
+        }
+
+        sheet.getColumn('B').width = 25; // Alargou um pouco o nome para as Metas
         sheet.getColumn('C').width = 20; 
         sheet.getColumn('D').width = 22; 
         sheet.getColumn('E').width = 22; 
         sheet.getColumn('F').width = 22; 
-        sheet.getColumn('G').width = 25; 
+        sheet.getColumn('G').width = 20; 
     };
 
     const handleExport = async () => {
@@ -461,14 +549,11 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
             const workbook = new ExcelJS.Workbook();
             workbook.creator = "Meu Aliado Financeiro";
 
-            // 🟢 MOTOR DE CARREGAMENTO DA LOGO
             let logoId: number | null = null;
             try {
-                // Busca a logo na pasta public
                 const response = await fetch('/logo-excel.png');
                 if (response.ok) {
                     const blob = await response.blob();
-                    // Converte Blob para ArrayBuffer para o exceljs
                     const buffer = await blob.arrayBuffer();
                     
                     logoId = workbook.addImage({
@@ -478,7 +563,6 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
                 }
             } catch (logoError) {
                 console.error("Erro ao carregar logo:", logoError);
-                // Não trava o processo se a logo falhar
             }
             
             let targets: any[] = [];
@@ -499,29 +583,32 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
                     if (ws) workspaceId = ws.id;
                 }
 
-                let t, i, r;
+                let t, i, r, g;
 
+                // 🟢 PUXANDO A TABELA DE GOALS DO BANCO
                 if (workspaceId) {
-                    const [resT, resI, resR] = await Promise.all([
+                    const [resT, resI, resR, resG] = await Promise.all([
                         supabase.from('transactions').select('*').eq('user_id', target.client_id).eq('context', workspaceId),
                         supabase.from('installments').select('*').eq('user_id', target.client_id).eq('context', workspaceId),
-                        supabase.from('recurring').select('*').eq('user_id', target.client_id).eq('context', workspaceId)
+                        supabase.from('recurring').select('*').eq('user_id', target.client_id).eq('context', workspaceId),
+                        supabase.from('goals').select('*').eq('user_id', target.client_id).eq('context', workspaceId)
                     ]);
-                    t = resT.data; i = resI.data; r = resR.data;
+                    t = resT.data; i = resI.data; r = resR.data; g = resG.data;
                 } else {
-                    const [resT, resI, resR] = await Promise.all([
+                    const [resT, resI, resR, resG] = await Promise.all([
                         supabase.from('transactions').select('*').eq('user_id', target.client_id),
                         supabase.from('installments').select('*').eq('user_id', target.client_id),
-                        supabase.from('recurring').select('*').eq('user_id', target.client_id)
+                        supabase.from('recurring').select('*').eq('user_id', target.client_id),
+                        supabase.from('goals').select('*').eq('user_id', target.client_id)
                     ]);
-                    t = resT.data; i = resI.data; r = resR.data;
+                    t = resT.data; i = resI.data; r = resR.data; g = resG.data;
                 }
 
                 const owner = target.client_email.split('@')[0];
 
                 if (includeDashboard) {
-                    // Passa o logoId para a função do Dashboard
-                    generateDashboardSheet(workbook, t || [], i || [], r || [], owner, logoId);
+                    // Passamos os `goals` para dentro do Dashboard
+                    generateDashboardSheet(workbook, t || [], i || [], r || [], g || [], owner, logoId);
                 }
 
                 for (const month of selectedMonths) {
@@ -653,7 +740,7 @@ export default function ExportModal({ isOpen, onClose, user, userPlan, clients, 
                         </div>
                         <div>
                             <span className="text-sm font-bold text-white block">Gerar Dashboard Anual Premium</span>
-                            <span className="text-xs text-gray-500">Cria uma aba extra com o resumo total e logo da empresa.</span>
+                            <span className="text-xs text-gray-500">Cria uma aba extra com o resumo total, logo e metas da empresa.</span>
                         </div>
                         <BarChart3 className={`ml-auto shrink-0 ${includeDashboard ? 'text-cyan-500' : 'text-gray-600'}`} size={20}/>
                     </div>
