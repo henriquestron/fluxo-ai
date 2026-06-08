@@ -72,7 +72,7 @@ async function downloadMedia(url: string) {
 }
 
 // ============================================================================
-// CONTEXTO FINANCEIRO COMPLETO (CLONE DO PAGE.TSX ATUALIZADO 2.0)
+// CONTEXTO FINANCEIRO COMPLETO 
 // ============================================================================
 async function getFinancialContext(supabase: any, userId: string, workspaceId: string) {
     const today = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
@@ -312,7 +312,6 @@ export async function POST(req: Request) {
         const inQuery = variations.join(',');
         console.log(`📩 senderId: ${senderId} | variações: ${inQuery}`);
 
-        // 🟢 MÁGICA 1: Adicionamos o "partner_name" em todos os selects do banco
         let { data: userSettings } = await supabase
             .from('user_settings')
             .select('user_id, whatsapp_phone, whatsapp_id, partner_phone, partner_whatsapp_id, partner_name, bot_persona, bot_humor_level, bot_sincerity_level, bot_formality_level')
@@ -382,7 +381,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ status: 'Rate Limited' });
         }
 
-        // ── ETAPA 4: DELEÇÃO PENDENTE ──────────────────────────────────────────
+        // ── ETAPA 4: VERIFICAÇÃO DE MEMÓRIAS (DELETAR OU INSERIR) ──────────────
         const pendingDeleteStr = await redis.get(`pending_delete:${targetPhone}`);
         if (pendingDeleteStr) {
             const userInput = messageContent.trim().toUpperCase();
@@ -412,6 +411,9 @@ export async function POST(req: Request) {
                 return NextResponse.json({ success: true, action: "deleted_cancelled" });
             }
         }
+
+        // 🟢 BUSCANDO DADOS DE CONTAS PENDENTES NA MEMÓRIA
+        const pendingInsertStr = await redis.get(`pending_insert:${targetPhone}`);
 
         // ── ETAPA 5: PROCESSAR MÍDIA E DOCUMENTOS ──────────────────────────────
         let promptParts: any[] = [];
@@ -459,7 +461,6 @@ export async function POST(req: Request) {
         }
 
         // ── ETAPA 6: VERIFICAR PLANO E NOME DO USUÁRIO ─────────────────────────
-        
         const { data: profile } = await supabase
             .from('profiles')
             .select('plan_tier')
@@ -468,7 +469,6 @@ export async function POST(req: Request) {
             
         const plan = profile?.plan_tier || 'free';
 
-        // 🟢 MÁGICA 2: Descobrindo o nome de quem está falando agora!
         const { data: authData } = await supabase.auth.admin.getUserById(userSettings.user_id);
         const fullPrimaryName = authData?.user?.user_metadata?.full_name;
         const primaryFirstName = fullPrimaryName ? fullPrimaryName.split(' ')[0] : 'chefe';
@@ -476,7 +476,6 @@ export async function POST(req: Request) {
         const fullPartnerName = userSettings.partner_name || 'Parceiro';
         const partnerFirstName = fullPartnerName.split(' ')[0];
 
-        // Se a mensagem for do parceiro, a Luna chama pelo nome do parceiro!
         const currentSpeakerName = isPartnerMessage ? partnerFirstName : primaryFirstName;
 
         if (!['pro', 'agent', 'admin'].includes(plan)) {
@@ -555,11 +554,22 @@ Ajuste seu tom de fala exatamente para refletir essa combinação única em toda
                 break;
         }
 
-        // 🟢 MÁGICA 2.1: Passando o currentSpeakerName pro Prompt
+        // 🟢 INSTRUÇÃO DE MEMÓRIA PARA A IA (Se houver algo pendente)
+        let pendingPrompt = "";
+        if (pendingInsertStr) {
+            pendingPrompt = `\n⏳ MEMÓRIA DE CONTA PENDENTE:
+O usuário enviou uma conta anteriormente, mas você precisou de confirmação. 
+Dados extraídos anteriormente que estão na sua memória:
+${pendingInsertStr}
+
+Analise a resposta atual do usuário, combine com esses dados da memória (ajustando o mês alvo e se a conta já está paga ou pendente de acordo com o que ele falou) e retorne FINALMENTE a action "add" para salvar definitivamente!`;
+        }
+
         const systemPrompt = `
 IDENTIDADE: O seu nome é Luna. Você é a inteligência artificial oficial do sistema "Meu Aliado".
 USUÁRIO ATUAL: Você está falando com ${currentSpeakerName}. Responda diretamente e o chame pelo nome de vez em quando.
 PERSONALIDADE: ${personaPrompt}
+${pendingPrompt}
 
 REGRAS DE CONVERSAÇÃO:
 - Suas respostas ("reply") devem ser sempre bem curtas e diretas, adequadas para leitura rápida no WhatsApp.
@@ -597,20 +607,16 @@ ${walletsContextPrompt}
 - Rendimentos: Dividendos, Juros Recebidos, Lucros, Outros
 
 🧠 REGRAS DE ROTEAMENTO (FORMATOS JSON OBRIGATÓRIOS):
-⚠️ CATEGORIZAÇÃO: Sempre inclua a chave "category" e "subcategory" escolhendo EXATAMENTE uma das opções da lista acima que melhor corresponda ao gasto/receita.
+⚠️ CATEGORIZAÇÃO: Sempre inclua a chave "category" e "subcategory" escolhendo EXATAMENTE uma das opções da lista acima.
 
 1. 💳 CARTÃO DE CRÉDITO (se mencionar banco, fatura ou cartão):
 Bancos: ${cartoesCadastrados.join(', ')}
-⚠️ REGRA DA FATURA (MUITO IMPORTANTE):
-- Se o usuário informar o mês da fatura (ex: "para junho", "mês que vem", "próxima fatura"): Adicione a chave "start_date" no formato "10/MM/YYYY" correspondente ao mês pedido.
-- Se o usuário NÃO informar o mês: Lance normalmente (sem start_date) para o mês atual, mas adicione na sua "reply" um lembrete no seu estilo: "Ah, e se a fatura já tiver fechado, da próxima vez é só me falar 'para o mês que vem' que eu já jogo pra lá!"
 {"action":"add","table":"installments","context":"ID","data":{"title":"Nome","value_per_month":0.00,"installments_count":1,"payment_method":"banco","due_day":10,"start_date":"10/MM/YYYY","category":"Alimentação","subcategory":"Ifood/Delivery"}}
 
 2. 🔁 GASTO FIXO (fixo, todo mês, assinatura, aluguel):
 {"action":"add","table":"recurring","context":"ID","data":{"title":"Nome","value":0.00,"type":"expense","due_day":10,"category":"Habitação","subcategory":"Aluguel"}}
 
 3. 💸 GASTO COMUM (débito, pix, dinheiro):
-(Lembrete: Inclua "linked_goal_id": NUMERO se bater com a regra de alguma Caixinha)
 {"action":"add","table":"transactions","context":"ID","data":{"title":"Nome","amount":0.00,"type":"expense","date":"DD/MM/YYYY","category":"Transporte","subcategory":"Uber/App"}}
 
 4. 💰 RECEITA (salário, pix recebido, freela):
@@ -619,19 +625,25 @@ Bancos: ${cartoesCadastrados.join(', ')}
 5. 🗑️ APAGAR gasto:
 {"action":"remove","table":"transactions","data":{"title":"Nome aproximado"}}
 
-6. 💬 PERGUNTAS SOBRE FINANÇAS (saldo, situação, dívidas, contas):
-Use os dados acima para responder. Use formato R$ X.XXX,XX.
-Se perguntarem sobre situação geral, mencione saldo, pendências e dê um conselho no seu estilo.
+6. 💬 PERGUNTAS SOBRE FINANÇAS:
+Use os dados acima para responder de forma curta e amigável.
+
+7. ❓ PRECISAR DE CONFIRMAÇÃO (Ex: Documentos/PDFs com data passada):
+Se o usuário enviar uma conta/PDF com data de vencimento de meses anteriores ao atual (ex: conta de março, mas estamos em ${ctx.mes_atual}), NÃO use a action "add" de imediato. Salve os dados extraídos no campo "pending_data" e pergunte como proceder.
+{"action":"ask_details","pending_data":{"table":"transactions","title":"Luz","amount":150.00,"category":"Habitação","subcategory":"Luz"},"reply":"Vi que essa conta é de um mês passado! Quer que eu lance nela mesma ou no mês atual? E ela já tá paga ou deixo pendente?"}
+
+8. ❌ CANCELAR OPERAÇÃO:
+Se o usuário desistir de lançar a conta pendente.
+{"action":"cancel","reply":"Tudo bem, deixei quieto e não lancei nada!"}
 
 REGRAS ABSOLUTAS:
 ✅ Retorne SEMPRE um array JSON válido. Zero texto fora do array.
-✅ Valores financeiros: float com ponto (2000.00). NUNCA vírgula ou aspas em números.
-✅ SEMPRE inclua {"reply": "sua resposta curta como Luna"} no array.
-✅ Para perguntas sem inserção no banco: retorne apenas [{"reply": "sua resposta"}].
+✅ Valores financeiros: float com ponto (2000.00). NUNCA vírgula em números.
+✅ SEMPRE inclua {"reply": "sua resposta"} no array.
 
 ${hasAudio ? "\n⚠️ ÁUDIO: Transcreva e responda com base no que foi dito." : ""}
 ${hasImage ? "\n📸 IMAGEM: Extraia valor, data e estabelecimento. Identifique a forma de pagamento." : ""}
-${hasDocument ? "\n📄 ARQUIVO PDF: O usuário enviou um documento PDF (provavelmente boleto, nota fiscal ou comprovante). Analise e extraia: VALOR TOTAL, DATA DE VENCIMENTO e NOME DO ESTABELECIMENTO. Se achar código de barras ou linha digitável (PIX Copia e Cola), coloque na sua 'reply'!" : ""}
+${hasDocument ? "\n📄 ARQUIVO PDF: O usuário enviou um documento PDF (provavelmente boleto, nota fiscal ou comprovante). Analise e extraia: VALOR TOTAL, DATA DE VENCIMENTO e NOME DO ESTABELECIMENTO. ATENÇÃO MÁXIMA: Se a data de vencimento for de meses anteriores, acione a regra '7. PRECISAR DE CONFIRMAÇÃO (ask_details)' obrigatoriamente!" : ""}
 `.trim();
 
         let gatilhoMotivacional = "";
@@ -639,12 +651,11 @@ ${hasDocument ? "\n📄 ARQUIVO PDF: O usuário enviou um documento PDF (provave
             gatilhoMotivacional = `
             ⚠️ INSTRUÇÃO DE EMPATIA (MUITO IMPORTANTE):
             Notei no contexto que o estado da conta atual é "CRÍTICO" (saldo negativo).
-            Na sua "reply", além de confirmar o lançamento atual normalmente, faça uma brincadeira muito rápida e afetuosa usando a clássica frase de infância "na volta a gente compra" para quebrar o gelo sobre a falta de grana. 
-            Termine com uma palavra de apoio dizendo que organizar as contas é o primeiro passo e que você está ali para ajudar. Não seja longa, mantenha o tom de mensagem de WhatsApp.
+            Na sua "reply", faça uma brincadeira rápida dizendo "na volta a gente compra" para quebrar o gelo. Termine dizendo que você está ali para ajudar a organizar.
             `;
         }
 
-        const finalPrompt = [systemPrompt, ...promptParts];
+        const finalPrompt = [systemPrompt, gatilhoMotivacional, ...promptParts];
 
         // ── ETAPA 9: CHAMAR A IA ───────────────────────────────────────────────
         let commands: any[] = [];
@@ -667,16 +678,25 @@ ${hasDocument ? "\n📄 ARQUIVO PDF: O usuário enviou um documento PDF (provave
         const validContextIds = new Set(workspaces?.map(w => w.id) || []);
 
         for (const cmd of commands) {
+            // 🟢 GUARDANDO NA MEMÓRIA A CONTA PENDENTE
+            if (cmd.action === 'ask_details') {
+                await redis.set(`pending_insert:${targetPhone}`, JSON.stringify(cmd.pending_data), { ex: 600 }); // Expira em 10 minutos
+            }
+            // 🟢 LIMPANDO A MEMÓRIA SE O USUÁRIO CANCELAR
+            else if (cmd.action === 'cancel') {
+                await redis.del(`pending_insert:${targetPhone}`);
+            }
+
             if (cmd.table && !ALLOWED_TABLES.includes(cmd.table)) {
                 console.warn(`⛔ Tabela bloqueada: ${cmd.table}`); continue;
             }
 
             if (cmd.action === 'add') {
-                // 🟢 MÁGICA 3: Substitui [Parceiro] pelo Nome Real do Parceiro!
+                // 🟢 LIMPANDO A MEMÓRIA APÓS SALVAR COM SUCESSO
+                await redis.del(`pending_insert:${targetPhone}`);
+
                 if (isPartnerMessage && cmd.data?.title) {
-                    // Tira a tag genérica se a IA tiver inventado de colocar sozinha
                     cmd.data.title = cmd.data.title.replace(/\[Parceiro\]\s*/gi, '');
-                    // Adiciona o nome real se já não estiver lá
                     if (!cmd.data.title.includes(`[${partnerFirstName}]`)) {
                         cmd.data.title = `[${partnerFirstName}] ${cmd.data.title}`;
                     }
@@ -718,9 +738,9 @@ ${hasDocument ? "\n📄 ARQUIVO PDF: O usuário enviou um documento PDF (provave
                         payload.date = `${String(hoje.getDate()).padStart(2, '0')}/${String(hoje.getMonth() + 1).padStart(2, '0')}/${hoje.getFullYear()}`;
                     }
                     payload.amount = extractedValue;
-                    payload.is_paid = payload.type !== 'income';
+                    payload.is_paid = payload.type !== 'income' && payload.is_paid !== false; // Garante que Saídas sejam pagas por padrão, a menos que a IA avise que não
                     payload.status = 'active';
-                    payload.target_month = ctx.mes_atual;
+                    payload.target_month = payload.target_month || ctx.mes_atual; // Se a IA preencheu o mês alvo via confirmação, usa ele!
 
                     if (cmd.data.linked_goal_id) {
                         payload.linked_goal_id = Number(cmd.data.linked_goal_id);
