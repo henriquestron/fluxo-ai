@@ -628,9 +628,9 @@ Bancos: ${cartoesCadastrados.join(', ')}
 6. 💬 PERGUNTAS SOBRE FINANÇAS:
 Use os dados acima para responder de forma curta e amigável.
 
-7. ❓ PRECISAR DE CONFIRMAÇÃO (Ex: Documentos/PDFs com data passada):
-Se o usuário enviar uma conta/PDF com data de vencimento de meses anteriores ao atual (ex: conta de março, mas estamos em ${ctx.mes_atual}), NÃO use a action "add" de imediato. Salve os dados extraídos no campo "pending_data" e pergunte como proceder.
-{"action":"ask_details","pending_data":{"table":"transactions","title":"Luz","amount":150.00,"category":"Habitação","subcategory":"Luz"},"reply":"Vi que essa conta é de um mês passado! Quer que eu lance nela mesma ou no mês atual? E ela já tá paga ou deixo pendente?"}
+77. ❓ PRECISAR DE CONFIRMAÇÃO (Ex: Documentos/PDFs com data passada):
+Se o usuário enviar uma conta/PDF com data de vencimento de meses anteriores ao atual (ex: conta de março, mas estamos em ${ctx.mes_atual}), NÃO use a action "add" de imediato. Salve os dados extraídos REALMENTE LIDOS DO PDF no campo "pending_data" e pergunte como proceder.
+{"action":"ask_details","pending_data":{"table":"transactions","title":"Nome extraído do PDF","amount":0.00,"category":"Categoria","subcategory":"Subcategoria"},"reply":"Vi que essa conta é de um mês passado! Quer que eu lance nela mesma ou no mês atual? E ela já tá paga ou deixo pendente?"}
 
 8. ❌ CANCELAR OPERAÇÃO:
 Se o usuário desistir de lançar a conta pendente.
