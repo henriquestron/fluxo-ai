@@ -555,14 +555,14 @@ Ajuste seu tom de fala exatamente para refletir essa combinação única em toda
         }
 
         // 🟢 INSTRUÇÃO DE MEMÓRIA PARA A IA (Se houver algo pendente)
+        // 🟢 INSTRUÇÃO DE MEMÓRIA PARA A IA (Se houver algo pendente)
         let pendingPrompt = "";
         if (pendingInsertStr) {
-            pendingPrompt = `\n⏳ MEMÓRIA DE CONTA PENDENTE:
-O usuário enviou uma conta anteriormente, mas você precisou de confirmação. 
-Dados extraídos anteriormente que estão na sua memória:
-${pendingInsertStr}
+            pendingPrompt = `\n⏳ ⚠️ ATENÇÃO: VOCÊ TEM UMA MEMÓRIA DE CONTA PENDENTE ⚠️ ⏳
+O usuário acabou de responder sobre uma conta que estava aguardando confirmação.
+DADOS SALVOS NA SUA MEMÓRIA: ${pendingInsertStr}
 
-Analise a resposta atual do usuário, combine com esses dados da memória (ajustando o mês alvo e se a conta já está paga ou pendente de acordo com o que ele falou) e retorne FINALMENTE a action "add" para salvar definitivamente!`;
+INSTRUÇÃO ABSOLUTA: Você DEVE usar EXATAMENTE os valores e o título que estão no JSON da memória acima. NUNCA invente outro valor. Pegue os dados da memória, ajuste o mês ou o status de pagamento (is_paid) conforme o usuário pediu na mensagem atual, e retorne a action "add" para salvar.`;
         }
 
         const systemPrompt = `
@@ -607,17 +607,17 @@ ${walletsContextPrompt}
 - Rendimentos: Dividendos, Juros Recebidos, Lucros, Outros
 
 ━━━ 🧱 ESTRUTURA OBRIGATÓRIA DO BANCO DE DADOS (SCHEMA LOCK) ━━━
-É ESTRITAMENTE PROIBIDO inventar colunas que não estão nesta lista para cada tabela:
-- Tabela "transactions": "title" (texto), "amount" (float), "type" (texto: 'income'/'expense'), "date" (DD/MM/YYYY), "category", "subcategory", "linked_goal_id" (inteiro, opcional).
-- Tabela "recurring": "title" (texto), "value" (float), "type" (texto), "due_day" (inteiro), "category", "subcategory", "linked_goal_id" (inteiro, opcional).
-- Tabela "installments": "title" (texto), "value_per_month" (float), "installments_count" (inteiro), "payment_method" (texto), "due_day" (inteiro), "start_date" (DD/MM/YYYY), "category", "subcategory", "linked_goal_id" (inteiro, opcional).
+- "transactions": "title", "amount", "type", "date", "category", "subcategory", "linked_goal_id"
+- "recurring": "title", "value", "type", "due_day", "category", "subcategory", "linked_goal_id"
+- "installments": "title", "value_per_month", "installments_count", "payment_method", "due_day", "start_date", "category", "subcategory", "linked_goal_id"
 
 🧠 REGRAS DE ROTEAMENTO (FORMATOS JSON OBRIGATÓRIOS):
-⚠️ CATEGORIZAÇÃO: Sempre inclua a chave "category" e "subcategory" escolhendo EXATAMENTE uma das opções da lista permitida.
+⚠️ CATEGORIZAÇÃO: Sempre inclua a chave "category" e "subcategory" escolhendo EXATAMENTE uma das opções permitidas.
 
-1. 💳 CARTÃO DE CRÉDITO (se mencionar banco, fatura ou cartão):
+1. 💳 CARTÃO DE CRÉDITO / FATURAS DE BANCO:
 Bancos: ${cartoesCadastrados.join(', ')}
-{"action":"add","table":"installments","context":"ID","data":{"title":"Nome","value_per_month":0.00,"installments_count":1,"payment_method":"banco","due_day":10,"start_date":"10/MM/YYYY","category":"Alimentação","subcategory":"Ifood/Delivery"}}
+Obrigatoriamente use a tabela "installments".
+{"action":"add","table":"installments","context":"ID","data":{"title":"Nome","value_per_month":0.00,"installments_count":1,"payment_method":"banco","due_day":10,"start_date":"10/MM/YYYY","category":"Financeiro","subcategory":"Outros"}}
 
 2. 🔁 GASTO FIXO (fixo, todo mês, assinatura, aluguel):
 {"action":"add","table":"recurring","context":"ID","data":{"title":"Nome","value":0.00,"type":"expense","due_day":10,"category":"Habitação","subcategory":"Aluguel"}}
@@ -631,27 +631,21 @@ Bancos: ${cartoesCadastrados.join(', ')}
 5. 🗑️ APAGAR gasto:
 {"action":"remove","table":"transactions","data":{"title":"Nome aproximado"}}
 
-6. 💬 PERGUNTAS SOBRE FINANÇAS:
-Use os dados acima para responder de forma curta e amigável.
+6. ❓ PRECISAR DE CONFIRMAÇÃO (PDFs de meses passados):
+MUITO IMPORTANTE: Preencha o "pending_data" usando SOMENTE as colunas exatas da tabela escolhida (Schema Lock). O valor e o nome DEVEM ser os lidos no documento.
+{"action":"ask_details","pending_data":{"table":"installments","title":"[NOME REAL]","value_per_month": 0.00,"installments_count":1,"payment_method":"banco","due_day":10,"start_date":"10/MM/YYYY","category":"Financeiro","subcategory":"Outros"},"reply":"Vi que essa conta é antiga. Quer lançar nela mesma ou no mês atual? Já tá paga?"}
 
-7. ❓ PRECISAR DE CONFIRMAÇÃO (Ex: Documentos/PDFs com data passada):
-MUITO IMPORTANTE: LEIA O DOCUMENTO com precisão cirúrgica. Extraia o NOME REAL e o VALOR REAL. É ESTRITAMENTE PROIBIDO INVENTAR VALORES! Preencha a chave "pending_data" usando SOMENTE as colunas exatas da tabela escolhida (veja o Schema Lock).
-⚠️ REGRA DE OURO PARA PDF DE BANCO: Se o PDF for uma Fatura de Cartão de Crédito ou Banco, você DEVE usar a tabela "installments".
-Exemplo para Fatura de Banco (installments):
-{"action":"ask_details","pending_data":{"table":"installments","title":"[NOME DO BANCO EXTRAÍDO]","value_per_month": [VALOR REAL LIDO DO PDF],"installments_count":1,"payment_method":"banco","due_day":[DIA LIDO DO PDF],"start_date":"[DATA LIDA DD/MM/YYYY]","category":"Financeiro","subcategory":"Outros"},"reply":"Vi que essa fatura do Banco é de um mês passado! Quer que eu lance nela mesma ou no mês atual? E ela já tá paga ou deixo pendente?"}
-
-8. ❌ CANCELAR OPERAÇÃO:
-Se o usuário desistir de lançar a conta pendente.
+7. ❌ CANCELAR OPERAÇÃO:
 {"action":"cancel","reply":"Tudo bem, deixei quieto e não lancei nada!"}
 
 REGRAS ABSOLUTAS:
 ✅ Retorne SEMPRE um array JSON válido. Zero texto fora do array.
 ✅ Valores financeiros: float com ponto (Ex: 26.00). NUNCA vírgula em números. NUNCA crie dados falsos.
-✅ SEMPRE inclua {"reply": "sua resposta"} no array.
+✅ AUDITORIA OBRIGATÓRIA: TODA VEZ que você usar a action "add", a sua chave "reply" DEVE listar explicitamente o Nome, o Valor e se foi Paga ou Pendente. (Exemplo: "Pronto! Salvei [NOME] no valor de R$ [VALOR] como [PAGA/PENDENTE]!").
 
 ${hasAudio ? "\n⚠️ ÁUDIO: Transcreva e responda com base no que foi dito." : ""}
 ${hasImage ? "\n📸 IMAGEM: Extraia valor, data e estabelecimento. Identifique a forma de pagamento." : ""}
-${hasDocument ? "\n📄 ARQUIVO PDF: ATENÇÃO! LEIA O ARQUIVO MINUCIOSAMENTE. Extraia com exatidão matemática o VALOR TOTAL A PAGAR e o NOME/BANCO. NUNCA invente números. SE FOR UMA FATURA DE BANCO, ENCAMINHE OBRIGATORIAMENTE PARA A TABELA 'installments'." : ""}
+${hasDocument ? "\n📄 ARQUIVO PDF: ATENÇÃO! Extraia com exatidão matemática o VALOR TOTAL A PAGAR e o NOME. NUNCA invente números. SE FOR FATURA DE BANCO, use a tabela 'installments'." : ""}
 `.trim();
 
         let gatilhoMotivacional = "";
