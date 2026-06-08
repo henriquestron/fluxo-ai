@@ -606,8 +606,14 @@ ${walletsContextPrompt}
 - Renda Extra: Freelance, Vendas, Aluguel Recebido, Outros
 - Rendimentos: Dividendos, Juros Recebidos, Lucros, Outros
 
+━━━ 🧱 ESTRUTURA OBRIGATÓRIA DO BANCO DE DADOS (SCHEMA LOCK) ━━━
+É ESTRITAMENTE PROIBIDO inventar colunas que não estão nesta lista para cada tabela:
+- Tabela "transactions": "title" (texto), "amount" (float), "type" (texto: 'income'/'expense'), "date" (DD/MM/YYYY), "category", "subcategory", "linked_goal_id" (inteiro, opcional).
+- Tabela "recurring": "title" (texto), "value" (float), "type" (texto), "due_day" (inteiro), "category", "subcategory", "linked_goal_id" (inteiro, opcional).
+- Tabela "installments": "title" (texto), "value_per_month" (float), "installments_count" (inteiro), "payment_method" (texto), "due_day" (inteiro), "start_date" (DD/MM/YYYY), "category", "subcategory", "linked_goal_id" (inteiro, opcional).
+
 🧠 REGRAS DE ROTEAMENTO (FORMATOS JSON OBRIGATÓRIOS):
-⚠️ CATEGORIZAÇÃO: Sempre inclua a chave "category" e "subcategory" escolhendo EXATAMENTE uma das opções da lista acima.
+⚠️ CATEGORIZAÇÃO: Sempre inclua a chave "category" e "subcategory" escolhendo EXATAMENTE uma das opções da lista permitida.
 
 1. 💳 CARTÃO DE CRÉDITO (se mencionar banco, fatura ou cartão):
 Bancos: ${cartoesCadastrados.join(', ')}
@@ -629,8 +635,10 @@ Bancos: ${cartoesCadastrados.join(', ')}
 Use os dados acima para responder de forma curta e amigável.
 
 7. ❓ PRECISAR DE CONFIRMAÇÃO (Ex: Documentos/PDFs com data passada):
-MUITO IMPORTANTE: Mesmo precisando de confirmação, você DEVE LER O DOCUMENTO e extrair o NOME REAL e o VALOR REAL do arquivo. É ESTRITAMENTE PROIBIDO INVENTAR VALORES! Preencha o "pending_data" com os dados extraídos:
-{"action":"ask_details","pending_data":{"table":"transactions","title":"[NOME REAL EXTRAÍDO]","amount": [VALOR REAL EXTRAÍDO COMO FLOAT],"category":"Categoria","subcategory":"Subcategoria"},"reply":"Vi que essa conta é de um mês passado! Quer que eu lance nela mesma ou no mês atual? E ela já tá paga ou deixo pendente?"}
+MUITO IMPORTANTE: LEIA O DOCUMENTO com precisão cirúrgica. Extraia o NOME REAL e o VALOR REAL. É ESTRITAMENTE PROIBIDO INVENTAR VALORES! Preencha a chave "pending_data" usando SOMENTE as colunas exatas da tabela escolhida (veja o Schema Lock).
+⚠️ REGRA DE OURO PARA PDF DE BANCO: Se o PDF for uma Fatura de Cartão de Crédito ou Banco, você DEVE usar a tabela "installments".
+Exemplo para Fatura de Banco (installments):
+{"action":"ask_details","pending_data":{"table":"installments","title":"[NOME DO BANCO EXTRAÍDO]","value_per_month": [VALOR REAL LIDO DO PDF],"installments_count":1,"payment_method":"banco","due_day":[DIA LIDO DO PDF],"start_date":"[DATA LIDA DD/MM/YYYY]","category":"Financeiro","subcategory":"Outros"},"reply":"Vi que essa fatura do Banco é de um mês passado! Quer que eu lance nela mesma ou no mês atual? E ela já tá paga ou deixo pendente?"}
 
 8. ❌ CANCELAR OPERAÇÃO:
 Se o usuário desistir de lançar a conta pendente.
@@ -638,12 +646,12 @@ Se o usuário desistir de lançar a conta pendente.
 
 REGRAS ABSOLUTAS:
 ✅ Retorne SEMPRE um array JSON válido. Zero texto fora do array.
-✅ Valores financeiros: float com ponto (2000.00). NUNCA vírgula em números.
+✅ Valores financeiros: float com ponto (Ex: 26.00). NUNCA vírgula em números. NUNCA crie dados falsos.
 ✅ SEMPRE inclua {"reply": "sua resposta"} no array.
 
 ${hasAudio ? "\n⚠️ ÁUDIO: Transcreva e responda com base no que foi dito." : ""}
 ${hasImage ? "\n📸 IMAGEM: Extraia valor, data e estabelecimento. Identifique a forma de pagamento." : ""}
-${hasDocument ? "\n📄 ARQUIVO PDF: ATENÇÃO! LEIA O ARQUIVO MINUCIOSAMENTE. Extraia com exatidão matemática o VALOR TOTAL e o NOME. Se a data for de meses passados, acione a regra 7 colocando os dados reais lidos dentro do pending_data. NUNCA CRIE DADOS FALSOS." : ""}
+${hasDocument ? "\n📄 ARQUIVO PDF: ATENÇÃO! LEIA O ARQUIVO MINUCIOSAMENTE. Extraia com exatidão matemática o VALOR TOTAL A PAGAR e o NOME/BANCO. NUNCA invente números. SE FOR UMA FATURA DE BANCO, ENCAMINHE OBRIGATORIAMENTE PARA A TABELA 'installments'." : ""}
 `.trim();
 
         let gatilhoMotivacional = "";
