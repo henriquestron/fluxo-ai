@@ -628,9 +628,9 @@ Bancos: ${cartoesCadastrados.join(', ')}
 6. 💬 PERGUNTAS SOBRE FINANÇAS:
 Use os dados acima para responder de forma curta e amigável.
 
-77. ❓ PRECISAR DE CONFIRMAÇÃO (Ex: Documentos/PDFs com data passada):
-Se o usuário enviar uma conta/PDF com data de vencimento de meses anteriores ao atual (ex: conta de março, mas estamos em ${ctx.mes_atual}), NÃO use a action "add" de imediato. Salve os dados extraídos REALMENTE LIDOS DO PDF no campo "pending_data" e pergunte como proceder.
-{"action":"ask_details","pending_data":{"table":"transactions","title":"Nome extraído do PDF","amount":0.00,"category":"Categoria","subcategory":"Subcategoria"},"reply":"Vi que essa conta é de um mês passado! Quer que eu lance nela mesma ou no mês atual? E ela já tá paga ou deixo pendente?"}
+7. ❓ PRECISAR DE CONFIRMAÇÃO (Ex: Documentos/PDFs com data passada):
+MUITO IMPORTANTE: Mesmo precisando de confirmação, você DEVE LER O DOCUMENTO e extrair o NOME REAL e o VALOR REAL do arquivo. É ESTRITAMENTE PROIBIDO INVENTAR VALORES! Preencha o "pending_data" com os dados extraídos:
+{"action":"ask_details","pending_data":{"table":"transactions","title":"[NOME REAL EXTRAÍDO]","amount": [VALOR REAL EXTRAÍDO COMO FLOAT],"category":"Categoria","subcategory":"Subcategoria"},"reply":"Vi que essa conta é de um mês passado! Quer que eu lance nela mesma ou no mês atual? E ela já tá paga ou deixo pendente?"}
 
 8. ❌ CANCELAR OPERAÇÃO:
 Se o usuário desistir de lançar a conta pendente.
@@ -643,7 +643,7 @@ REGRAS ABSOLUTAS:
 
 ${hasAudio ? "\n⚠️ ÁUDIO: Transcreva e responda com base no que foi dito." : ""}
 ${hasImage ? "\n📸 IMAGEM: Extraia valor, data e estabelecimento. Identifique a forma de pagamento." : ""}
-${hasDocument ? "\n📄 ARQUIVO PDF: O usuário enviou um documento PDF (provavelmente boleto, nota fiscal ou comprovante). Analise e extraia: VALOR TOTAL, DATA DE VENCIMENTO e NOME DO ESTABELECIMENTO. ATENÇÃO MÁXIMA: Se a data de vencimento for de meses anteriores, acione a regra '7. PRECISAR DE CONFIRMAÇÃO (ask_details)' obrigatoriamente!" : ""}
+${hasDocument ? "\n📄 ARQUIVO PDF: ATENÇÃO! LEIA O ARQUIVO MINUCIOSAMENTE. Extraia com exatidão matemática o VALOR TOTAL e o NOME. Se a data for de meses passados, acione a regra 7 colocando os dados reais lidos dentro do pending_data. NUNCA CRIE DADOS FALSOS." : ""}
 `.trim();
 
         let gatilhoMotivacional = "";
