@@ -1696,7 +1696,7 @@ export default function FinancialDashboard() {
                         title: transTitle,
                         amount: Math.abs(diff),
                         type: transType,
-                        category: 'Transferência', 
+                        category: 'Transferência',
                         date: transactionDate,
                         status: 'active',
                         is_paid: true,
@@ -1724,7 +1724,7 @@ export default function FinancialDashboard() {
                         title: `🎯 Ida para Meta: ${payload.title}`,
                         amount: payload.current_amount,
                         type: 'expense',
-                        category: 'Transferência', 
+                        category: 'Transferência',
                         date: transactionDate,
                         status: 'active',
                         is_paid: true,
@@ -2697,6 +2697,10 @@ export default function FinancialDashboard() {
                             displayBalance={displayBalance}
                             onTogglePaid={togglePaid} onTogglePaidMonth={togglePaidMonth}
                             onToggleDelay={toggleDelay} onDelete={handleDelete}
+                            onEdit={handleEdit}
+                           
+                            viewingAs={viewingAs}
+
                         />
                     )}
 

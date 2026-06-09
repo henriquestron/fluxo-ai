@@ -6,18 +6,21 @@ import {
     HeartPulse, Plane, Gamepad2, Smartphone, Check, Clock,
     FileText, Trash2, Pencil, List, AlertTriangle,
     ChevronDown, ChevronUp, X, RotateCcw,
-    Paperclip, Sparkles, PieChart, Calendar, Banknote, Eye
+    Paperclip, Sparkles, PieChart, Calendar, Banknote, Eye,
+    Loader2, Wifi, Droplet, Shirt, Gift, Briefcase, PiggyBank, Baby, Dog, Tv, Coffee
 } from 'lucide-react';
 import { Transaction, Installment, Recurring } from '@/types';
 
-// --- MAPA DE ÍCONES (mantido) ---
+// --- MAPA DE ÍCONES (ATUALIZADO) ---
 const ICON_MAP: any = {
     'shopping-cart': ShoppingCart, 'home': Home, 'car': Car, 'utensils': Utensils,
     'zap': Zap, 'graduation-cap': GraduationCap, 'heart-pulse': HeartPulse,
-    'plane': Plane, 'gamepad-2': Gamepad2, 'smartphone': Smartphone, 'dollar-sign': DollarSign
+    'plane': Plane, 'gamepad-2': Gamepad2, 'smartphone': Smartphone, 'dollar-sign': DollarSign,
+    'tv': Tv, 'coffee': Coffee, 'droplet': Droplet, 'wifi': Wifi, 'shirt': Shirt,
+    'gift': Gift, 'briefcase': Briefcase, 'piggy-bank': PiggyBank, 'baby': Baby, 'dog': Dog
 };
 
-// --- ESTILOS DOS BANCOS (mantido) ---
+// --- ESTILOS DOS BANCOS (ATUALIZADO) ---
 const BANK_STYLES: any = {
     'nubank': { label: 'Nubank', color: 'bg-[#820AD1]', bg: 'bg-[#820AD1]/5', border: 'border-[#820AD1]/30', text: 'text-[#a958e8]', icon: 'https://upload.wikimedia.org/wikipedia/commons/f/f7/Nubank_logo_2021.svg' },
     'inter': { label: 'Inter', color: 'bg-[#FF7A00]', bg: 'bg-[#FF7A00]/5', border: 'border-[#FF7A00]/30', text: 'text-[#ff9638]', icon: 'https://upload.wikimedia.org/wikipedia/commons/0/01/Inter_RGB_300_dpi.png' },
@@ -25,14 +28,27 @@ const BANK_STYLES: any = {
     'itau': { label: 'Itaú', color: 'bg-[#EC7000]', bg: 'bg-[#EC7000]/5', border: 'border-[#EC7000]/30', text: 'text-[#ff9233]', icon: 'https://upload.wikimedia.org/wikipedia/commons/1/19/Ita%C3%BA_Unibanco_logo_2023.svg' },
     'santander': { label: 'Santander', color: 'bg-[#CC0000]', bg: 'bg-[#CC0000]/5', border: 'border-[#CC0000]/30', text: 'text-[#ff4d4d]', icon: 'https://upload.wikimedia.org/wikipedia/commons/b/b8/Banco_Santander_Logotipo.svg' },
     'caixa': { label: 'Caixa', color: 'bg-[#005CA9]', bg: 'bg-[#005CA9]/5', border: 'border-[#005CA9]/30', text: 'text-[#4ea4eb]', icon: 'https://upload.wikimedia.org/wikipedia/commons/3/3c/Caixa_Econ%C3%B4mica_Federal_logo_1997.svg' },
+    'mercadopago': { label: 'Mercado Pago', color: 'bg-[#009EE3]', bg: 'bg-[#009EE3]/10', border: 'border-[#009EE3]/30', text: 'text-[#009EE3]', icon: 'https://logodownload.org/wp-content/uploads/2019/06/mercado-pago-logo.png' },
     'bradesco': { label: 'Bradesco', color: 'bg-[#CC092F]', bg: 'bg-[#CC092F]/5', border: 'border-[#CC092F]/30', text: 'text-[#ff4d6f]', icon: 'https://upload.wikimedia.org/wikipedia/commons/c/c3/Banco_Bradesco_logo.svg' },
-    'c6': { label: 'C6 Bank', color: 'bg-[#222]', bg: 'bg-gray-800/30', border: 'border-gray-600', text: 'text-gray-300', icon: 'https://upload.wikimedia.org/wikipedia/commons/7/77/Logo_C6_Bank.svg' },
     'picpay': { label: 'PicPay', color: 'bg-[#11C76F]', bg: 'bg-[#11C76F]/10', border: 'border-[#11C76F]/30', text: 'text-[#11C76F]', icon: 'https://upload.wikimedia.org/wikipedia/commons/5/5e/PicPay_Logogrande.png' },
+    'c6': { label: 'C6 Bank', color: 'bg-[#222]', bg: 'bg-gray-800/30', border: 'border-gray-600', text: 'text-gray-300', icon: 'https://upload.wikimedia.org/wikipedia/commons/7/77/Logo_C6_Bank.svg' },
+    
+    // 🟢 NOVOS BANCOS
+    'xp': { label: 'XP', color: 'bg-[#111111]', bg: 'bg-[#111111]/50', border: 'border-[#FFD700]/30', text: 'text-[#FFD700]', icon: '/logos/xp.svg' },
+    'btg': { label: 'BTG Pactual', color: 'bg-[#002A54]', bg: 'bg-[#002A54]/20', border: 'border-[#002A54]/40', text: 'text-[#4d8bce]', icon: '/logos/btg.svg' },
+    'pagbank': { label: 'PagBank', color: 'bg-[#00B152]', bg: 'bg-[#00B152]/10', border: 'border-[#00B152]/30', text: 'text-[#00B152]', icon: '/logos/pagbank.svg'},
+    'neon': { label: 'Neon', color: 'bg-[#00E5FF]', bg: 'bg-[#00E5FF]/10', border: 'border-[#00E5FF]/30', text: 'text-[#00E5FF]', icon: '/logos/neon.svg' },
+    'will': { label: 'Will Bank', color: 'bg-[#FFD500]', bg: 'bg-[#FFD500]/10', border: 'border-[#FFD500]/30', text: 'text-[#FFD500]', icon: null },
+    'pan': { label: 'Banco Pan', color: 'bg-[#0054A6]', bg: 'bg-[#0054A6]/10', border: 'border-[#0054A6]/30', text: 'text-[#4da6ff]', icon: '/logos/pan.svg' },
+    'sicoob': { label: 'Sicoob', color: 'bg-[#003641]', bg: 'bg-[#00AE9D]/10', border: 'border-[#00AE9D]/30', text: 'text-[#00AE9D]', icon: '/logos/sicoob.svg' },
+    'sicredi': { label: 'Sicredi', color: 'bg-[#32041]', bg: 'bg-[#32041]/10', border: 'border-[#32041]/30', text: 'text-[#32041]', icon: '/logos/sicredi.svg' },
+    
+    // 🟢 BASE
     'money': { label: 'Dinheiro', color: 'bg-emerald-600', bg: 'bg-emerald-900/10', border: 'border-emerald-500/30', text: 'text-emerald-400', icon: null },
     'outros': { label: 'Outros', color: 'bg-gray-700', bg: 'bg-gray-800/30', border: 'border-gray-700', text: 'text-gray-400', icon: null },
 };
 
-// --- COMPONENTE METRIC CARD (corrigido) ---
+// --- COMPONENTE METRIC CARD (mantido da versão Modern) ---
 const MetricCard = ({ title, value, icon: Icon, trend, trendValue, elementId, badge }: any) => {
     const trendIcon = trend === 'up' ? TrendingUp : trend === 'down' ? TrendingDown : null;
     const trendColor = trend === 'up' ? 'text-emerald-400' : trend === 'down' ? 'text-red-400' : 'text-gray-400';
@@ -46,7 +62,6 @@ const MetricCard = ({ title, value, icon: Icon, trend, trendValue, elementId, ba
                     </h3>
                     {trendValue && (
                         <div className="flex items-center gap-1 mt-2">
-
                             <span className={`text-xs font-medium ${trendColor}`}>{trendValue}</span>
                         </div>
                     )}
@@ -103,6 +118,44 @@ export default function ModernView({
     const toggleBank = (bankKey: string) => openBanks.includes(bankKey) ? setOpenBanks(openBanks.filter(k => k !== bankKey)) : setOpenBanks([...openBanks, bankKey]);
 
     const [selectedItems, setSelectedItems] = useState<{ id: any, table: string }[]>([]);
+    
+    // 🟢 ESTADOS DO MODAL CUSTOMIZADO
+    const [modalConfig, setModalConfig] = useState<{
+        isOpen: boolean;
+        title: string;
+        message: string;
+        type: 'alert' | 'confirm' | 'danger';
+        onConfirm?: () => Promise<void> | void;
+    }>({ isOpen: false, title: '', message: '', type: 'alert' });
+    const [modalProcessing, setModalProcessing] = useState(false);
+
+    const closeModal = () => {
+        if (modalProcessing) return; 
+        setModalConfig(prev => ({ ...prev, isOpen: false }));
+    };
+
+    const showAlert = (title: string, message: string) => {
+        setModalConfig({ isOpen: true, title, message, type: 'alert' });
+    };
+
+    const showConfirm = (title: string, message: string, onConfirm: () => Promise<void> | void, isDanger = false) => {
+        setModalConfig({ isOpen: true, title, message, type: isDanger ? 'danger' : 'confirm', onConfirm });
+    };
+
+    const handleModalConfirm = async () => {
+        if (modalConfig.onConfirm) {
+            setModalProcessing(true);
+            try {
+                await modalConfig.onConfirm();
+            } finally {
+                setModalProcessing(false);
+                closeModal();
+            }
+        } else {
+            closeModal();
+        }
+    };
+
     const toggleSelection = (id: any, table: string) => {
         setSelectedItems(prev => {
             const exists = prev.find(item => item.id === id && item.table === table);
@@ -110,11 +163,58 @@ export default function ModernView({
             return [...prev, { id, table }];
         });
     };
-    const handleBulkDelete = async () => {
-        if (confirm(`Excluir ${selectedItems.length} conta(s) permanentemente?`)) {
-            for (const item of selectedItems) await onDelete(item.table, item.id);
-            setSelectedItems([]);
+
+    // 🟢 AÇÕES EM MASSA ATUALIZADAS COM O MODAL
+    const handleBulkDelete = () => {
+        showConfirm(
+            "Atenção: Zona de Risco",
+            `Você tem certeza absoluta que deseja excluir permanentemente as ${selectedItems.length} contas selecionadas?`,
+            async () => {
+                for (const item of selectedItems) {
+                    await onDelete(item.table, item.id);
+                }
+                setSelectedItems([]);
+            },
+            true 
+        );
+    };
+
+    const handleBulkPayBank = (bankLabel: string, groupItems: any[]) => {
+        const tag = `${activeTab}/${selectedYear}`;
+        const pendentes = groupItems.filter((i:any) => !i.paid_months?.includes(tag));
+        
+        if(pendentes.length === 0) {
+            return showAlert('Tudo Zerado!', 'Todas as contas deste grupo já estão pagas ou foram congeladas no mês atual.');
         }
+        
+        showConfirm(
+            `Dar baixa em ${bankLabel}?`,
+            `Isso vai dar baixa em todas as ${pendentes.length} parcelas pendentes deste agrupamento de uma só vez.`,
+            async () => {
+                for (const item of pendentes) {
+                    await onTogglePaidMonth('installments', item);
+                }
+            }
+        );
+    };
+
+    const handleBulkDelayBank = (bankLabel: string, groupItems: any[]) => {
+        const tag = `${activeTab}/${selectedYear}`;
+        const pendentes = groupItems.filter((i:any) => !i.paid_months?.includes(tag));
+        
+        if(pendentes.length === 0) {
+            return showAlert('Tudo Certo!', 'Nenhuma conta pendente neste grupo para colocar em stand-by.');
+        }
+        
+        showConfirm(
+            `Adiar contas de ${bankLabel}?`,
+            `Isso vai jogar todas as ${pendentes.length} contas pendentes para a lista de Stand-by (congeladas).`,
+            async () => {
+                for (const item of pendentes) {
+                    await onToggleDelay('installments', item);
+                }
+            }
+        );
     };
 
     // --- HELPERS DE DATA ---
@@ -175,7 +275,7 @@ export default function ModernView({
 
     const sortedBanks = Object.keys(groupedInstallments).sort((a, b) => groupedInstallments[b].total - groupedInstallments[a].total);
 
-    // --- FUNÇÃO PARA CALCULAR STAND-BY (CORRIGIDA) ---
+    // --- FUNÇÃO PARA CALCULAR STAND-BY ---
     const getDelayedStats = () => {
         let total = 0;
         let count = 0;
@@ -191,7 +291,6 @@ export default function ModernView({
             const standbyArr = Array.isArray(i.standby_months) ? i.standby_months : [];
             if ((i.status === 'delayed' || i.status === 'standby') && standbyArr.length === 0 && !isPaidThisMonth(i)) {
                 total += Number(i.value_per_month);
-                total += Number(i.value_per_month); // Se não tem standby_months e está delayed/standby, adiciona
                 count++;
             }
             standbyArr.forEach((tag: string) => {
@@ -208,7 +307,6 @@ export default function ModernView({
                 const standbyArr = Array.isArray(r.standby_months) ? r.standby_months : [];
                 if ((r.status === 'delayed' || r.status === 'standby') && standbyArr.length === 0 && !isPaidThisMonth(r)) {
                     total += Number(r.value);
-                    total += Number(r.value); // Se não tem standby_months e está delayed/standby, adiciona
                     count++;
                 }
                 standbyArr.forEach((tag: string) => {
@@ -225,7 +323,7 @@ export default function ModernView({
 
     const delayedStats = getDelayedStats();
 
-    // --- RENDER DO CONGELADOR (usando delayedStats) ---
+    // --- RENDER DO CONGELADOR ---
     const renderDelayed = () => {
         const delayedItems: any[] = [];
         transactions.forEach(t => {
@@ -266,11 +364,12 @@ export default function ModernView({
                 <div className="space-y-2 max-h-[200px] overflow-y-auto scrollbar-thin scrollbar-thumb-amber-900/50 scrollbar-track-transparent pr-1">
                     {delayedItems.map((item, idx) => (
                         <div key={`del-${item._source}-${item.id}-${idx}`} className="flex justify-between items-center p-2 bg-amber-900/10 rounded-xl border border-amber-800/30">
-                            <div>
-                                <span className="text-amber-200 text-sm font-bold">{item.title}</span>
-                                {item._displayTag && <span className="text-[10px] text-amber-400/80 ml-2 bg-amber-950 px-2 py-0.5 rounded">{item._displayTag}</span>}
+                            {/* 🟢 CORREÇÃO: min-w-0 e flex-1 */}
+                            <div className="flex-1 min-w-0 pr-2">
+                                <p className="text-amber-200 text-sm font-bold truncate">{item.title}</p>
+                                {item._displayTag && <span className="text-[10px] text-amber-400/80 bg-amber-950 px-2 py-0.5 rounded inline-block mt-1">{item._displayTag}</span>}
                             </div>
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-3 shrink-0">
                                 <span className="font-mono text-amber-400">R$ {item._amount.toFixed(2)}</span>
                                 <button onClick={() => onToggleDelay(item._source === 'trans' ? 'transactions' : item._source === 'inst' ? 'installments' : 'recurring', item)} className="text-xs bg-amber-500 text-black px-3 py-1.5 rounded-full hover:bg-amber-400 transition">Restaurar</button>
                             </div>
@@ -282,7 +381,44 @@ export default function ModernView({
     };
 
     return (
-        <div className="animate-in fade-in duration-500">
+        <div className="animate-in fade-in duration-500 relative">
+            
+            {/* --- MODAL CUSTOMIZADO (ALERTS & CONFIRMS) --- */}
+            {modalConfig.isOpen && (
+                <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-[#111] border border-gray-800 rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col items-center text-center">
+                        {modalConfig.type === 'danger' && <div className="bg-red-500/10 p-4 rounded-full mb-4 text-red-500"><AlertTriangle size={36} /></div>}
+                        {modalConfig.type === 'confirm' && <div className="bg-cyan-500/10 p-4 rounded-full mb-4 text-cyan-400"><AlertCircle size={36} /></div>}
+                        {modalConfig.type === 'alert' && <div className="bg-emerald-500/10 p-4 rounded-full mb-4 text-emerald-400"><CheckCircle2 size={36} /></div>}
+
+                        <h3 className="text-xl font-bold text-white mb-2">{modalConfig.title}</h3>
+                        <p className="text-gray-400 text-sm mb-8 leading-relaxed">{modalConfig.message}</p>
+
+                        <div className="flex gap-3 w-full">
+                            {modalConfig.type !== 'alert' && (
+                                <button 
+                                    onClick={closeModal} 
+                                    disabled={modalProcessing}
+                                    className="flex-1 py-3.5 rounded-xl font-bold text-white bg-gray-800 hover:bg-gray-700 transition disabled:opacity-50"
+                                >
+                                    Cancelar
+                                </button>
+                            )}
+                            <button
+                                onClick={handleModalConfirm}
+                                disabled={modalProcessing}
+                                className={`flex-1 py-3.5 rounded-xl font-bold text-white transition flex items-center justify-center gap-2
+                                    ${modalConfig.type === 'danger' ? 'bg-red-600 hover:bg-red-500' : 
+                                      modalConfig.type === 'confirm' ? 'bg-cyan-600 hover:bg-cyan-500' : 
+                                      'bg-emerald-600 hover:bg-emerald-500'}`}
+                            >
+                                {modalProcessing ? <Loader2 className="animate-spin" size={18}/> : (modalConfig.type === 'alert' ? 'Entendi' : 'Confirmar')}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Barra de seleção em massa */}
             {selectedItems.length > 0 && (
                 <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-red-600 text-white px-6 py-3 rounded-full shadow-xl flex items-center gap-4 animate-in slide-in-from-bottom-5 zoom-in-95 border border-red-500/50">
@@ -292,7 +428,6 @@ export default function ModernView({
                 </div>
             )}
 
-            {/* Header: Seletor de mês */}
             {/* Header: Seletor de mês estilizado */}
             <div className="flex flex-wrap justify-between items-center gap-4 mb-8">
                 <div className="flex overflow-x-auto scrollbar-hide bg-gray-900/50 backdrop-blur-sm p-1 rounded-full border border-gray-700/70 shadow-inner gap-1">
@@ -314,10 +449,10 @@ export default function ModernView({
                 )}
             </div>
 
-            {/* Cards superiores - corrigidos */}
+            {/* Cards superiores */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-10">
                 <MetricCard title="Saldo Previsto" value={displayBalance} icon={Wallet} trend={displayBalance >= 0 ? 'up' : 'down'} trendValue={previousSurplus > 0 ? `+R$ ${previousSurplus.toFixed(2)} mês ant.` : undefined} />
-                <MetricCard title="Entradas" value={currentMonthData.income} icon={TrendingUp} trend="up" />  {/* removeu o +100% */}
+                <MetricCard title="Entradas" value={currentMonthData.income} icon={TrendingUp} trend="up" />
                 <MetricCard title="Saídas Totais" value={currentMonthData.expenseTotal} icon={TrendingDown} trend="down" trendValue={currentMonthData.accumulatedDebt > 0 ? `+ R$ ${currentMonthData.accumulatedDebt.toFixed(2)} pendente` : undefined} />
                 <MetricCard title="Em Stand-by" value={delayedStats.total} icon={Clock} trend="down" trendValue={delayedStats.count > 0 ? `${delayedStats.count} item(s)` : 'nenhum'} badge={delayedStats.count > 0 ? `R$ ${delayedStats.total.toFixed(2)}` : undefined} />
             </div>
@@ -347,20 +482,21 @@ export default function ModernView({
                                         const isSelected = selectedItems.some(s => s.id === item.id && s.table === 'transactions');
                                         return (
                                             <div key={item.id} className={`group p-4 flex items-center justify-between hover:bg-white/[0.03] transition ${isSelected ? 'bg-red-500/5' : ''}`}>
-                                                <div className="flex items-center gap-3 flex-1">
-                                                    <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(item.id, 'transactions')} className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-500 focus:ring-red-500 focus:ring-offset-0 cursor-pointer" />
-                                                    <div onClick={() => onTogglePaid('transactions', item.id, !!item.is_paid)} className={`cursor-pointer w-9 h-9 rounded-xl flex items-center justify-center transition-all ${item.is_paid ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-800 text-gray-500 group-hover:text-gray-300'}`}>
+                                                {/* 🟢 CORREÇÃO: min-w-0 e flex-1 */}
+                                                <div className="flex items-center gap-3 flex-1 min-w-0 pr-2">
+                                                    <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(item.id, 'transactions')} className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-500 focus:ring-red-500 focus:ring-offset-0 cursor-pointer shrink-0" />
+                                                    <div onClick={() => onTogglePaid('transactions', item.id, !!item.is_paid)} className={`cursor-pointer shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-all ${item.is_paid ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-800 text-gray-500 group-hover:text-gray-300'}`}>
                                                         {item.is_paid ? <CheckCircle2 size={18} /> : <Icon size={18} />}
                                                     </div>
-                                                    <div>
-                                                        <p className={`font-medium text-sm ${item.is_paid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
-                                                        <p className="text-xs text-gray-500 flex gap-2 mt-0.5">
-                                                            <span>{item.category}</span> • <span>{item.date}</span>
-                                                            {getReceipt(item, activeTab) && <a href={getReceipt(item, activeTab)} target="_blank" className="text-emerald-500"><FileText size={12} /></a>}
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className={`font-medium text-sm truncate ${item.is_paid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
+                                                        <p className="text-xs text-gray-500 flex gap-2 mt-0.5 truncate">
+                                                            <span className="truncate">{item.category}</span> <span className="shrink-0">•</span> <span className="shrink-0">{item.date}</span>
+                                                            {getReceipt(item, activeTab) && <a href={getReceipt(item, activeTab)} target="_blank" className="text-emerald-500 shrink-0"><FileText size={12} /></a>}
                                                         </p>
                                                     </div>
                                                 </div>
-                                                <div className="text-right">
+                                                <div className="text-right shrink-0">
                                                     <p className={`font-mono font-bold text-sm ${item.type === 'income' ? 'text-emerald-400' : 'text-gray-300'}`}>
                                                         {item.type === 'income' ? '+' : '-'} R$ {Number(item.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                                     </p>
@@ -403,7 +539,6 @@ export default function ModernView({
                             {internalTab === 'recurring' ? (
                                 <div className="space-y-5">
                                     {/* Renda fixa */}
-                                    {/* Renda fixa */}
                                     <div>
                                         <div className="flex items-center gap-2 mb-2">
                                             <TrendingUp size={14} className="text-emerald-400" />
@@ -418,18 +553,18 @@ export default function ModernView({
                                                 const isSelected = selectedItems.some(s => s.id === item.id && s.table === 'recurring');
                                                 return (
                                                     <div key={item.id} className={`flex items-center justify-between p-2 rounded-xl mb-2 transition hover:bg-white/5 ${isSelected ? 'bg-red-500/5' : ''} ${isSkipped ? 'opacity-50' : ''}`}>
-                                                        <div className="flex items-center gap-3 flex-1">
-                                                            <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(item.id, 'recurring')} className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-500" />
-                                                            <div onClick={() => onTogglePaidMonth('recurring', item)} className="cursor-pointer">
+                                                        {/* 🟢 CORREÇÃO: min-w-0 e flex-1 */}
+                                                        <div className="flex items-center gap-3 flex-1 min-w-0 pr-2">
+                                                            <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(item.id, 'recurring')} className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-500 shrink-0" />
+                                                            <div onClick={() => onTogglePaidMonth('recurring', item)} className="cursor-pointer shrink-0">
                                                                 {isPaid ? <CheckCircle2 size={18} className="text-emerald-400" /> : <DollarSign size={18} className="text-gray-500" />}
                                                             </div>
-                                                            <p className={`text-sm font-medium ${isPaid ? 'text-gray-500 line-through' : 'text-white'}`}>{item.title}</p>
+                                                            <p className={`text-sm font-medium truncate flex-1 min-w-0 ${isPaid ? 'text-gray-500 line-through' : 'text-white'}`}>{item.title}</p>
                                                         </div>
-                                                        <div className="text-right">
+                                                        <div className="text-right shrink-0">
                                                             <p className={`font-mono font-bold text-sm ${isPaid ? 'text-gray-500' : 'text-emerald-400'}`}>
                                                                 R$ {Number(item.value).toFixed(2)}
                                                             </p>
-                                                            {/* 🔧 Botões sempre visíveis, com opacidade reduzida no desktop */}
                                                             <div className="flex justify-end gap-2 mt-1 md:opacity-70 md:hover:opacity-100 transition-opacity">
                                                                 <button onClick={() => onTogglePaidMonth('recurring', item)} className="text-gray-500 hover:text-emerald-400" title={isPaid ? "Desfazer" : "Receber"}>
                                                                     <Check size={12} />
@@ -451,7 +586,6 @@ export default function ModernView({
                                         )}
                                     </div>
                                     {/* Contas a pagar */}
-                                    {/* Contas a pagar */}
                                     <div>
                                         <div className="flex items-center gap-2 mb-2">
                                             <TrendingDown size={14} className="text-red-400" />
@@ -467,21 +601,21 @@ export default function ModernView({
                                                 const isSelected = selectedItems.some(s => s.id === item.id && s.table === 'recurring');
                                                 return (
                                                     <div key={item.id} className={`flex items-center justify-between p-2 rounded-xl mb-2 transition hover:bg-white/5 ${isSelected ? 'bg-red-500/5' : ''} ${isSkipped ? 'opacity-50' : ''}`}>
-                                                        <div className="flex items-center gap-3 flex-1">
-                                                            <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(item.id, 'recurring')} className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-500" />
-                                                            <div onClick={() => onTogglePaidMonth('recurring', item)} className="cursor-pointer">
+                                                        {/* 🟢 CORREÇÃO: min-w-0 e flex-1 */}
+                                                        <div className="flex items-center gap-3 flex-1 min-w-0 pr-2">
+                                                            <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(item.id, 'recurring')} className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-red-500 shrink-0" />
+                                                            <div onClick={() => onTogglePaidMonth('recurring', item)} className="cursor-pointer shrink-0">
                                                                 {isPaid ? <CheckCircle2 size={18} className="text-emerald-400" /> : <Icon size={18} className="text-gray-500" />}
                                                             </div>
-                                                            <div>
-                                                                <p className={`text-sm font-medium ${isPaid ? 'text-gray-500 line-through' : 'text-white'}`}>{item.title}</p>
-                                                                <p className="text-[10px] text-gray-500">Vence {item.due_day}</p>
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className={`text-sm font-medium truncate ${isPaid ? 'text-gray-500 line-through' : 'text-white'}`}>{item.title}</p>
+                                                                <p className="text-[10px] text-gray-500 truncate">Vence {item.due_day}</p>
                                                             </div>
                                                         </div>
-                                                        <div className="text-right">
+                                                        <div className="text-right shrink-0">
                                                             <p className={`font-mono font-bold text-sm ${isPaid ? 'text-gray-500' : 'text-white'}`}>
                                                                 R$ {Number(item.value).toFixed(2)}
                                                             </p>
-                                                            {/* 🔧 Botões sempre visíveis, com opacidade reduzida no desktop */}
                                                             <div className="flex justify-end gap-2 mt-1 md:opacity-70 md:hover:opacity-100 transition-opacity">
                                                                 <button onClick={() => onTogglePaidMonth('recurring', item)} className="text-gray-500 hover:text-emerald-400" title={isPaid ? "Desfazer" : "Dar Baixa"}>
                                                                     <Check size={12} />
@@ -532,27 +666,37 @@ export default function ModernView({
                                                         </div>
                                                     </div>
                                                     {isOpen && (
-                                                        <div className="divide-y divide-gray-700/20 bg-black/20 p-2">
+                                                        <div className="divide-y divide-gray-700/20 bg-black/20 p-2 animate-in slide-in-from-top-2 duration-200">
+                                                            {/* 🟢 AÇÕES EM MASSA PARA O CARTÃO ABERTO */}
+                                                            <div className="flex items-center justify-between p-2 mb-1 border-b border-gray-700/30">
+                                                                <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Ações da Fatura</span>
+                                                                <div className="flex gap-2">
+                                                                    <button onClick={(e) => { e.stopPropagation(); handleBulkPayBank(style.label, group.items); }} className="flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition border border-emerald-500/20"><CheckCircle2 size={12} /> Pagar Tudo</button>
+                                                                    <button onClick={(e) => { e.stopPropagation(); handleBulkDelayBank(style.label, group.items); }} className="flex items-center gap-1.5 px-3 py-1 rounded-md text-[10px] font-bold bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 transition border border-amber-500/20"><Clock size={12} /> Adiar Tudo</button>
+                                                                </div>
+                                                            </div>
+
                                                             {group.items.map((item: any) => {
                                                                 const isPaid = item.paid_months?.includes(currentTag);
                                                                 const Icon = item.icon && ICON_MAP[item.icon] ? ICON_MAP[item.icon] : ShoppingCart;
                                                                 const isSelected = selectedItems.some(s => s.id === item.id && s.table === 'installments');
                                                                 return (
                                                                     <div key={item.id} className={`flex items-center justify-between p-2 rounded-lg group ${isSelected ? 'bg-red-500/5' : ''}`}>
-                                                                        <div className="flex items-center gap-2 flex-1">
-                                                                            <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(item.id, 'installments')} className="w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-red-500" />
-                                                                            <div onClick={() => onTogglePaidMonth('installments', item)} className="cursor-pointer w-6 h-6 rounded-md flex items-center justify-center">
+                                                                        {/* 🟢 CORREÇÃO: min-w-0 e flex-1 */}
+                                                                        <div className="flex items-center gap-2 flex-1 min-w-0 pr-2">
+                                                                            <input type="checkbox" checked={isSelected} onChange={() => toggleSelection(item.id, 'installments')} className="w-3.5 h-3.5 rounded border-gray-600 bg-gray-800 text-red-500 shrink-0" />
+                                                                            <div onClick={() => onTogglePaidMonth('installments', item)} className="cursor-pointer w-6 h-6 rounded-md flex items-center justify-center shrink-0">
                                                                                 {isPaid ? <Check size={12} className="text-emerald-400" /> : <span className="text-[10px] text-gray-500">{item.actualInstallment}x</span>}
                                                                             </div>
-                                                                            <div className="flex-1">
-                                                                                <p className={`text-xs font-medium truncate max-w-[130px] ${isPaid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
+                                                                            <div className="flex-1 min-w-0">
+                                                                                <p className={`text-xs font-medium truncate ${isPaid ? 'text-gray-500 line-through' : 'text-gray-200'}`}>{item.title}</p>
                                                                                 <div className="flex items-center gap-2 mt-1">
                                                                                     <ProgressBar current={item.actualInstallment} total={item.installments_count} color="bg-cyan-500" />
-                                                                                    <span className="text-[9px] text-gray-500">{item.actualInstallment}/{item.installments_count}</span>
+                                                                                    <span className="text-[9px] text-gray-500 shrink-0">{item.actualInstallment}/{item.installments_count}</span>
                                                                                 </div>
                                                                             </div>
                                                                         </div>
-                                                                        <div className="text-right">
+                                                                        <div className="text-right shrink-0">
                                                                             <p className={`font-mono text-xs font-bold ${isPaid ? 'text-gray-600' : 'text-white'}`}>R$ {item.value_per_month.toFixed(2)}</p>
                                                                             <div className="flex gap-1 mt-1 md:opacity-70 md:hover:opacity-100 transition-opacity">
                                                                                 <button onClick={() => onTogglePaidMonth('installments', item)} className="text-gray-500 hover:text-emerald-400"><Check size={10} /></button>
