@@ -33,6 +33,7 @@ export default function CustomizationModal({
         { id: 'trader', name: 'Trader / Ads', desc: 'Foco total em números e densidade.' },
         { id: 'calendar', name: 'Calendário', desc: 'Visualização por data de vencimento.' },
         { id: 'zen', name: 'Zen Minimalista', desc: 'Apenas o essencial. Sem estresse.' },
+        { id: 'neo', name: 'Neo Brutalism', desc: 'Interface escura de alto contraste com anel de score financeiro.' },
         { id: 'bento', name: 'Bento Grid', desc: 'Visualização em grade modular.' },
         { id: 'timeline', name: 'Linha do Tempo', desc: 'Visualização cronológica de transações.' },
     ];

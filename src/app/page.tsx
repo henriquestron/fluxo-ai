@@ -37,6 +37,7 @@ import CalendarView from '@/components/dashboard/CalendarView';
 import GoalModal from '@/components/dashboard/GoalModal';
 import ModernView from '@/components/dashboard/ModernView';
 import ConsultantPricingModal from '@/components/dashboard/ConsultantPricingModal';
+import NeoView from '@/components/dashboard/NeoView'; // (ou o caminho onde você salvou)
 
 import { Transaction, Installment, Recurring, Goal, ClientUser } from '@/types';
 import ContractGenerator from '@/components/dashboard/agent/contratos/ContractGenerator';
@@ -56,7 +57,7 @@ export default function FinancialDashboard() {
     // --- ESTADOS GLOBAIS ---
     const [activeTab, setActiveTab] = useState(currentSystemMonthName);
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-    const [currentLayout, setCurrentLayout] = useState<'standard' | 'modern' | 'trader' | 'zen' | 'calendar' | 'timeline' | 'bento'>('standard');
+    const [currentLayout, setCurrentLayout] = useState<'standard' | 'modern' | 'trader' | 'zen' | 'calendar' | 'timeline' | 'bento' | 'neo'>('standard');
     const [currentTheme, setCurrentTheme] = useState('default');
     const [activeSection, setActiveSection] = useState<'dashboard' | 'goals'>('dashboard');
     // --- WORKSPACES (PERFIS DE DADOS) ---
@@ -1801,238 +1802,234 @@ export default function FinancialDashboard() {
         toast.success("Meta excluída.");
         loadData(getActiveUserId()!, currentWorkspace?.id);
     };
-    const getMonthData = (monthName: string) => {
-        const monthIndex = MONTHS.indexOf(monthName);
-        const monthMap: Record<string, string> = { 'Jan': '/01', 'Fev': '/02', 'Mar': '/03', 'Abr': '/04', 'Mai': '/05', 'Jun': '/06', 'Jul': '/07', 'Ago': '/08', 'Set': '/09', 'Out': '/10', 'Nov': '/11', 'Dez': '/12' };
-
-        const dateFilter = `${monthMap[monthName]}/${selectedYear}`;
-        const currentPaymentTag = `${monthName}/${selectedYear}`;
-
-        // Formato para comparar o cancelled_from (ex: "2026-05")
-        const currentYYYYMM = `${selectedYear}-${String(monthIndex + 1).padStart(2, '0')}`;
-
-        const getStartData = (item: any) => {
-            if (item.start_date && item.start_date.includes('/')) {
-                const p = item.start_date.split('/'); return { d: parseInt(p[0]), m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
-            }
-            if (item.date && item.date.includes('/')) {
-                const p = item.date.split('/'); return { d: parseInt(p[0]), m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
-            }
-            if (item.created_at) {
-                const d = new Date(item.created_at); return { d: d.getDate(), m: d.getMonth(), y: d.getFullYear() };
-            }
-            return { d: 1, m: 0, y: new Date().getFullYear() };
-        };
-
-        const isPaid = (item: any, tag: string) => {
-            if (!item.paid_months) return false;
-            return item.paid_months.includes(tag) || item.paid_months.includes(tag.split('/')[0]);
-        };
-
-        // 🟢 HELPER DE AJUSTE MENSAL: Lê o json de exceções se existir
-        const getCustomValue = (item: any, tag: string, baseValue: number) => {
-            if (!item.custom_values) return baseValue;
-            const parsedCustom = typeof item.custom_values === 'string' ? JSON.parse(item.custom_values) : item.custom_values;
-            return parsedCustom[tag] !== undefined ? Number(parsedCustom[tag]) : baseValue;
-        };
-
-        // 1. RECORRENTES ATIVOS NO MÊS (Agora ignora os cancelados!)
-        const activeRecurring = recurring.filter(r => {
-            const paid = isPaid(r, currentPaymentTag);
-            if ((r.status === 'delayed' || r.status === 'standby') && !paid) return false;
-            if (r.standby_months?.includes(currentPaymentTag) && !paid) return false;
-
-            // 🟢 MATADOR DE FANTASMAS: Ignora se a conta foi cancelada neste mês ou antes
-            if (r.cancelled_from && currentYYYYMM >= r.cancelled_from) return false;
-
-            const { m: startMonth, y: startYear } = getStartData(r);
-            if (selectedYear > startYear) return true;
-            if (selectedYear === startYear && monthIndex >= startMonth) return true;
-            return false;
-        });
-
-        // --- CÁLCULO DE ENTRADAS ---
-        // 🟢 Aplica a leitura dos valores customizados
-        const incomeFixed = activeRecurring.filter(r => r.type === 'income' && !r.skipped_months?.includes(monthName)).reduce((acc: number, curr: any) => acc + getCustomValue(curr, currentPaymentTag, Number(curr.value)), 0);
-        const incomeVariableList = transactions.filter(t => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby');
-        const incomeTotal = incomeFixed + incomeVariableList.reduce((acc: number, curr: any) => acc + Number(curr.amount), 0);
-        const displayIncome = incomeFixed + incomeVariableList.filter(t => t.category !== 'Metas').reduce((acc: number, curr: any) => acc + Number(curr.amount), 0);
-
-        // --- CÁLCULO DE SAÍDAS DO MÊS ---
-        // 🟢 Aplica a leitura dos valores customizados
-        const expenseFixed = activeRecurring.filter(r => r.type === 'expense' && !r.skipped_months?.includes(monthName)).reduce((acc: number, curr: any) => acc + getCustomValue(curr, currentPaymentTag, Number(curr.value)), 0);
-
-        // 🟢 1. Pega todas as saídas variáveis do mês
-        const allVariableExpenses = transactions.filter(t =>
-            t.type === 'expense' &&
-            t.date?.includes(dateFilter) &&
-            t.status !== 'delayed' &&
-            t.status !== 'standby'
-        );
-
-        // 🟢 2. SALDO BANCÁRIO: Desconta tudo, MENOS os gastos de caixinha (pq o dinheiro já saiu do saldo na hora de criar a caixinha)
-        const expenseVariable = allVariableExpenses
-            .filter(t => !t.linked_goal_id)
-            .reduce((acc: number, curr: any) => acc + Number(curr.amount), 0);
-
-        const installTotal = installments.reduce((acc: number, curr: any) => {
-            const paid = isPaid(curr, currentPaymentTag);
-            if ((curr.status === 'delayed' || curr.status === 'standby') && !paid) return acc;
-            const standbyArr = Array.isArray(curr.standby_months) ? curr.standby_months : JSON.parse(curr.standby_months || '[]');
-            if (standbyArr.includes(currentPaymentTag) && !paid) return acc;
-
-            // 🟢 MATADOR DE FANTASMAS (Parcelas): Ignora se a parcela foi cancelada
-            if (curr.cancelled_from && currentYYYYMM >= curr.cancelled_from) return acc;
-
-            const { m: startMonth, y: startYear } = getStartData(curr);
-            const monthsDiff = ((selectedYear - startYear) * 12) + (monthIndex - startMonth);
-
-            let pastStandbys = 0;
-            for (let i = 0; i < monthsDiff; i++) {
-                const checkM = (startMonth + i) % 12;
-                const checkY = startYear + Math.floor((startMonth + i) / 12);
-                if (standbyArr.includes(`${MONTHS[checkM]}/${checkY}`)) pastStandbys++;
-            }
-
-            const currentInstNum = 1 + (curr.current_installment || 0) + monthsDiff - pastStandbys;
-
-            if (currentInstNum >= 1 && currentInstNum <= curr.installments_count) {
-                // 🟢 Aplica a leitura dos valores customizados nas parcelas também
-                return acc + getCustomValue(curr, currentPaymentTag, Number(curr.value_per_month));
-            }
-            return acc;
-        }, 0);
-
-        const currentMonthObligations = expenseVariable + expenseFixed + installTotal;
-
-        // 🟢 3. VISUAL DO PAINEL (Saídas Totais): Mostra os gastos da caixinha (todos os expense variables), mas esconde "Ida para Meta"
-        const displayExpense = expenseFixed + installTotal + allVariableExpenses
-            .filter(t => t.category !== 'Metas')
-            .reduce((acc: number, curr: any) => acc + Number(curr.amount), 0);
-
-        // --- STAND-BY GLOBAL (Lógica mantida) ---
-        let delayedTotal = 0;
-        transactions.forEach(t => { if ((t.status === 'delayed' || t.status === 'standby') && !t.is_paid) delayedTotal += Number(t.amount); });
-
-        installments.forEach(i => {
-            // Se foi cancelado, nem entra no standby
-            if (i.cancelled_from && currentYYYYMM >= i.cancelled_from) return;
-
-            const standbyArr = Array.isArray(i.standby_months) ? i.standby_months : JSON.parse(i.standby_months || '[]');
-            if ((i.status === 'delayed' || i.status === 'standby') && standbyArr.length === 0) delayedTotal += getCustomValue(i, currentPaymentTag, Number(i.value_per_month));
-
-            standbyArr.forEach((tag: string) => {
-                if (!isPaid(i, tag)) delayedTotal += getCustomValue(i, tag, Number(i.value_per_month));
-            });
-        });
-
-        recurring.forEach(r => {
-            if (r.type === 'expense') {
-                // Se foi cancelado, nem entra no standby
-                if (r.cancelled_from && currentYYYYMM >= r.cancelled_from) return;
-
-                const standbyArr = Array.isArray(r.standby_months) ? r.standby_months : JSON.parse(r.standby_months || '[]');
-                if ((r.status === 'delayed' || r.status === 'standby') && standbyArr.length === 0) delayedTotal += getCustomValue(r, currentPaymentTag, Number(r.value));
-
-                standbyArr.forEach((tag: string) => {
-                    if (!isPaid(r, tag)) delayedTotal += getCustomValue(r, tag, Number(r.value));
-                });
-            }
-        });
-
-        // --- DÍVIDA ACUMULADA ---
-        let accumulatedDebt = 0;
-
-        transactions.forEach(t => {
-            if (t.type === 'expense' && !t.is_paid && t.status !== 'standby' && t.status !== 'delayed') {
-                const { m, y } = getStartData(t);
-                if (y < selectedYear || (y === selectedYear && m < monthIndex)) {
-                    accumulatedDebt += Number(t.amount);
+    // 🟢 ADICIONAMOS O yearToCheck COMO PARÂMETRO DA MÁQUINA DO TEMPO
+        const getMonthData = (monthName: string, yearToCheck: number = selectedYear) => {
+            const monthIndex = MONTHS.indexOf(monthName);
+            const monthMap: Record<string, string> = { 'Jan': '/01', 'Fev': '/02', 'Mar': '/03', 'Abr': '/04', 'Mai': '/05', 'Jun': '/06', 'Jul': '/07', 'Ago': '/08', 'Set': '/09', 'Out': '/10', 'Nov': '/11', 'Dez': '/12' };
+    
+            const dateFilter = `${monthMap[monthName]}/${yearToCheck}`;
+            const currentPaymentTag = `${monthName}/${yearToCheck}`;
+    
+            // Formato para comparar o cancelled_from (ex: "2026-05")
+            const currentYYYYMM = `${yearToCheck}-${String(monthIndex + 1).padStart(2, '0')}`;
+    
+            const getStartData = (item: any) => {
+                if (item.start_date && item.start_date.includes('/')) {
+                    const p = item.start_date.split('/'); return { d: parseInt(p[0]), m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
                 }
-            }
-        });
-
-        installments.forEach(inst => {
-            if (inst.status !== 'standby' && inst.status !== 'delayed') {
-                // Se a parcela foi cancelada de vez e o mês que estamos olhando já passou da data de cancelamento, ignora a dívida
-                if (inst.cancelled_from && currentYYYYMM >= inst.cancelled_from) return;
-
-                const { m: startMonth, y: startYear } = getStartData(inst);
-                const totalMonthsDiffUntilNow = ((selectedYear - startYear) * 12) + (monthIndex - startMonth);
-                const standbyArr = Array.isArray(inst.standby_months) ? inst.standby_months : JSON.parse(inst.standby_months || '[]');
-
-                for (let i = 0; i < totalMonthsDiffUntilNow; i++) {
-                    let pastStandbys = 0;
-                    for (let step = 0; step < i; step++) {
-                        const stepM = (startMonth + step) % 12;
-                        const stepY = startYear + Math.floor((startMonth + step) / 12);
-                        if (standbyArr.includes(`${MONTHS[stepM]}/${stepY}`)) pastStandbys++;
+                if (item.date && item.date.includes('/')) {
+                    const p = item.date.split('/'); return { d: parseInt(p[0]), m: parseInt(p[1]) - 1, y: parseInt(p[2]) };
+                }
+                if (item.created_at) {
+                    const d = new Date(item.created_at); return { d: d.getDate(), m: d.getMonth(), y: d.getFullYear() };
+                }
+                return { d: 1, m: 0, y: new Date().getFullYear() };
+            };
+    
+            const isPaid = (item: any, tag: string) => {
+                if (!item.paid_months) return false;
+                return item.paid_months.includes(tag) || item.paid_months.includes(tag.split('/')[0]);
+            };
+    
+            // 🟢 HELPER DE AJUSTE MENSAL: Lê o json de exceções se existir
+            const getCustomValue = (item: any, tag: string, baseValue: number) => {
+                if (!item.custom_values) return baseValue;
+                const parsedCustom = typeof item.custom_values === 'string' ? JSON.parse(item.custom_values) : item.custom_values;
+                return parsedCustom[tag] !== undefined ? Number(parsedCustom[tag]) : baseValue;
+            };
+    
+            // 1. RECORRENTES ATIVOS NO MÊS (Agora ignora os cancelados!)
+            const activeRecurring = recurring.filter(r => {
+                const paid = isPaid(r, currentPaymentTag);
+                if ((r.status === 'delayed' || r.status === 'standby') && !paid) return false;
+                if (r.standby_months?.includes(currentPaymentTag) && !paid) return false;
+    
+                // 🟢 MATADOR DE FANTASMAS: Ignora se a conta foi cancelada neste mês ou antes
+                if (r.cancelled_from && currentYYYYMM >= r.cancelled_from) return false;
+    
+                const { m: startMonth, y: startYear } = getStartData(r);
+                if (yearToCheck > startYear) return true;
+                if (yearToCheck === startYear && monthIndex >= startMonth) return true;
+                return false;
+            });
+    
+            // --- CÁLCULO DE ENTRADAS ---
+            const incomeFixed = activeRecurring.filter(r => r.type === 'income' && !r.skipped_months?.includes(monthName)).reduce((acc: number, curr: any) => acc + getCustomValue(curr, currentPaymentTag, Number(curr.value)), 0);
+            const incomeVariableList = transactions.filter(t => t.type === 'income' && t.date?.includes(dateFilter) && t.status !== 'delayed' && t.status !== 'standby');
+            const incomeTotal = incomeFixed + incomeVariableList.reduce((acc: number, curr: any) => acc + Number(curr.amount), 0);
+            const displayIncome = incomeFixed + incomeVariableList.filter(t => t.category !== 'Metas').reduce((acc: number, curr: any) => acc + Number(curr.amount), 0);
+    
+            // --- CÁLCULO DE SAÍDAS DO MÊS ---
+            const expenseFixed = activeRecurring.filter(r => r.type === 'expense' && !r.skipped_months?.includes(monthName)).reduce((acc: number, curr: any) => acc + getCustomValue(curr, currentPaymentTag, Number(curr.value)), 0);
+    
+            // 🟢 1. Pega todas as saídas variáveis do mês
+            const allVariableExpenses = transactions.filter(t =>
+                t.type === 'expense' &&
+                t.date?.includes(dateFilter) &&
+                t.status !== 'delayed' &&
+                t.status !== 'standby'
+            );
+    
+            // 🟢 2. SALDO BANCÁRIO: Desconta tudo, MENOS os gastos de caixinha
+            const expenseVariable = allVariableExpenses
+                .filter(t => !t.linked_goal_id)
+                .reduce((acc: number, curr: any) => acc + Number(curr.amount), 0);
+    
+            const installTotal = installments.reduce((acc: number, curr: any) => {
+                const paid = isPaid(curr, currentPaymentTag);
+                if ((curr.status === 'delayed' || curr.status === 'standby') && !paid) return acc;
+                const standbyArr = Array.isArray(curr.standby_months) ? curr.standby_months : JSON.parse(curr.standby_months || '[]');
+                if (standbyArr.includes(currentPaymentTag) && !paid) return acc;
+    
+                // 🟢 MATADOR DE FANTASMAS (Parcelas): Ignora se a parcela foi cancelada
+                if (curr.cancelled_from && currentYYYYMM >= curr.cancelled_from) return acc;
+    
+                const { m: startMonth, y: startYear } = getStartData(curr);
+                const monthsDiff = ((yearToCheck - startYear) * 12) + (monthIndex - startMonth);
+    
+                let pastStandbys = 0;
+                for (let i = 0; i < monthsDiff; i++) {
+                    const checkM = (startMonth + i) % 12;
+                    const checkY = startYear + Math.floor((startMonth + i) / 12);
+                    if (standbyArr.includes(`${MONTHS[checkM]}/${checkY}`)) pastStandbys++;
+                }
+    
+                const currentInstNum = 1 + (curr.current_installment || 0) + monthsDiff - pastStandbys;
+    
+                if (currentInstNum >= 1 && currentInstNum <= curr.installments_count) {
+                    return acc + getCustomValue(curr, currentPaymentTag, Number(curr.value_per_month));
+                }
+                return acc;
+            }, 0);
+    
+            const currentMonthObligations = expenseVariable + expenseFixed + installTotal;
+    
+            // 🟢 3. VISUAL DO PAINEL (Saídas Totais)
+            const displayExpense = expenseFixed + installTotal + allVariableExpenses
+                .filter(t => t.category !== 'Metas')
+                .reduce((acc: number, curr: any) => acc + Number(curr.amount), 0);
+    
+            // --- STAND-BY GLOBAL ---
+            let delayedTotal = 0;
+            transactions.forEach(t => { if ((t.status === 'delayed' || t.status === 'standby') && !t.is_paid) delayedTotal += Number(t.amount); });
+    
+            installments.forEach(i => {
+                if (i.cancelled_from && currentYYYYMM >= i.cancelled_from) return;
+                const standbyArr = Array.isArray(i.standby_months) ? i.standby_months : JSON.parse(i.standby_months || '[]');
+                if ((i.status === 'delayed' || i.status === 'standby') && standbyArr.length === 0) delayedTotal += getCustomValue(i, currentPaymentTag, Number(i.value_per_month));
+                standbyArr.forEach((tag: string) => {
+                    if (!isPaid(i, tag)) delayedTotal += getCustomValue(i, tag, Number(i.value_per_month));
+                });
+            });
+    
+            recurring.forEach(r => {
+                if (r.type === 'expense') {
+                    if (r.cancelled_from && currentYYYYMM >= r.cancelled_from) return;
+                    const standbyArr = Array.isArray(r.standby_months) ? r.standby_months : JSON.parse(r.standby_months || '[]');
+                    if ((r.status === 'delayed' || r.status === 'standby') && standbyArr.length === 0) delayedTotal += getCustomValue(r, currentPaymentTag, Number(r.value));
+                    standbyArr.forEach((tag: string) => {
+                        if (!isPaid(r, tag)) delayedTotal += getCustomValue(r, tag, Number(r.value));
+                    });
+                }
+            });
+    
+            // --- DÍVIDA ACUMULADA ---
+            let accumulatedDebt = 0;
+    
+            transactions.forEach(t => {
+                if (t.type === 'expense' && !t.is_paid && t.status !== 'standby' && t.status !== 'delayed') {
+                    const { m, y } = getStartData(t);
+                    if (y < yearToCheck || (y === yearToCheck && m < monthIndex)) {
+                        accumulatedDebt += Number(t.amount);
                     }
-
-                    const instNum = 1 + (inst.current_installment || 0) + i - pastStandbys;
-
-                    if (instNum >= 1 && instNum <= inst.installments_count) {
-                        const absMonthIndex = (startMonth + i);
-                        const pYear = startYear + Math.floor(absMonthIndex / 12);
-                        const pMonthName = MONTHS[absMonthIndex % 12];
-                        const paymentTag = `${pMonthName}/${pYear}`;
-
-                        if (!isPaid(inst, paymentTag) && !standbyArr.includes(paymentTag)) {
-                            accumulatedDebt += getCustomValue(inst, paymentTag, Number(inst.value_per_month));
+                }
+            });
+    
+            installments.forEach(inst => {
+                if (inst.status !== 'standby' && inst.status !== 'delayed') {
+                    if (inst.cancelled_from && currentYYYYMM >= inst.cancelled_from) return;
+                    const { m: startMonth, y: startYear } = getStartData(inst);
+                    const totalMonthsDiffUntilNow = ((yearToCheck - startYear) * 12) + (monthIndex - startMonth);
+                    const standbyArr = Array.isArray(inst.standby_months) ? inst.standby_months : JSON.parse(inst.standby_months || '[]');
+    
+                    for (let i = 0; i < totalMonthsDiffUntilNow; i++) {
+                        let pastStandbys = 0;
+                        for (let step = 0; step < i; step++) {
+                            const stepM = (startMonth + step) % 12;
+                            const stepY = startYear + Math.floor((startMonth + step) / 12);
+                            if (standbyArr.includes(`${MONTHS[stepM]}/${stepY}`)) pastStandbys++;
+                        }
+    
+                        const instNum = 1 + (inst.current_installment || 0) + i - pastStandbys;
+    
+                        if (instNum >= 1 && instNum <= inst.installments_count) {
+                            const absMonthIndex = (startMonth + i);
+                            const pYear = startYear + Math.floor(absMonthIndex / 12);
+                            const pMonthName = MONTHS[absMonthIndex % 12];
+                            const paymentTag = `${pMonthName}/${pYear}`;
+    
+                            if (!isPaid(inst, paymentTag) && !standbyArr.includes(paymentTag)) {
+                                accumulatedDebt += getCustomValue(inst, paymentTag, Number(inst.value_per_month));
+                            }
                         }
                     }
                 }
-            }
-        });
-
-        recurring.forEach(rec => {
-            if (rec.type === 'expense' && rec.status !== 'standby' && rec.status !== 'delayed') {
-                // Se foi cancelado, ignora dívidas deste mês pra frente
-                if (rec.cancelled_from && currentYYYYMM >= rec.cancelled_from) return;
-
-                const { m: startMonth, y: startYear } = getStartData(rec);
-                const totalMonthsSinceStart = ((selectedYear - startYear) * 12) + (monthIndex - startMonth);
-
-                for (let i = 0; i < totalMonthsSinceStart; i++) {
-                    const absMonthIndex = startMonth + i;
-                    const checkYear = startYear + Math.floor(absMonthIndex / 12);
-                    const checkMonthName = MONTHS[absMonthIndex % 12];
-                    const checkTag = `${checkMonthName}/${checkYear}`;
-
-                    if (!isPaid(rec, checkTag) && !rec.skipped_months?.includes(checkMonthName) && !rec.standby_months?.includes(checkTag)) {
-                        accumulatedDebt += getCustomValue(rec, checkTag, Number(rec.value));
+            });
+    
+            recurring.forEach(rec => {
+                if (rec.type === 'expense' && rec.status !== 'standby' && rec.status !== 'delayed') {
+                    if (rec.cancelled_from && currentYYYYMM >= rec.cancelled_from) return;
+                    const { m: startMonth, y: startYear } = getStartData(rec);
+                    const totalMonthsSinceStart = ((yearToCheck - startYear) * 12) + (monthIndex - startMonth);
+    
+                    for (let i = 0; i < totalMonthsSinceStart; i++) {
+                        const absMonthIndex = startMonth + i;
+                        const checkYear = startYear + Math.floor(absMonthIndex / 12);
+                        const checkMonthName = MONTHS[absMonthIndex % 12];
+                        const checkTag = `${checkMonthName}/${checkYear}`;
+    
+                        if (!isPaid(rec, checkTag) && !rec.skipped_months?.includes(checkMonthName) && !rec.standby_months?.includes(checkTag)) {
+                            accumulatedDebt += getCustomValue(rec, checkTag, Number(rec.value));
+                        }
                     }
                 }
-            }
-        });
-
-        return {
-            income: incomeTotal,
-            displayIncome: displayIncome,
-            expenseTotal: currentMonthObligations,
-            displayExpense: displayExpense,
-            accumulatedDebt: accumulatedDebt,
-            balance: incomeTotal - currentMonthObligations,
-            delayedTotal: delayedTotal
+            });
+    
+            return {
+                income: incomeTotal,
+                displayIncome: displayIncome,
+                expenseTotal: currentMonthObligations,
+                displayExpense: displayExpense,
+                accumulatedDebt: accumulatedDebt,
+                balance: incomeTotal - currentMonthObligations,
+                delayedTotal: delayedTotal
+            };
         };
-    };
 
-    const currentMonthData = getMonthData(activeTab);
+    // 🟢 MÁQUINA DO TEMPO (EFEITO CASCATA CROSS-YEAR): Simula o extrato exato desde o início
     let previousSurplus = 0;
     const currentIndex = MONTHS.indexOf(activeTab);
 
-    // 🟢 MÁQUINA DO TEMPO (EFEITO CASCATA REAL): Simula o extrato exato de cada mês
+    // 1. Cascata dos ANOS ANTERIORES (de 2024 até o ano passado)
+    for (let y = 2024; y < selectedYear; y++) {
+        for (let m = 0; m < 12; m++) {
+            // ATENÇÃO: getMonthData agora precisa receber o ano como segundo parâmetro
+            const pastData = getMonthData(MONTHS[m], y);
+            const fechamentoDoMes = pastData.balance + previousSurplus;
+            previousSurplus = fechamentoDoMes; // Carrega tudo! Positivo ou Negativo
+        }
+    }
+
+    // 2. Cascata dos MESES DO ANO ATUAL (até o mês anterior ao selecionado)
     for (let i = 0; i < currentIndex; i++) {
-        const pastData = getMonthData(MONTHS[i]);
-
-        // O fechamento do mês é o saldo gerado no mês + o saldo (positivo ou negativo) que veio do passado
+        const pastData = getMonthData(MONTHS[i], selectedYear);
         const fechamentoDoMes = pastData.balance + previousSurplus;
-
-        // 🚀 A MÁGICA: Agora ele carrega TUDO para o mês seguinte!
-        // Se sobrou, vai positivo. Se faltou (cheque especial), vai negativo.
         previousSurplus = fechamentoDoMes;
     }
 
+    // Finalmente, pega os dados do mês/ano que o usuário está olhando agora
+    const currentMonthData = getMonthData(activeTab, selectedYear);
+    
     const displayBalance = currentMonthData.balance + previousSurplus;
 
     // Função para chamar a IA (Agora aceita arquivos!)
@@ -2734,6 +2731,27 @@ export default function FinancialDashboard() {
                             recurring={recurring}
                             activeTab={activeTab}
                             selectedYear={selectedYear} // <--- ADICIONE ISSO
+                        />
+                    )}
+                    {(currentLayout === 'neo') && (
+                        <NeoView
+                            selectedYear={selectedYear}
+                            transactions={transactions.filter(t => t.date && t.date.endsWith(`/${selectedYear}`))}
+                            installments={installments}
+                            recurring={recurring}
+                            activeTab={activeTab}
+                            months={MONTHS}
+                            setActiveTab={setActiveTab}
+                            currentMonthData={currentMonthData}
+                            previousSurplus={previousSurplus}
+                            displayBalance={displayBalance}
+                            viewingAs={viewingAs}
+                            onTogglePaid={togglePaid}
+                            onTogglePaidMonth={togglePaidMonth}
+                            onToggleDelay={toggleDelay}
+                            onDelete={handleDelete}
+                            onEdit={handleEdit}
+                            getReceipt={getReceiptForMonth}
                         />
                     )}
 
