@@ -70,15 +70,26 @@ async function sendWhatsAppMessage(phone: string, text: string, delay: number = 
             const res = await fetch(`${EVOLUTION_URL}/message/sendText/${INSTANCE_NAME}`, {
                 method: 'POST',
                 headers: { 'apikey': EVOLUTION_API_KEY as string, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ number: finalJid, options: { delay }, textMessage: { text } })
+                // 🟢 A CORREÇÃO ESTÁ AQUI: Payload Híbrido!
+                // Cobre a Evolution v1 e a v2 ao mesmo tempo, impedindo que o WhatsApp quebre a criptografia.
+                body: JSON.stringify({ 
+                    number: finalJid, 
+                    text: text,                  // Formato Evolution v2
+                    delay: delay,                // Formato Evolution v2
+                    options: { delay: delay },   // Formato Evolution v1
+                    textMessage: { text: text }  // Formato Evolution v1
+                })
             });
+            
             const json = await res.json();
             if (res.ok || json?.status === 'SUCCESS' || json?.key?.id) {
                 console.log(`✅ Sucesso: ${finalJid}`);
                 return true;
             }
             console.log(`⚠️ Falha: ${finalJid}. Erro:`, json?.error || 'Bad Request');
-        } catch (e) { console.error(`❌ Erro envio para ${finalJid}:`, e); }
+        } catch (e) { 
+            console.error(`❌ Erro envio para ${finalJid}:`, e); 
+        }
     }
     console.log("🚨 Nenhuma variação funcionou.");
     return false;
