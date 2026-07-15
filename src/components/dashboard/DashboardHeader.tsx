@@ -40,7 +40,6 @@ interface DashboardHeaderProps {
     client: any;
     setIsImportOpen: (v: boolean) => void;
     setIsAgendaOpen: (v: boolean) => void;
-    // 🟢 As duas novas propriedades!
     totalSonhosGuardado?: number; 
     totalCaixinhasDisponivel?: number; 
 }
@@ -52,17 +51,18 @@ export default function DashboardHeader({
     setIsCustomizationOpen, handleCheckout, handleLogout,
     setIsAIOpen, setIsCreditCardModalOpen, openNewTransactionModal, setIsCalculatorOpen, handleRemoveClient, client,
     setIsImportOpen, setIsTutorialOpen, setIsContractOpen, handleClientContractUpload, isManagedClient, clientContractUrl, setIsAgendaOpen, clientStatus, onOpenContract, onOpenReport,
-    totalSonhosGuardado = 0, // 🟢 Recebendo as props
+    totalSonhosGuardado = 0, 
     totalCaixinhasDisponivel = 0
 }: DashboardHeaderProps) {
 
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
     return (
-        <header className="flex flex-col xl:flex-row gap-6 justify-between xl:items-center mb-6 xl:mb-10 relative z-30">
+        // 🟢 flex-wrap adicionado no container principal para adaptação fluida
+        <header className="flex flex-col xl:flex-row flex-wrap gap-6 justify-between xl:items-center mb-6 xl:mb-10 relative z-30">
 
             {/* LADO ESQUERDO: Logo + Consultor */}
-            <div id="logo-area" className="w-full xl:w-auto text-center md:text-left flex flex-col items-center xl:items-start">
+            <div id="logo-area" className="w-full xl:w-auto text-center md:text-left flex flex-col items-center xl:items-start shrink-0">
                 <h1 className="text-4xl font-extrabold text-white flex items-center justify-center md:justify-start gap-2 tracking-tighter">
                     <ShieldCheck className="text-cyan-500" size={32} />
                     Meu<span className="text-cyan-500">Aliado.</span>
@@ -100,9 +100,11 @@ export default function DashboardHeader({
             </div>
 
             {/* LADO DIREITO: Ações */}
-            <div className="flex flex-col xl:flex-row gap-3 w-full xl:w-auto">
+            {/* 🟢 flex-wrap ativado para permitir que blocos desçam de linha se a tela ficar apertada */}
+            <div className="flex flex-col xl:flex-row flex-wrap items-center justify-center xl:justify-end gap-4 w-full xl:w-auto flex-1 min-w-0">
 
-                <div className="flex flex-wrap xl:flex-nowrap items-center justify-center xl:justify-start gap-2 w-full xl:w-auto order-2 xl:order-none">
+                {/* Bloco de Ícones e Balões */}
+                <div className="flex flex-wrap items-center justify-center xl:justify-end gap-2 w-full xl:w-auto order-2 xl:order-none">
 
                     <div className="flex items-center gap-1 xl:gap-2 bg-gray-900/50 p-1 rounded-xl border border-gray-800 overflow-x-auto scrollbar-hide max-w-full">
                         <button id="btn-history" onClick={() => setIsHistoryOpen(true)} className="h-9 w-9 xl:h-10 xl:w-10 shrink-0 flex items-center justify-center rounded-lg text-gray-400 hover:text-cyan-400 hover:bg-gray-800 transition" title="Ver Gráfico Anual">
@@ -167,8 +169,7 @@ export default function DashboardHeader({
 
                     <div className="flex items-center justify-center w-full xl:w-auto gap-2 pl-0 xl:pl-2 mt-2 xl:mt-0 xl:border-none">
                         
-                        {/* 🎯 BALÃO DOS SONHOS (Metas de Longo Prazo) */}
-                        {/* 🎯 BALÃO DOS SONHOS (Metas de Longo Prazo) */}
+                        {/* 🎯 BALÃO DOS SONHOS */}
                         <div className="flex items-center gap-1.5 sm:gap-2 bg-indigo-950/30 border border-indigo-500/30 px-2 sm:px-3 h-11 rounded-xl cursor-default hover:bg-indigo-900/20 transition-colors" title="Dinheiro guardado para os seus sonhos">
                             <div className="bg-indigo-500/20 p-1 sm:p-1.5 rounded-lg shrink-0">
                                 <Target className="text-indigo-400 w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -181,7 +182,7 @@ export default function DashboardHeader({
                             </div>
                         </div>
 
-                        {/* 👛 BALÃO DAS CAIXINHAS (Dinheiro Livre no Mês) */}
+                        {/* 👛 BALÃO DAS CAIXINHAS */}
                         <div className="flex items-center gap-1.5 sm:gap-2 bg-emerald-950/30 border border-emerald-500/30 px-2 sm:px-3 h-11 rounded-xl cursor-default hover:bg-emerald-900/20 transition-colors" title="Dinheiro disponível para gastar nas caixinhas">
                             <div className="bg-emerald-500/20 p-1 sm:p-1.5 rounded-lg shrink-0">
                                 <Wallet className="text-emerald-400 w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -229,26 +230,19 @@ export default function DashboardHeader({
                                             </div>
                                         </div>
                                         <div className="p-2 space-y-1">
-
                                             {userPlan === 'admin' && (
                                                 <button onClick={() => { setIsUserMenuOpen(false); window.location.href = '/api/admin'; }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition">
                                                     👨‍💼 Painel do CEO
                                                 </button>
                                             )}
-
                                             <button onClick={() => { setIsUserMenuOpen(false); setIsProfileModalOpen(true); }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition"><User size={16} className="text-cyan-500" /> Meu Perfil</button>
-
                                             {userPlan !== 'free' && (<button onClick={() => { setIsUserMenuOpen(false); handleManageSubscription(); }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition"><CreditCard size={16} className="text-emerald-500" /> Assinatura</button>)}
-
                                             <div className="px-3 py-2.5 flex items-center justify-between group cursor-pointer hover:bg-gray-800 rounded-lg transition" onClick={(e) => { e.stopPropagation(); toggleWhatsappNotification(); }}>
                                                 <div className="flex items-center gap-3 text-sm text-gray-300 group-hover:text-white"><Smartphone size={16} className="text-emerald-500" /> Notificações Whatsapp {(userPlan !== 'pro' && userPlan !== 'agent' && userPlan !== 'admin') && <Lock size={12} className="text-amber-500" />}</div>
                                                 <div className={`w-9 h-5 rounded-full transition-colors relative ${whatsappEnabled ? 'bg-emerald-600' : 'bg-gray-700'}`}><div className={`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform ${whatsappEnabled ? 'translate-x-4' : 'translate-x-0'}`}></div></div>
                                             </div>
-
                                             {(userPlan === 'pro' || userPlan === 'agent' || userPlan === 'admin') && (<button onClick={() => { setIsUserMenuOpen(false); setIsCustomizationOpen(true); }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition"><Palette size={16} className="text-purple-500" /> Tema e Cores</button>)}
-
                                             {(userPlan !== 'agent' && userPlan !== 'admin') && (<button onClick={() => { setIsUserMenuOpen(false); handleCheckout('AGENT'); }} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-gray-300 hover:bg-gray-800 hover:text-white transition"><Briefcase size={16} className="text-amber-500" /> Virar Consultor</button>)}
-
                                             <div className="h-px bg-gray-800 my-1 mx-2"></div>
                                             <button onClick={handleLogout} className="w-full text-left px-3 py-2.5 rounded-lg text-sm flex items-center gap-3 text-red-400 hover:bg-red-950/30 transition font-medium"><LogOut size={16} /> Sair da Conta</button>
                                         </div>
@@ -259,19 +253,19 @@ export default function DashboardHeader({
                     </div>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 xl:flex gap-2 xl:gap-3 w-full xl:w-auto order-1 xl:order-none">
-
-                    <button id="btn-ai" onClick={() => setIsAIOpen(true)} className={`h-11 px-3 xl:px-5 rounded-xl font-bold transition flex items-center justify-center gap-2 text-sm shadow-lg border border-white/5 whitespace-nowrap ${['premium', 'pro', 'agent', 'admin'].includes(userPlan) ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white hover:brightness-110' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
+                {/* Bloco de Botões Principais - 🟢 Flex-wrap para evitar vazamento */}
+                <div className="flex flex-wrap sm:flex-nowrap w-full sm:w-auto justify-center gap-2 xl:gap-3 order-1 xl:order-none shrink-0">
+                    <button id="btn-ai" onClick={() => setIsAIOpen(true)} className={`flex-1 sm:flex-none h-11 px-3 xl:px-5 rounded-xl font-bold transition flex items-center justify-center gap-2 text-[11px] sm:text-sm shadow-lg border border-white/5 whitespace-nowrap ${['premium', 'pro', 'agent', 'admin'].includes(userPlan) ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white hover:brightness-110' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}>
                         <Sparkles size={16} className={['premium', 'pro', 'agent', 'admin'].includes(userPlan) ? "text-cyan-200 fill-cyan-200" : ""} />
                         {['premium', 'pro', 'agent', 'admin'].includes(userPlan) ? 'Aliado IA' : 'IA Lite'}
                     </button>
 
-                    <button id="btn-fatura" onClick={() => { if (userPlan === 'free' || userPlan === 'start') { openPricingModal(); return; } setIsCreditCardModalOpen(true); }} className={`h-11 px-3 xl:px-5 rounded-xl font-bold transition flex items-center justify-center gap-2 text-sm shadow-lg border border-white/5 whitespace-nowrap ${(userPlan === 'free' || userPlan === 'start') ? 'bg-gray-800 text-gray-500 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 text-white'}`}>
+                    <button id="btn-fatura" onClick={() => { if (userPlan === 'free' || userPlan === 'start') { openPricingModal(); return; } setIsCreditCardModalOpen(true); }} className={`flex-1 sm:flex-none h-11 px-3 xl:px-5 rounded-xl font-bold transition flex items-center justify-center gap-2 text-[11px] sm:text-sm shadow-lg border border-white/5 whitespace-nowrap ${(userPlan === 'free' || userPlan === 'start') ? 'bg-gray-800 text-gray-500 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 text-white'}`}>
                         <CreditCard size={16} /> Fatura
                         {(userPlan === 'free' || userPlan === 'start') && <Lock size={12} className="text-gray-500" />}
                     </button>
 
-                    <button id="btn-novo" onClick={openNewTransactionModal} className="h-11 col-span-2 sm:col-span-1 bg-white text-black px-4 xl:px-6 rounded-xl font-bold hover:bg-gray-100 transition flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.15)] text-sm active:scale-95 whitespace-nowrap">
+                    <button id="btn-novo" onClick={openNewTransactionModal} className="flex-1 sm:flex-none h-11 bg-white text-black px-4 xl:px-6 rounded-xl font-bold hover:bg-gray-100 transition flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(255,255,255,0.15)] text-[11px] sm:text-sm active:scale-95 whitespace-nowrap">
                         <Plus size={18} strokeWidth={3} /> Novo
                     </button>
                 </div>
